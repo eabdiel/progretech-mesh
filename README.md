@@ -164,3 +164,15 @@ See:
 - `docs/REND_RC2_LIVE_ACCEPTANCE_CARD.md`
 - `docs/AGENT_FACING_ACCEPTANCE_INSTRUCTION.md`
 - `docs/RC2_ACCEPTANCE_CHECKLIST.md`
+
+
+## RC2 pre-run cleanup
+
+Removed the obsolete trusted-enrollment-bootstrap HTTP routes and stale constant references.
+The universal PTM1/self-bootstrap flow remains the only enrollment architecture.
+
+Also:
+- current RC2 build/version labels are aligned;
+- Flask template/static folders are explicit;
+- broad exception handlers were narrowed where the failure domain is known;
+- a regression test prevents the retired bootstrap API from returning.

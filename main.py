@@ -32,7 +32,7 @@ from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-BUILD_ID = "v1-rc2-lifecycle-hardening-20260912"
+BUILD_ID = "v1-rc2-acceptance-clean-20260912"
 PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
@@ -75,16 +75,6 @@ def sha256_file(path: Path) -> str:
 
 def distribution_file(name: str) -> Path:
     return (Path(__file__).resolve().parent / "distribution" / name).resolve()
-
-def openclaw_enrollment_bootstrap_path() -> Path:
-    override = os.environ.get("MESH_OPENCLAW_ENROLLMENT_BOOTSTRAP_PATH")
-    if override:
-        return Path(override).expanduser().resolve()
-    return (
-        Path(__file__).resolve().parent
-        / "distribution"
-        / OPENCLAW_ENROLLMENT_BOOTSTRAP_FILENAME
-    ).resolve()
 
 
 
@@ -212,7 +202,7 @@ def broadcast_to_clients(agent_id: str, message: dict[str, Any]) -> None:
     for ws in clients:
         try:
             ws.send(payload)
-        except Exception:
+        except (OSError, RuntimeError):
             dead.append(ws)
 
     if dead:
@@ -375,10 +365,10 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
                         "size": meta["size"],
                     },
                 })
-            except Exception as exc:
+            except (OSError, ValueError, TypeError, KeyError, binascii.Error) as exc:
                 try:
                     Path(meta["temp_path"]).unlink(missing_ok=True)
-                except Exception:
+                except OSError:
                     pass
                 FILE_DOWNLOAD_EXPECTED.pop(offer_id, None)
                 append_event(agent_id, {
@@ -443,7 +433,7 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
             else:
                 try:
                     Path(meta["temp_path"]).unlink(missing_ok=True)
-                except Exception:
+                except OSError:
                     pass
                 FILE_DOWNLOAD_EXPECTED.pop(offer_id, None)
                 append_event(agent_id, {
@@ -463,7 +453,7 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
         if meta:
             try:
                 Path(meta["temp_path"]).unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 pass
             append_event(agent_id, {
                 "type": "file",
@@ -518,7 +508,7 @@ def send_gateway_message(agent_id: str, message: dict[str, Any]) -> tuple[bool, 
     try:
         gateway.send(json.dumps(message))
         return True, None
-    except Exception:
+    except (OSError, RuntimeError):
         return False, "gateway_send_failed"
 
 
@@ -621,7 +611,7 @@ def cleanup_expired_transfer_state() -> None:
         if created and now - created > TRANSFER_TTL_SECONDS:
             try:
                 Path(meta["temp_path"]).unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 pass
             FILE_DOWNLOAD_EXPECTED.pop(offer_id, None)
 
@@ -630,7 +620,7 @@ def cleanup_expired_transfer_state() -> None:
         if created and now - created > FILE_OFFER_TTL_SECONDS:
             try:
                 Path(meta["temp_path"]).unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 pass
             FILE_OFFERS.pop(offer_id, None)
 
@@ -754,7 +744,7 @@ def validate_device_credential(agent_id: str, credential: str) -> tuple[bool, st
             return False, "device_credential_signature_invalid", None
 
         payload = json.loads(_b64url_decode(encoded).decode("utf-8"))
-    except Exception:
+    except (ValueError, binascii.Error, UnicodeDecodeError, json.JSONDecodeError):
         return False, "device_credential_malformed", None
 
     if payload.get("agent_id") != agent_id:
@@ -865,7 +855,12 @@ def production_configuration_status() -> dict[str, Any]:
 
 
 def create_app() -> Flask:
-    app = Flask(__name__)
+    base_dir = Path(__file__).resolve().parent
+    app = Flask(
+        __name__,
+        template_folder=str(base_dir / "templates"),
+        static_folder=str(base_dir / "static"),
+    )
     sock = Sock(app)
 
     environment = os.environ.get("APP_ENV", "development").lower()
@@ -875,7 +870,7 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         ENVIRONMENT=environment,
-        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.0-v1-rc2-integration1"),
+        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.0-v1-rc2-acceptance"),
         BUILD_ID=os.environ.get("BUILD_ID", BUILD_ID),
         DEV_AUTH_ENABLED=os.environ.get("DEV_AUTH_ENABLED", dev_auth_default) == "1",
         DEV_SEED_AGENTS=os.environ.get("DEV_SEED_AGENTS", dev_seed_default) == "1",
@@ -962,6 +957,7 @@ def create_app() -> Flask:
             return redirect(url_for("index"))
 
         auth_mode = production_auth_mode()
+        # noinspection Jinja2MissingTemplate
         return render_template(
             "login.html",
             dev_auth_enabled=app.config["DEV_AUTH_ENABLED"],
@@ -994,6 +990,7 @@ def create_app() -> Flask:
     @app.get("/")
     @require_session
     def index():
+        # noinspection Jinja2MissingTemplate
         return render_template(
             "index.html",
             version=app.config["MESH_VERSION"],
@@ -1153,42 +1150,6 @@ def create_app() -> Flask:
 
 
 
-    @app.get("/api/distribution/openclaw/enrollment-bootstrap")
-    def openclaw_enrollment_bootstrap_metadata():
-        package = openclaw_enrollment_bootstrap_path()
-        if not package.is_file():
-            return jsonify(ok=False, error="enrollment_bootstrap_unavailable"), 503
-        return jsonify(
-            ok=True,
-            package_id="progretech-mesh-enrollment-bootstrap",
-            version=OPENCLAW_ENROLLMENT_BOOTSTRAP_VERSION,
-            role="trusted-baseline",
-            auto_update=False,
-            filename=package.name,
-            sha256=sha256_file(package),
-            signature={
-                "mode": os.environ.get("MESH_CODESEAL_PACKAGE_MODE", "unconfigured"),
-                "codeseal_verified": False,
-            },
-        )
-
-    @app.get("/api/distribution/openclaw/enrollment-bootstrap/<version>/package")
-    def download_openclaw_enrollment_bootstrap(version: str):
-        if version != OPENCLAW_ENROLLMENT_BOOTSTRAP_VERSION:
-            return jsonify(ok=False, error="enrollment_bootstrap_version_not_found"), 404
-        package = openclaw_enrollment_bootstrap_path()
-        if not package.is_file():
-            return jsonify(ok=False, error="enrollment_bootstrap_unavailable"), 503
-        response = send_file(
-            package,
-            mimetype="application/gzip",
-            as_attachment=True,
-            download_name=package.name,
-            conditional=True,
-        )
-        response.headers["Cache-Control"] = "public, max-age=300, immutable"
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        return response
 
     @app.get("/api/enrollment/protocol")
     def universal_agent_enrollment_protocol():
@@ -1456,7 +1417,7 @@ def create_app() -> Flask:
         if gateway is not None:
             try:
                 gateway.close()
-            except Exception:
+            except (OSError, RuntimeError):
                 pass
 
         append_event(agent_id, {
@@ -1604,7 +1565,7 @@ def create_app() -> Flask:
                 "timestamp": utcnow(),
                 "requested_by": session["mesh_user"]["id"],
             }))
-        except Exception:
+        except (OSError, RuntimeError):
             return jsonify(ok=False, error="gateway_send_failed"), 502
 
         return jsonify(ok=True, requested=True)
@@ -1955,7 +1916,7 @@ def create_app() -> Flask:
             ACTIVE_UPLOAD_TRANSFERS.pop(transfer_id, None)
             try:
                 temp_path.unlink(missing_ok=True)
-            except Exception:
+            except OSError:
                 pass
 
     @app.get("/api/files/offers")
@@ -2001,7 +1962,7 @@ def create_app() -> Flask:
             return
         try:
             Path(record["temp_path"]).unlink(missing_ok=True)
-        except Exception:
+        except OSError:
             pass
 
     @app.post("/api/agents/<agent_id>/files/request-demo")
@@ -2049,7 +2010,7 @@ def create_app() -> Flask:
         try:
             if gateway:
                 gateway.close()
-        except Exception:
+        except (OSError, RuntimeError):
             pass
         removed = DEV_AGENT_REGISTRY.pop(agent_id)
         return jsonify(ok=True, removed={"id": removed["id"], "name": removed["name"]})

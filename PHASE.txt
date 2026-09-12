@@ -1,1 +1,1 @@
-v1 RC2 — acceptance candidate
+v1 RC2 — acceptance candidate, pre-run cleanup
