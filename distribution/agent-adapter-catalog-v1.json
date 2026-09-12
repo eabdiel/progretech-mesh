@@ -1,0 +1,59 @@
+{
+  "catalog": "progretech-mesh-agent-adapters",
+  "version": 1,
+  "adapters": [
+    {
+      "id": "openclaw",
+      "status": "available",
+      "runtime_match": {
+        "executable_hints": [
+          "openclaw"
+        ],
+        "package_hints": [
+          "openclaw"
+        ],
+        "minimum_version": "2026.9.3"
+      },
+      "package": {
+        "package_id": "progretech-mesh-openclaw",
+        "version": "0.2.0",
+        "sha256": "3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271",
+        "format": "tgz"
+      },
+      "installation": {
+        "strategy": "agent-managed",
+        "requires_runtime_restart": true,
+        "restart_policy": "idle-only"
+      },
+      "capabilities": {
+        "passive_observation": true,
+        "independent_mesh_conversation": true,
+        "file_transfer": "separate-mesh-gateway"
+      },
+      "self_bootstrap": {
+        "plan_path": "/api/enrollment/adapters/openclaw/install-plan",
+        "helper_path": "/api/enrollment/adapters/openclaw/bootstrap",
+        "helper_sha256": "3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40",
+        "preinstalled_component_required": false,
+        "owner_workstation_access_required": false
+      }
+    },
+    {
+      "id": "generic-local-agent",
+      "status": "planned",
+      "runtime_match": {
+        "executable_hints": [],
+        "package_hints": []
+      },
+      "installation": {
+        "strategy": "agent-managed",
+        "requires_runtime_restart": "runtime-dependent",
+        "restart_policy": "idle-only-if-required"
+      },
+      "capabilities": {
+        "passive_observation": "adapter-dependent",
+        "independent_mesh_conversation": "adapter-dependent"
+      }
+    }
+  ]
+}

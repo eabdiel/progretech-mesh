@@ -1,0 +1,26 @@
+{
+  "id": "progretech-mesh-enrollment",
+  "name": "ProgreTech Mesh Enrollment",
+  "description": "Trusted baseline recognizer for signed/pinned ProgreTech Mesh enrollment requests.",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean"
+      },
+      "allowedChannels": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "requireOwner": {
+        "type": "boolean"
+      }
+    }
+  }
+}

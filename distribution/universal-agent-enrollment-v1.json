@@ -1,0 +1,35 @@
+{
+  "protocol": "progretech-mesh-agent-enrollment",
+  "version": 1,
+  "purpose": "Allow an independently created autonomous agent to connect itself to ProgreTech Mesh without requiring the owner to log into the agent workstation.",
+  "principles": {
+    "workstation_access_required": false,
+    "preinstalled_progretech_component_required": false,
+    "agent_self_bootstrap_preferred": true,
+    "privilege_bypass_allowed": false,
+    "existing_work_must_not_be_interrupted": true,
+    "observation_mode": "read-only",
+    "conversation_scope": "mesh-independent",
+    "shell_exposed_to_mesh_user": false
+  },
+  "agent_steps": [
+    "Validate that the owner intentionally requested Mesh enrollment.",
+    "Read the PTM1 enrollment envelope and this protocol document.",
+    "Inspect your own runtime and available installation capabilities.",
+    "Select a compatible Mesh adapter from the adapter catalog.",
+    "Download only the package/version declared by Mesh.",
+    "Verify package integrity and any supported signature/identity metadata.",
+    "Install or stage the adapter using your existing local authority only.",
+    "If activation requires a runtime restart, wait until current work is idle.",
+    "Redeem the short-lived enrollment token.",
+    "Connect outbound to Mesh and prove passive monitoring is active.",
+    "Keep Mesh conversation state separate from existing chat channels.",
+    "Report success or the minimum missing capability to the owner."
+  ],
+  "failure_policy": {
+    "on_insufficient_permissions": "Do not bypass policy. Tell the owner exactly what approval or capability is missing.",
+    "on_unknown_runtime": "Do not guess. Request the generic adapter path only if your environment can run it safely.",
+    "on_package_verification_failure": "Stop enrollment and report failure.",
+    "on_active_work": "Defer activation/restart until the current work is idle."
+  }
+}

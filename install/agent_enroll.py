@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from mesh_plugin_package import fetch_and_stage_plugin
+
 
 PREFIX = "PTM1:"
 
@@ -55,11 +57,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--runtime-adapter",
-        default=os.environ.get("MESH_RUNTIME_ADAPTER", "openclaw"),
+        default=os.environ.get("MESH_RUNTIME_ADAPTER", "openclaw_bridge"),
     )
     parser.add_argument(
         "--observation-adapter",
-        default=os.environ.get("MESH_OBSERVATION_ADAPTER", "none"),
+        default=os.environ.get("MESH_OBSERVATION_ADAPTER", "openclaw_hooks"),
     )
     args = parser.parse_args()
 
@@ -67,6 +69,24 @@ def main() -> int:
 
     mesh = str(envelope["mesh"]).rstrip("/")
     agent_id = str(envelope["agent_id"])
+
+    state_dir = Path(
+        os.path.expanduser(
+            os.environ.get("MESH_AGENT_STATE_DIR", "~/.progretech-mesh")
+        )
+    )
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    plugin_package = envelope.get("plugin_package")
+    if args.runtime_adapter == "openclaw_bridge":
+        if not isinstance(plugin_package, dict):
+            raise SystemExit("Mesh enrollment does not include the required OpenClaw plugin package")
+        try:
+            staged_plugin_dir = fetch_and_stage_plugin(plugin_package, state_dir=state_dir)
+        except Exception as exc:
+            raise SystemExit(f"Mesh plugin package rejected: {exc}") from exc
+    else:
+        staged_plugin_dir = None
 
     result = post_json(
         f"{mesh}/api/activation/redeem",
@@ -87,11 +107,6 @@ def main() -> int:
     if not device_credential:
         raise SystemExit("Mesh enrollment did not return a reconnect credential")
 
-    state_dir = Path(
-        os.path.expanduser(
-            os.environ.get("MESH_AGENT_STATE_DIR", "~/.progretech-mesh")
-        )
-    )
     credential_dir = state_dir / "credentials"
     credential_dir.mkdir(parents=True, exist_ok=True)
 
@@ -152,6 +167,24 @@ def main() -> int:
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
+
+    # OpenClaw integration is provisioned by the agent itself. The bootstrap is
+    # detached so this Telegram/chat turn can finish first; it stages the plugin,
+    # waits for OpenClaw to become idle, and only then performs activation/restart.
+    if args.runtime_adapter == "openclaw_bridge":
+        bootstrap = Path(__file__).resolve().parent / "agent_openclaw_mesh_bootstrap.sh"
+        if bootstrap.exists():
+            if staged_plugin_dir is not None:
+                env["MESH_PLUGIN_STAGED_DIR"] = str(staged_plugin_dir)
+            subprocess.Popen(
+                [str(bootstrap)],
+                env=env,
+                cwd=str(Path(args.gateway_script).resolve().parents[1]),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            print("OpenClaw Mesh bootstrap scheduled after current work becomes idle.")
 
     return 0
 

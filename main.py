@@ -32,7 +32,7 @@ from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-BUILD_ID = "v1-phase-7-of-7-rc1-20260912"
+BUILD_ID = "v1-rc2-openclaw-selfbootstrap-20260912"
 PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
@@ -52,6 +52,40 @@ SAFE_FILE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip", ".tar", ".gz"
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
+
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.2.0"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.2.0.tgz"
+UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
+AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
+OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
+OPENCLAW_SELF_BOOTSTRAP_FILENAME = "openclaw-self-bootstrap-v1.sh"
+
+def openclaw_plugin_package_path() -> Path:
+    override = os.environ.get("MESH_OPENCLAW_PLUGIN_PACKAGE_PATH")
+    if override:
+        return Path(override).expanduser().resolve()
+    return (Path(__file__).resolve().parent / "distribution" / OPENCLAW_PLUGIN_PACKAGE_FILENAME).resolve()
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def distribution_file(name: str) -> Path:
+    return (Path(__file__).resolve().parent / "distribution" / name).resolve()
+
+def openclaw_enrollment_bootstrap_path() -> Path:
+    override = os.environ.get("MESH_OPENCLAW_ENROLLMENT_BOOTSTRAP_PATH")
+    if override:
+        return Path(override).expanduser().resolve()
+    return (
+        Path(__file__).resolve().parent
+        / "distribution"
+        / OPENCLAW_ENROLLMENT_BOOTSTRAP_FILENAME
+    ).resolve()
+
 
 
 # Live operational state is deliberately ephemeral and process-local.
@@ -653,6 +687,11 @@ def production_auth_mode() -> str:
 
 
 
+def app_secret_key() -> str:
+    """Return the Flask/session signing secret without depending on an app context."""
+    return os.environ.get("SECRET_KEY", "dev-only-change-me")
+
+
 def device_credential_secret() -> bytes:
     value = os.environ.get("MESH_DEVICE_CREDENTIAL_SECRET") or os.environ.get(
         "MESH_ACTIVATION_SECRET"
@@ -836,7 +875,7 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         ENVIRONMENT=environment,
-        MESH_VERSION=os.environ.get("MESH_VERSION", "1.7.0-v1-rc1"),
+        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.0-v1-rc2-integration1"),
         BUILD_ID=os.environ.get("BUILD_ID", BUILD_ID),
         DEV_AUTH_ENABLED=os.environ.get("DEV_AUTH_ENABLED", dev_auth_default) == "1",
         DEV_SEED_AGENTS=os.environ.get("DEV_SEED_AGENTS", dev_seed_default) == "1",
@@ -1112,6 +1151,124 @@ def create_app() -> Flask:
             oidc_issuer=os.environ.get("MESH_OIDC_ISSUER") if mode == "oidc" else None,
         )
 
+
+
+    @app.get("/api/distribution/openclaw/enrollment-bootstrap")
+    def openclaw_enrollment_bootstrap_metadata():
+        package = openclaw_enrollment_bootstrap_path()
+        if not package.is_file():
+            return jsonify(ok=False, error="enrollment_bootstrap_unavailable"), 503
+        return jsonify(
+            ok=True,
+            package_id="progretech-mesh-enrollment-bootstrap",
+            version=OPENCLAW_ENROLLMENT_BOOTSTRAP_VERSION,
+            role="trusted-baseline",
+            auto_update=False,
+            filename=package.name,
+            sha256=sha256_file(package),
+            signature={
+                "mode": os.environ.get("MESH_CODESEAL_PACKAGE_MODE", "unconfigured"),
+                "codeseal_verified": False,
+            },
+        )
+
+    @app.get("/api/distribution/openclaw/enrollment-bootstrap/<version>/package")
+    def download_openclaw_enrollment_bootstrap(version: str):
+        if version != OPENCLAW_ENROLLMENT_BOOTSTRAP_VERSION:
+            return jsonify(ok=False, error="enrollment_bootstrap_version_not_found"), 404
+        package = openclaw_enrollment_bootstrap_path()
+        if not package.is_file():
+            return jsonify(ok=False, error="enrollment_bootstrap_unavailable"), 503
+        response = send_file(
+            package,
+            mimetype="application/gzip",
+            as_attachment=True,
+            download_name=package.name,
+            conditional=True,
+        )
+        response.headers["Cache-Control"] = "public, max-age=300, immutable"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @app.get("/api/enrollment/protocol")
+    def universal_agent_enrollment_protocol():
+        path = distribution_file(UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME)
+        if not path.is_file():
+            return jsonify(ok=False, error="enrollment_protocol_unavailable"), 503
+        return send_file(
+            path,
+            mimetype="application/json",
+            as_attachment=False,
+            conditional=True,
+        )
+
+    @app.get("/api/enrollment/adapters")
+    def universal_agent_adapter_catalog():
+        path = distribution_file(AGENT_ADAPTER_CATALOG_FILENAME)
+        if not path.is_file():
+            return jsonify(ok=False, error="adapter_catalog_unavailable"), 503
+        return send_file(
+            path,
+            mimetype="application/json",
+            as_attachment=False,
+            conditional=True,
+        )
+
+    @app.get("/api/enrollment/adapters/openclaw/install-plan")
+    def openclaw_self_bootstrap_plan():
+        path = distribution_file(OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME)
+        if not path.is_file():
+            return jsonify(ok=False, error="openclaw_install_plan_unavailable"), 503
+        response = send_file(path, mimetype="application/json", as_attachment=False, conditional=True)
+        response.headers["Cache-Control"] = "public, max-age=300"
+        return response
+
+    @app.get("/api/enrollment/adapters/openclaw/bootstrap")
+    def openclaw_self_bootstrap_helper():
+        path = distribution_file(OPENCLAW_SELF_BOOTSTRAP_FILENAME)
+        if not path.is_file():
+            return jsonify(ok=False, error="openclaw_bootstrap_unavailable"), 503
+        response = send_file(path, mimetype="text/x-shellscript", as_attachment=False, conditional=True)
+        response.headers["Cache-Control"] = "public, max-age=300"
+        response.headers["X-Mesh-SHA256"] = sha256_file(path)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    @app.get("/api/distribution/openclaw/progretech-mesh")
+    def openclaw_plugin_distribution_metadata():
+        package = openclaw_plugin_package_path()
+        if not package.is_file():
+            return jsonify(ok=False, error="plugin_package_unavailable"), 503
+        return jsonify(
+            ok=True,
+            package_id="progretech-mesh-openclaw",
+            version=OPENCLAW_PLUGIN_PACKAGE_VERSION,
+            filename=package.name,
+            sha256=sha256_file(package),
+            signature={
+                "mode": os.environ.get("MESH_CODESEAL_PACKAGE_MODE", "unconfigured"),
+                "codeseal_verified": False,
+            },
+        )
+
+    @app.get("/api/distribution/openclaw/progretech-mesh/<version>/package")
+    def download_openclaw_plugin_distribution(version: str):
+        if version != OPENCLAW_PLUGIN_PACKAGE_VERSION:
+            return jsonify(ok=False, error="plugin_version_not_found"), 404
+        package = openclaw_plugin_package_path()
+        if not package.is_file():
+            return jsonify(ok=False, error="plugin_package_unavailable"), 503
+        response = send_file(
+            package,
+            mimetype="application/gzip",
+            as_attachment=True,
+            download_name=package.name,
+            conditional=True,
+        )
+        response.headers["Cache-Control"] = "public, max-age=300, immutable"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
     @app.post("/api/agents/<agent_id>/enrollment-message")
     @require_session
     def create_agent_enrollment_message(agent_id: str):
@@ -1124,10 +1281,38 @@ def create_app() -> Flask:
         activation = issue_activation_code(agent_id)
         mesh_origin = request.host_url.rstrip("/")
 
+        package = openclaw_plugin_package_path()
+        if not package.is_file():
+            return jsonify(ok=False, error="plugin_package_unavailable"), 503
+
+        package_sha256 = sha256_file(package)
+        package_url = (
+            f"{mesh_origin}/api/distribution/openclaw/progretech-mesh/"
+            f"{OPENCLAW_PLUGIN_PACKAGE_VERSION}/package"
+        )
+
         envelope = {
             "type": "PROGRETECH_MESH_ENROLL",
-            "version": 1,
+            "version": 3,
             "mesh": mesh_origin,
+            "discovery": {
+                "protocol_url": f"{mesh_origin}/api/enrollment/protocol",
+                "adapter_catalog_url": f"{mesh_origin}/api/enrollment/adapters",
+                "preinstalled_progretech_component_required": False,
+                "workstation_access_required": False,
+                "agent_self_bootstrap_preferred": True,
+                "runtime_hints": {
+                    "openclaw": {
+                        "install_plan_url": (
+                            f"{mesh_origin}/api/enrollment/adapters/openclaw/install-plan"
+                        ),
+                        "bootstrap_helper_url": (
+                            f"{mesh_origin}/api/enrollment/adapters/openclaw/bootstrap"
+                        ),
+                        "bootstrap_helper_sha256": "3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40",
+                    }
+                },
+            },
             "agent_id": agent_id,
             "activation_code": activation["code"],
             "activation_signature": activation["signature"],
@@ -1135,6 +1320,17 @@ def create_app() -> Flask:
             "mode": "plug-and-monitor",
             "observation": "read-only",
             "conversation_scope": "mesh-independent",
+            "plugin_package": {
+                "package_id": "progretech-mesh-openclaw",
+                "runtime": "openclaw",
+                "version": OPENCLAW_PLUGIN_PACKAGE_VERSION,
+                "url": package_url,
+                "sha256": package_sha256,
+                "signature": {
+                    "mode": os.environ.get("MESH_CODESEAL_PACKAGE_MODE", "unconfigured"),
+                    "codeseal_verified": False,
+                },
+            },
         }
 
         compact = base64.urlsafe_b64encode(
@@ -1146,7 +1342,15 @@ def create_app() -> Flask:
             "Please validate and accept this request only if your local policy permits it. "
             "Do not interrupt, restart, reset, replace, or reconfigure any current work or "
             "existing conversation. Connect using passive plug-and-monitor mode and keep "
-            "Mesh conversations independent from other channels. "
+            "You are being asked by your owner to connect yourself to ProgreTech Mesh. "
+            "No ProgreTech software is assumed to be preinstalled. Read the discovery URLs in "
+            "the enrollment payload, inspect your own runtime and capabilities, choose the "
+            "compatible adapter, and perform the installation yourself using only authority "
+            "you already have. Do not interrupt current work, bypass local policy, or ask the "
+            "owner to log into the workstation unless your environment truly lacks the required "
+            "capability. Mesh observation must remain read-only and Mesh conversation state "
+            "must remain independent from existing channels. Verify every package before "
+            "installation and fail closed on verification errors. "
             f"Enrollment payload: PTM1:{compact}"
         )
 

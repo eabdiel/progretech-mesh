@@ -76,7 +76,7 @@ def heartbeat_payload(agent_id: str, started: float, state: str = "online") -> d
         "payload": {
             "state": state,
             "task": "Mesh gateway connected",
-            "phase": "Phase 3 · live heartbeat transport",
+            "phase": "Live heartbeat transport",
             "progress": 100,
             "model": "Local agent runtime",
             "runtime": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
@@ -130,7 +130,7 @@ def stage_received_file(payload: dict) -> dict:
 
 def make_demo_output_file(agent_id: str) -> dict:
     content = (
-        f"ProgreTech Mesh Phase 6 demo artifact\n"
+        f"ProgreTech Mesh demo artifact\n"
         f"Agent: {agent_id}\n"
         f"Generated: {utcnow()}\n"
         f"This file proves agent-to-user transfer over the Mesh gateway.\n"

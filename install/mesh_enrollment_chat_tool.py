@@ -25,8 +25,8 @@ def extract_mesh_enrollment_payload(message_text: str) -> str | None:
 def accept_mesh_enrollment(
     payload: str,
     *,
-    runtime_adapter: str = "openclaw",
-    observation_adapter: str = "none",
+    runtime_adapter: str = "openclaw_bridge",
+    observation_adapter: str = "openclaw_hooks",
 ) -> subprocess.CompletedProcess:
     helper = Path(__file__).resolve().parent / "agent_enroll.py"
 

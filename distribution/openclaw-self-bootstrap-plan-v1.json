@@ -1,0 +1,92 @@
+{
+  "adapter": "openclaw",
+  "plan_version": 1,
+  "status": "available",
+  "minimum_openclaw_version": "2026.9.3",
+  "user_workstation_access_required": false,
+  "preinstalled_mesh_component_required": false,
+  "execution_owner": "agent",
+  "safety_contract": {
+    "do_not_interrupt_active_work": true,
+    "download_and_verify_while_busy": true,
+    "install_only_when_idle": true,
+    "privilege_escalation_allowed": false,
+    "arbitrary_shell_exposed_to_mesh_user": false,
+    "existing_channels_must_survive": true
+  },
+  "discovery": {
+    "detect_commands": [
+      "command -v openclaw",
+      "openclaw --version"
+    ],
+    "runtime_match": "OpenClaw 2026.9.3 or newer"
+  },
+  "package": {
+    "package_id": "progretech-mesh-openclaw",
+    "version": "0.2.0",
+    "filename": "progretech-mesh-openclaw-0.2.0.tgz",
+    "sha256": "3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271",
+    "integrity_algorithm": "sha256",
+    "codeseal_verified": false
+  },
+  "agent_procedure": [
+    {
+      "id": "inspect",
+      "description": "Confirm OpenClaw is installed and inspect its version without changing runtime state.",
+      "mutates_runtime": false
+    },
+    {
+      "id": "download",
+      "description": "Download the exact package URL declared in PTM1 to a private temporary path.",
+      "mutates_runtime": false
+    },
+    {
+      "id": "verify",
+      "description": "Calculate SHA-256 and require an exact match to PTM1 before any installation.",
+      "mutates_runtime": false
+    },
+    {
+      "id": "validate",
+      "description": "Optionally use OpenClaw plugin validation against the downloaded artifact when supported.",
+      "mutates_runtime": false
+    },
+    {
+      "id": "wait_for_idle",
+      "description": "If any agent/session work is active or runtime state is uncertain, defer managed installation.",
+      "mutates_runtime": false
+    },
+    {
+      "id": "install",
+      "description": "Use OpenClaw's supported managed archive installer. Arbitrary local/archive provenance requires --force in noninteractive mode; capability consent requires --accept-capabilities.",
+      "command_template": "openclaw plugins install {local_verified_archive} --force --accept-capabilities",
+      "mutates_runtime": true,
+      "requires_idle": true
+    },
+    {
+      "id": "inspect_runtime",
+      "description": "Verify the installed plugin through OpenClaw's plugin inspection surface.",
+      "command_template": "openclaw plugins inspect progretech-mesh --runtime --json",
+      "mutates_runtime": false
+    },
+    {
+      "id": "verify_channels",
+      "description": "Probe existing channels after installation/reload and ensure the owner's channel remains healthy.",
+      "command_template": "openclaw channels status --probe",
+      "mutates_runtime": false
+    },
+    {
+      "id": "redeem_and_connect",
+      "description": "Redeem the short-lived Mesh activation and establish the plugin/gateway outbound Mesh connection.",
+      "mutates_runtime": true
+    }
+  ],
+  "failure_behavior": {
+    "unsupported_version": "Report unsupported OpenClaw version to owner; do not install.",
+    "missing_exec_permission": "Report the minimum missing runtime permission through the existing chat.",
+    "hash_mismatch": "Stop immediately; do not install.",
+    "install_policy_block": "Report the OpenClaw install-policy block; do not bypass it.",
+    "capability_consent_block": "Use the owner's existing agent/chat approval mechanism if available; otherwise report the required approval.",
+    "runtime_busy": "Wait/defer. Do not force installation or restart.",
+    "channel_probe_failure": "Report degraded channel state and stop further Mesh activation work."
+  }
+}

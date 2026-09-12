@@ -1,3 +1,1 @@
-ProgreTech Mesh v1
-Phase 7 of 7
-Release Candidate + Customer Workflow Validation
+v1 RC2 — OpenClaw universal self-bootstrap candidate

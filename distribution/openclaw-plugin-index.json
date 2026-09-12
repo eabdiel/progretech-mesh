@@ -1,0 +1,13 @@
+{
+  "package_id": "progretech-mesh-openclaw",
+  "version": "0.2.0",
+  "runtime": "openclaw",
+  "min_openclaw_version": "2026.9.3",
+  "filename": "progretech-mesh-openclaw-0.2.0.tgz",
+  "sha256": "3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271",
+  "signature": {
+    "mode": "unconfigured",
+    "codeseal_verified": false,
+    "note": "CodeSeal verification is not yet configured. SHA-256 is integrity pinning only."
+  }
+}

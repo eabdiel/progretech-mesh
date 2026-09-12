@@ -1,0 +1,3 @@
+No ZIP-transfer test is required for this build.
+
+When RC2 is ready for live acceptance, Rend should receive only the PTM1 enrollment message through his existing chat channel. His trusted enrollment bootstrap will fetch the pinned Mesh plugin package directly from Mesh, verify it, and handle the idle-safe activation locally.
