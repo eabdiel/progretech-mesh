@@ -11,3 +11,5 @@ venv
 *.log
 *.zip
 .DS_Store
+
+.mesh-staging

@@ -1,6 +1,8 @@
-const CACHE_NAME = "progretech-mesh-phase0-v1";
-const APP_SHELL = [
+const CACHE_NAME = "progretech-mesh-v1-phase-6-of-7-v1";
+
+const CORE_ASSETS = [
   "/",
+  "/login",
   "/static/css/app.css",
   "/static/js/app.js",
   "/static/icons/icon-192.png",
@@ -11,7 +13,7 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) => cache.addAll(CORE_ASSETS))
       .then(() => self.skipWaiting())
   );
 });
@@ -26,28 +28,54 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+async function networkFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response && response.ok && response.type === "basic") {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (_) {
+    return (await cache.match(request)) || (await cache.match("/"));
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // API/live agent data should never be served from the PWA cache.
-  if (url.pathname.startsWith("/api/") ||
-      url.pathname === "/healthz" ||
-      url.pathname === "/readyz") {
+  // Never persist identity, enrollment, session or future live-agent API data.
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.pathname === "/healthz" ||
+    url.pathname === "/readyz"
+  ) {
     event.respondWith(fetch(event.request));
     return;
   }
 
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match("/"))
-    );
-    return;
+  if (
+    event.request.mode === "navigate" ||
+    url.pathname.startsWith("/static/") ||
+    url.pathname === "/manifest.webmanifest"
+  ) {
+    event.respondWith(networkFirst(event.request));
   }
+});
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((cached) => cached || fetch(event.request))
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if ("focus" in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow("/");
+      return undefined;
+    })
   );
 });

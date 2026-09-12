@@ -14,7 +14,7 @@
   <link rel="manifest" href="{{ url_for('manifest') }}" />
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=build_id) }}" />
 </head>
 <body>
   <div class="app">
@@ -30,7 +30,13 @@
       <div class="top-actions">
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button class="icon-btn" aria-label="Notifications">◌</button>
-        <button class="icon-btn profile-btn" aria-label="Profile">EA</button>
+        <div class="user-chip" title="Authenticated local session">
+          <span class="user-dot"></span>
+          <span>{{ user.display_name }}</span>
+        </div>
+        <form action="{{ url_for('logout') }}" method="post" class="logout-form">
+          <button class="icon-btn profile-btn" type="submit" aria-label="Sign out">↪</button>
+        </form>
       </div>
     </header>
 
@@ -45,14 +51,14 @@
           <h1>Your agents, live and local.</h1>
 
           <p class="hero-sub">
-            Monitor signed ProgreTech agents, talk to them individually or as a group,
-            request a live heartbeat, and follow active work without turning Mesh into
-            the agent's brain, memory, or cloud runtime.
+            Monitor signed ProgreTech agents, request a live heartbeat, and follow
+            active work through an ephemeral connection without moving the agent's
+            memory or runtime into Mesh.
           </p>
 
           <div class="hero-actions">
-            <button class="primary-btn" data-demo-action="fleet">Open fleet</button>
-            <button class="ghost-btn" data-demo-action="group">Start group room</button>
+            <button class="primary-btn" id="openFleetButton">Open fleet</button>
+            <button class="ghost-btn" id="groupRoomButton">Start group room</button>
             <button class="ghost-btn" id="heartbeatButton">Request heartbeat</button>
           </div>
         </div>
@@ -60,141 +66,123 @@
         <aside class="hero-side">
           <div class="side-head">
             <h2>Fleet snapshot</h2>
-            <span class="status-pill" id="connectedCount">3 connected</span>
+            <span class="status-pill" id="connectedCount">Loading…</span>
           </div>
-          <div class="fleet-stat"><span>Signed identities</span><strong>3 / 3 valid</strong></div>
-          <div class="fleet-stat"><span>Agents working</span><strong>2</strong></div>
-          <div class="fleet-stat"><span>Awaiting input</span><strong>0</strong></div>
-          <div class="fleet-stat"><span>Active sessions</span><strong>1</strong></div>
+          <div class="fleet-stat"><span>Verified identities</span><strong id="signedCount">—</strong></div>
+          <div class="fleet-stat"><span>Gateways online</span><strong id="gatewayCount">—</strong></div>
+          <div class="fleet-stat"><span>Agents working</span><strong id="workingCount">—</strong></div>
+          <div class="fleet-stat"><span>Selected monitor</span><strong id="selectedMonitor">—</strong></div>
           <div class="fleet-stat"><span>Cloud retention</span><strong>Off</strong></div>
+          <div class="fleet-stat"><span>Plug-and-monitor</span><strong>Passive + isolated</strong></div>
         </aside>
       </section>
 
-      <div class="section-head">
+      <div class="section-head" id="agents">
         <div>
           <h2>Agents</h2>
-          <p>Select an agent to chat, monitor, or open a live heartbeat session.</p>
+          <p>Verified identities can now pair an outbound live gateway.</p>
         </div>
         <div class="section-tools">
-          <button class="ghost-btn" data-demo-action="manage">Manage</button>
-          <button class="ghost-btn" data-demo-action="add">+ Add signed agent</button>
+          <button class="ghost-btn" id="manageAgentsButton">Manage</button>
+          <button class="ghost-btn" id="addAgentButton">+ Add signed agent</button>
         </div>
       </div>
 
-      <section class="agent-grid" id="agentGrid" aria-live="polite">
-        <article class="agent-card active">
-          <div class="agent-top">
-            <div class="agent-id">
-              <div class="avatar rend"></div>
-              <div class="agent-name"><strong>Rend</strong><span>Primary workstation agent</span></div>
-            </div>
-            <span class="agent-state busy" title="Working"></span>
-          </div>
-          <div class="task">
-            <label>Current activity</label>
-            <strong>Autonomous recovery validation</strong>
-            <span>Phase 4 · applying teacher-guided recovery</span>
-          </div>
-          <div class="progress"><i style="width:72%"></i></div>
-          <div class="agent-meta">
-            <div class="meta-box"><span>Model</span><strong>Local senior</strong></div>
-            <div class="meta-box"><span>Runtime</span><strong>00:18:42</strong></div>
-          </div>
-          <div class="agent-actions">
-            <button data-demo-action="message">Message</button>
-            <button class="monitor" data-demo-action="monitor">Monitor live</button>
-          </div>
-        </article>
+      <section class="agent-grid" id="agentGrid" aria-live="polite"></section>
 
-        <article class="agent-card">
-          <div class="agent-top">
-            <div class="agent-id">
-              <div class="avatar lyra"></div>
-              <div class="agent-name"><strong>Lyra</strong><span>Content & coordination agent</span></div>
-            </div>
-            <span class="agent-state" title="Online"></span>
-          </div>
-          <div class="task">
-            <label>Current activity</label>
-            <strong>Reviewing team knowledge backlog</strong>
-            <span>2 recommendations ready for review</span>
-          </div>
-          <div class="progress"><i style="width:48%"></i></div>
-          <div class="agent-meta">
-            <div class="meta-box"><span>Model</span><strong>Local worker</strong></div>
-            <div class="meta-box"><span>Runtime</span><strong>00:07:14</strong></div>
-          </div>
-          <div class="agent-actions">
-            <button data-demo-action="message">Message</button>
-            <button class="monitor" data-demo-action="monitor">Monitor live</button>
-          </div>
-        </article>
+      <div class="mobile-monitor-bar" id="mobileMonitorBar">
+        <button class="active" data-mobile-view="stream">Conversation</button>
+        <button data-mobile-view="telemetry">Telemetry</button>
+      </div>
 
-        <article class="agent-card">
-          <div class="agent-top">
-            <div class="agent-id">
-              <div class="avatar mak"></div>
-              <div class="agent-name"><strong>Mak</strong><span>Development agent</span></div>
-            </div>
-            <span class="agent-state idle" title="Idle"></span>
-          </div>
-          <div class="task">
-            <label>Status</label>
-            <strong>Available</strong>
-            <span>No active task · last seen 2 min ago</span>
-          </div>
-          <div class="progress"><i style="width:8%"></i></div>
-          <div class="agent-meta">
-            <div class="meta-box"><span>Model</span><strong>Standby</strong></div>
-            <div class="meta-box"><span>Queue</span><strong>0 tasks</strong></div>
-          </div>
-          <div class="agent-actions">
-            <button data-demo-action="message">Message</button>
-            <button class="monitor" data-demo-action="monitor">Monitor live</button>
-          </div>
-        </article>
-      </section>
-
-      <section class="dashboard">
-        <div class="panel">
+      <section class="dashboard" id="dashboard">
+        <div class="panel" id="streamPanel">
           <div class="panel-head">
             <h3>Live event stream</h3>
-            <span>Rend · connected</span>
+            <span id="eventStreamLabel">Select an agent</span>
           </div>
 
-          <div class="event-list">
-            <div class="event"><time>11:02:14</time><span class="kind">tool.exec</span><span class="desc">Running local validation suite</span></div>
-            <div class="event"><time>11:02:18</time><span class="kind">test</span><span class="desc">tests/test_recovery.py passed 14/14</span></div>
-            <div class="event"><time>11:02:23</time><span class="kind">agent</span><span class="desc">Comparing recovery result against task checkpoint</span></div>
-            <div class="event"><time>11:02:31</time><span class="kind">memory</span><span class="desc">Durable task snapshot updated locally</span></div>
+          <div class="observability-toolbar">
+            <input id="eventSearch" type="search" placeholder="Search events…" />
+            <select id="severityFilter" aria-label="Severity filter">
+              <option value="all">All severity</option>
+              <option value="info">Info</option>
+              <option value="warn">Warn</option>
+              <option value="error">Error</option>
+            </select>
+            <button class="ghost-btn compact" id="requestTaskSnapshot">Task snapshot</button>
+            <button class="ghost-btn compact" id="requestTerminalSnapshot">Terminal snapshot</button>
+          </div>
+
+          <div class="event-list" id="eventList">
+            <div class="empty-stream">Choose <strong>Monitor live</strong> on an agent to attach the browser to its ephemeral event stream.</div>
           </div>
 
           <form class="composer" id="messageComposer">
-            <button class="voice" type="button" data-demo-action="voice" aria-label="Voice">🎙</button>
-            <input id="messageInput" type="text" placeholder="Message Rend…" autocomplete="off" />
+            <button class="voice" id="attachButton" type="button" aria-label="Attach file" title="Attach file">📎</button>
+            <button class="voice" id="voiceButton" type="button" aria-label="Push to talk" title="Push to talk">🎙</button>
+            <input id="messageInput" type="text" placeholder="Select a connected agent to message…" autocomplete="off" />
             <button class="send" type="submit">Send</button>
+            <input id="fileInput" type="file" hidden />
           </form>
+          <div id="attachmentTray" class="attachment-tray" hidden></div>
+          <div class="voice-status-row">
+            <span id="voiceStatus" class="voice-status">Voice ready check pending</span>
+            <label class="speak-toggle">
+              <input type="checkbox" id="speakRepliesToggle">
+              <span>Speak agent replies</span>
+            </label>
+          </div>
         </div>
 
-        <div class="panel desktop-only">
+        <div class="panel" id="telemetryPanel">
           <div class="panel-head">
-            <h3>Terminal mirror</h3>
-            <span>read-only session view</span>
+            <h3>Heartbeat & telemetry</h3>
+            <span id="telemetryLabel">No monitor selected</span>
           </div>
-          <div class="terminal">
-            <div class="muted">$ ./bin/rend-task validate PT-2026-015</div>
-            <div>Loading durable task state...</div>
-            <div class="accent">Teacher plan accepted by local policy gate</div>
-            <div>Applying recovery action 3/4...</div>
-            <div class="ok">✓ unit tests passed</div>
-            <div class="ok">✓ task checkpoint restored</div>
-            <div>Continuing original workflow...</div>
+
+          <div class="telemetry-grid" id="telemetryGrid">
+            <div class="metric"><span>CPU</span><strong>—</strong></div>
+            <div class="metric"><span>RAM</span><strong>—</strong></div>
+            <div class="metric"><span>Disk</span><strong>—</strong></div>
+            <div class="metric"><span>Heartbeat</span><strong>—</strong></div>
+          </div>
+
+          <div class="terminal" id="liveTerminal">
+            <div class="muted">$ waiting for a live gateway…</div>
+            <div>Messaging is policy-bounded; arbitrary remote shell remains disabled.</div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="ops-grid">
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Approvals & safe actions</h3>
+            <span>policy gated</span>
+          </div>
+          <div id="approvalList" class="approval-list">
+            <div class="empty-stream">No pending approvals.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3>File exchange</h3>
+            <span>ephemeral relay</span>
+          </div>
+          <div class="file-actions">
+            <button class="ghost-btn" id="requestDemoFileButton">Ask agent for demo artifact</button>
+          </div>
+          <div id="fileOfferList" class="file-offer-list">
+            <div class="empty-stream">No agent files offered yet.</div>
           </div>
         </div>
       </section>
 
       <footer class="footer">
-        <span>ProgreTech Mesh · {{ version }}</span>
+        <span>ProgreTech Mesh · {{ version }} · ProgreTech Mesh</span>
         <span>Environment: {{ environment }}</span>
       </footer>
     </main>
@@ -202,13 +190,145 @@
 
   <nav class="bottom-nav" aria-label="Mobile navigation">
     <button class="active">Home</button>
-    <button>Agents</button>
-    <button>Rooms</button>
-    <button>Profile</button>
+    <button id="mobileAgentsButton">Agents</button>
+    <button id="mobileRoomsButton">Rooms</button>
+    <button data-later="profile">Profile</button>
   </nav>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="modal-backdrop" id="agentModal" hidden>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="agentModalTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> Signed identity</div>
+          <h2 id="agentModalTitle">Add signed agent</h2>
+        </div>
+        <button class="icon-btn" id="closeAgentModal" aria-label="Close">×</button>
+      </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+      <form id="agentEnrollmentForm" class="enrollment-form">
+        <label>Agent name<input name="name" required placeholder="e.g. Atlas" maxlength="80" /></label>
+        <label>Agent role<input name="role" placeholder="Development agent" maxlength="120" /></label>
+        <label>Public identity key<textarea name="public_key" required placeholder="Paste the agent public identity material"></textarea></label>
+        <label>CodeSeal key<input name="codeseal_key" placeholder="CS-..." /></label>
+        <div class="enrollment-help">Only verified identities can connect an agent. Development identity verification is not production CodeSeal verification.</div>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="cancelAgentEnrollment">Cancel</button>
+          <button type="submit" class="primary-btn">Verify & enroll</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="pairModal" hidden>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> One-time pairing</div>
+          <h2 id="pairModalTitle">Pair agent gateway</h2>
+        </div>
+        <button class="icon-btn" id="closePairModal" aria-label="Close">×</button>
+      </div>
+
+      <p class="modal-copy">
+        Run this command on the agent workstation from the extracted Mesh project.
+        The token expires after 10 minutes and is valid once.
+      </p>
+
+      <div class="command-box" id="pairCommand">Generating token…</div>
+
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="copyPairCommand">Copy command</button>
+        <button type="button" class="primary-btn" id="donePairModal">Done</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="identityModal" hidden>
+    <section class="modal-card identity-card" role="dialog" aria-modal="true" aria-labelledby="identityTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> Agent identity</div>
+          <h2 id="identityTitle">Identity details</h2>
+        </div>
+        <button class="icon-btn" id="closeIdentityModal" aria-label="Close">×</button>
+      </div>
+      <div id="identityDetails"></div>
+    </section>
+  </div>
+
+
+  <div class="modal-backdrop" id="groupModal" hidden>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="groupModalTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> Ephemeral group room</div>
+          <h2 id="groupModalTitle">Talk to the team</h2>
+        </div>
+        <button class="icon-btn" id="closeGroupModal" aria-label="Close">×</button>
+      </div>
+
+      <p class="modal-copy">
+        Choose connected agents. Mesh routes this message independently to each local
+        gateway; responses return into the live room and are not stored as cloud history.
+      </p>
+
+      <form id="groupMessageForm" class="enrollment-form">
+        <div id="groupAgentChoices" class="group-choices"></div>
+
+        <label>
+          Message
+          <textarea name="text" required placeholder="Ask Rend, Lyra and Mak to review something together…"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" id="cancelGroupRoom">Cancel</button>
+          <button type="submit" class="primary-btn">Send to selected agents</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="{{ url_for('static', filename='js/app.js', v=build_id) }}" defer></script>
+
+  <dialog id="notificationSettingsDialog" class="mesh-dialog notification-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-heading">
+        <div>
+          <span class="eyebrow">Notifications</span>
+          <h2 id="notificationDialogTitle">Agent notifications</h2>
+          <p class="muted">
+            Choose which meaningful events can create a browser notification on this device.
+          </p>
+        </div>
+        <button class="icon-button" value="cancel" aria-label="Close notification settings">×</button>
+      </div>
+
+      <div class="notification-permission" id="notificationPermissionStatus"></div>
+
+      <div class="notification-category-grid">
+        <label><input type="checkbox" data-notification-category="reply"> Agent replies</label>
+        <label><input type="checkbox" data-notification-category="task_complete"> Task completed</label>
+        <label><input type="checkbox" data-notification-category="approval_required"> Approval required</label>
+        <label><input type="checkbox" data-notification-category="error_blocker"> Error or blocker</label>
+        <label><input type="checkbox" data-notification-category="file_ready"> File ready</label>
+        <label><input type="checkbox" data-notification-category="gateway_offline"> Gateway offline</label>
+        <label><input type="checkbox" data-notification-category="gateway_reconnected"> Gateway reconnected</label>
+        <label><input type="checkbox" data-notification-category="progress"> Progress milestones</label>
+        <label><input type="checkbox" data-notification-category="routine_status"> Routine status</label>
+      </div>
+
+      <p class="privacy-note">
+        Notifications use short operational summaries. Prompt text, terminal output,
+        file contents, and other sensitive payloads are not placed in notifications.
+      </p>
+
+      <div class="dialog-actions">
+        <button class="secondary-button" value="cancel">Close</button>
+        <button type="button" class="primary-button" id="saveNotificationSettings">Save preferences</button>
+      </div>
+    </form>
+  </dialog>
+
 </body>
 </html>

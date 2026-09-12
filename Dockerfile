@@ -19,11 +19,12 @@ COPY . .
 RUN chown -R mesh:mesh /app
 USER mesh
 
-# Cloud Run supplies PORT to the ingress container.
+# One process is intentional while live WebSocket/session state remains process-local.
+# Horizontal scaling requires a shared ephemeral routing layer first.
 CMD exec gunicorn \
     --bind ":${PORT}" \
     --workers 1 \
-    --threads 8 \
+    --threads 80 \
     --timeout 0 \
     --access-logfile - \
     --error-logfile - \
