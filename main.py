@@ -32,7 +32,7 @@ from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-BUILD_ID = "v1-phase-6-of-7-20260912"
+BUILD_ID = "v1-phase-7-of-7-rc1-20260912"
 PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
@@ -836,7 +836,7 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         ENVIRONMENT=environment,
-        MESH_VERSION=os.environ.get("MESH_VERSION", "1.6.0-v1-phase6"),
+        MESH_VERSION=os.environ.get("MESH_VERSION", "1.7.0-v1-rc1"),
         BUILD_ID=os.environ.get("BUILD_ID", BUILD_ID),
         DEV_AUTH_ENABLED=os.environ.get("DEV_AUTH_ENABLED", dev_auth_default) == "1",
         DEV_SEED_AGENTS=os.environ.get("DEV_SEED_AGENTS", dev_seed_default) == "1",
@@ -990,6 +990,23 @@ def create_app() -> Flask:
             ] if status["deployment_tier"] == "production" else [],
         ), code
 
+    @app.get("/api/product/contract")
+    @require_session
+    def product_contract():
+        return jsonify(
+            ok=True,
+            product="ProgreTech Mesh",
+            integration_mode="plug-and-monitor",
+            channel_isolation=True,
+            supported_activity_filters=["all", "telegram", "mesh", "system"],
+            guided_training=True,
+            guided_training_storage="browser-local",
+            workstation_access_required_for_user=False,
+            cloud_operational_history=False,
+            arbitrary_remote_shell=False,
+            pwa=True,
+        )
+
     @app.get("/api/activation/contract")
     @require_session
     def activation_contract():
@@ -1136,10 +1153,25 @@ def create_app() -> Flask:
         return jsonify(
             ok=True,
             agent_id=agent_id,
+            request_id=activation["code"],
             expires_at=activation["expires_at"],
+            expires_in=max(0, activation["expires_at"] - unix_now()),
             enrollment_message=human_message,
             payload_prefix="PTM1:",
+            delivery="existing-agent-chat",
+            user_workstation_access_required=False,
         )
+
+    @app.post("/api/agents/<agent_id>/enrollment/<request_id>/cancel")
+    @require_session
+    def cancel_agent_enrollment(agent_id: str, request_id: str):
+        activation = ACTIVATION_CODES.get(request_id)
+        if not activation or activation.get("agent_id") != agent_id:
+            return jsonify(ok=False, error="enrollment_not_found"), 404
+        if activation.get("used"):
+            return jsonify(ok=False, error="enrollment_already_used"), 409
+        ACTIVATION_CODES.pop(request_id, None)
+        return jsonify(ok=True, cancelled=True, agent_id=agent_id)
 
     @app.post("/api/agents/<agent_id>/activation-code")
     @require_session

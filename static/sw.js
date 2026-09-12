@@ -1,4 +1,4 @@
-const CACHE_NAME = "progretech-mesh-v1-phase-6-of-7-v1";
+const CACHE_NAME = "progretech-mesh-v1-release-candidate-v1";
 
 const CORE_ASSETS = [
   "/",

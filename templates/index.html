@@ -29,6 +29,7 @@
 
       <div class="top-actions">
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
+        <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
         <button class="icon-btn" aria-label="Notifications">◌</button>
         <div class="user-chip" title="Authenticated local session">
           <span class="user-dot"></span>
@@ -80,7 +81,7 @@
       <div class="section-head" id="agents">
         <div>
           <h2>Agents</h2>
-          <p>Verified identities can now pair an outbound live gateway.</p>
+          <p>Connect, monitor, and message verified agents without taking over their active work.</p>
         </div>
         <div class="section-tools">
           <button class="ghost-btn" id="manageAgentsButton">Manage</button>
@@ -109,6 +110,12 @@
               <option value="info">Info</option>
               <option value="warn">Warn</option>
               <option value="error">Error</option>
+            </select>
+            <select id="channelFilter" aria-label="Activity channel filter">
+              <option value="all">All activity</option>
+              <option value="telegram">Telegram</option>
+              <option value="mesh">Mesh</option>
+              <option value="system">System & tools</option>
             </select>
             <button class="ghost-btn compact" id="requestTaskSnapshot">Task snapshot</button>
             <button class="ghost-btn compact" id="requestTerminalSnapshot">Terminal snapshot</button>
@@ -220,25 +227,33 @@
   </div>
 
   <div class="modal-backdrop" id="pairModal" hidden>
-    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
+    <section class="modal-card connect-agent-card" role="dialog" aria-modal="true" aria-labelledby="pairModalTitle">
       <div class="modal-head">
         <div>
-          <div class="eyebrow"><span class="dot"></span> One-time pairing</div>
-          <h2 id="pairModalTitle">Pair agent gateway</h2>
+          <div class="eyebrow"><span class="dot"></span> Connect agent</div>
+          <h2 id="pairModalTitle">Send this request to your agent</h2>
         </div>
         <button class="icon-btn" id="closePairModal" aria-label="Close">×</button>
       </div>
-
-      <p class="modal-copy">
-        Run this command on the agent workstation from the extracted Mesh project.
-        The token expires after 10 minutes and is valid once.
+      <p class="modal-copy" id="pairInstructions">
+        Copy the enrollment message and send it through your existing direct chat with the agent.
+        You do not need access to the agent's computer.
       </p>
-
-      <div class="command-box" id="pairCommand">Generating token…</div>
-
-      <div class="modal-actions">
-        <button type="button" class="ghost-btn" id="copyPairCommand">Copy command</button>
-        <button type="button" class="primary-btn" id="donePairModal">Done</button>
+      <div class="connect-status-row">
+        <span class="status-pill waiting" id="pairStatus">Waiting for agent</span>
+        <span class="countdown" id="pairCountdown">Expires soon</span>
+      </div>
+      <div class="enrollment-message-box" id="pairCommand" tabindex="0">Generating secure enrollment request…</div>
+      <div class="connect-assurance">
+        <strong>Plug-and-monitor</strong>
+        <span>The agent is instructed not to interrupt, restart, reset, replace, or reconfigure current work or existing channels.</span>
+      </div>
+      <div class="modal-actions split-actions">
+        <button type="button" class="ghost-btn danger-soft" id="cancelEnrollmentButton">Cancel request</button>
+        <div class="modal-action-group">
+          <button type="button" class="ghost-btn" id="copyPairCommand">Copy message</button>
+          <button type="button" class="primary-btn" id="donePairModal">Done</button>
+        </div>
       </div>
     </section>
   </div>
@@ -329,6 +344,27 @@
       </div>
     </form>
   </dialog>
+
+
+  <div class="training-backdrop" id="trainingBackdrop" hidden>
+    <section class="training-card" role="dialog" aria-modal="true" aria-labelledby="trainingTitle">
+      <div class="training-progress">
+        <div class="training-progress-bar"><i id="trainingProgressBar"></i></div>
+        <span id="trainingStepCount">1 / 9</span>
+      </div>
+      <div class="eyebrow"><span class="dot"></span> Guided Training</div>
+      <h2 id="trainingTitle">Welcome to ProgreTech Mesh</h2>
+      <p id="trainingBody"></p>
+      <div class="training-tip" id="trainingTip"></div>
+      <div class="training-actions">
+        <button class="ghost-btn" id="trainingSkip">Exit training</button>
+        <div class="modal-action-group">
+          <button class="ghost-btn" id="trainingBack">Back</button>
+          <button class="primary-btn" id="trainingNext">Next</button>
+        </div>
+      </div>
+    </section>
+  </div>
 
 </body>
 </html>

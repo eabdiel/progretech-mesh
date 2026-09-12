@@ -1,55 +1,51 @@
-# ProgreTech Mesh v1 — Phase 6 of 7
+# ProgreTech Mesh v1 — Phase 7 of 7
 
 ## Target
 
-**Runtime + Transfer Hardening**
+**Release Candidate + Customer Workflow Validation**
 
-This build hardens the runtime/file paths before release-candidate validation.
+This is the first consolidated Mesh v1 release-candidate package.
 
-The frontend contains no internal project phase/revision labels.
+The application frontend contains no internal development phase/revision terminology.
 
-## Improvements
+## Completed customer-facing work
 
-Browser → agent:
+### Connect Agent
+The normal UI no longer shows a workstation command. It generates a short-lived
+agent-led enrollment message for the user to send through the agent's existing chat.
 
-- temporary-file spooling instead of retaining all upload chunks in Flask memory
-- existing extension/sensitive-file policy retained
-- selected binary magic-signature validation
-- SHA-256 verification retained
-- explicit cancel on relay interruption
-- temporary relay cleanup on every exit path
+The modal includes copy confirmation, expiry countdown, cancel, waiting, automatic
+connection polling, connected state, and plug-and-monitor assurance.
 
-Agent → browser:
+### Channel activity
+Live activity supports:
 
-- temporary-file spooling instead of full artifact bytearray buffering
-- strict chunk sequencing
-- declared-size overflow protection
-- SHA-256 verification
-- selected binary signature validation
-- transfer TTL cleanup
-- ready-download TTL cleanup
-- delete-after-download behavior
+- All activity
+- Telegram
+- Mesh
+- System & tools
 
-Gateway:
+### Guided Training
+Guided Training is now built into Mesh and can be restarted from the top bar.
 
-- active-transfer cap
-- malformed Base64 rejection
-- oversized chunk rejection
-- out-of-order chunk rejection
-- partial-file cleanup on cancel/timeout
+### Release candidate
+All earlier foundations remain included: notifications, passive observation,
+channel-isolated Mesh conversation, persistent local reconnect credentials, identity
+boundaries, Cloud Run staging baseline, approvals/safe actions, bidirectional files,
+transfer hardening, PWA support, and mobile/foldable responsiveness.
 
-## Cloud Run
+## Deployment
 
-Deployment remains deliberately deferred until application work and release-candidate
-validation are complete. The deployment baseline remains packaged for the later guided
-setup of service requirements, IAM, secrets, DNS, custom domain, and
-`mesh.progretech.com`.
+Cloud deployment remains intentionally deferred until after local release-candidate
+testing. When ready, perform the Cloud Run/service/IAM/secrets/OIDC/CodeSeal/domain/DNS
+setup as a separate guided activity.
 
-## Guided Training
+## Validation documents
 
-Guided Training remains a release-completion requirement after the core workflows are
-stable.
+- `docs/RELEASE_CANDIDATE_VALIDATION.md`
+- `docs/V1_PRODUCT_ACCEPTANCE.md`
+- `docs/GUIDED_TRAINING.md`
 
-## Next
+## Next activity
 
-**v1 — Phase 7 of 7: Release Candidate + Customer Workflow Validation**
+Run the release candidate locally against a real Rend session before cloud deployment.

@@ -1,7 +1,7 @@
 {
   "name": "ProgreTech Mesh",
   "short_name": "Mesh",
-  "description": "Signed local agent monitoring and interaction console.",
+  "description": "Live, local-first monitoring and interaction console for verified AI agents.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

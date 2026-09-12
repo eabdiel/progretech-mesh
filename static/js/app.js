@@ -22,6 +22,17 @@
   const attachmentTray = document.getElementById("attachmentTray");
   const eventSearch = document.getElementById("eventSearch");
   const severityFilter = document.getElementById("severityFilter");
+  const channelFilter = document.getElementById("channelFilter");
+  const pairStatus = document.getElementById("pairStatus");
+  const pairCountdown = document.getElementById("pairCountdown");
+  const cancelEnrollmentButton = document.getElementById("cancelEnrollmentButton");
+  const guidedTrainingButton = document.getElementById("guidedTrainingButton");
+  const trainingBackdrop = document.getElementById("trainingBackdrop");
+  const trainingTitle = document.getElementById("trainingTitle");
+  const trainingBody = document.getElementById("trainingBody");
+  const trainingTip = document.getElementById("trainingTip");
+  const trainingProgressBar = document.getElementById("trainingProgressBar");
+  const trainingStepCount = document.getElementById("trainingStepCount");
   const approvalList = document.getElementById("approvalList");
   const fileOfferList = document.getElementById("fileOfferList");
   const voiceButton = document.getElementById("voiceButton");
@@ -36,6 +47,10 @@
   let monitorSocket = null;
   let monitorReconnectTimer = null;
   let lastPairCommand = "";
+  let activeEnrollment = null;
+  let enrollmentCountdownTimer = null;
+  let enrollmentPollTimer = null;
+  let trainingStepIndex = 0;
   let pendingAttachment = null;
   let liveEvents = [];
   let recognition = null;
@@ -227,7 +242,7 @@
     }
 
     if (file.size > 20 * 1024 * 1024) {
-      showToast("File exceeds the Phase 7 limit of 20 MB.");
+      showToast("File exceeds the 20 MB file limit.");
       return false;
     }
 
@@ -567,14 +582,34 @@
   function severityFor(message) {
     return String(message?.payload?.severity || "info").toLowerCase();
   }
+  function channelFor(message) {
+    const raw = String(
+      message?.payload?.channel ||
+      message?.channel ||
+      (message?.type === "message_response" ? "mesh" : "") ||
+      ""
+    ).toLowerCase();
+    if (raw === "telegram") return "telegram";
+    if (["mesh","direct","group"].includes(raw)) return "mesh";
+    const type = String(message?.type || "").toLowerCase();
+    const eventClass = String(message?.payload?.event_class || "").toLowerCase();
+    if (["system","tools","tool"].includes(raw) ||
+        type.includes("gateway") || type.includes("heartbeat") ||
+        type.includes("approval") || type.includes("file") ||
+        ["runtime","tool","system"].includes(eventClass)) return "system";
+    return raw || "system";
+  }
+
 
   function eventMatchesFilters(message) {
     const query = String(eventSearch?.value || "").trim().toLowerCase();
     const severity = String(severityFilter?.value || "all");
+    const channel = String(channelFilter?.value || "all");
     const text = `${message.type || ""} ${message.message || ""} ${JSON.stringify(message.payload || {})}`.toLowerCase();
 
     if (query && !text.includes(query)) return false;
     if (severity !== "all" && severityFor(message) !== severity) return false;
+    if (channel !== "all" && channelFor(message) !== channel) return false;
     return true;
   }
 
@@ -776,23 +811,104 @@
     }
   }
 
+  function stopEnrollmentTimers() {
+    clearInterval(enrollmentCountdownTimer);
+    clearInterval(enrollmentPollTimer);
+    enrollmentCountdownTimer = null;
+    enrollmentPollTimer = null;
+  }
+
+  function renderEnrollmentCountdown() {
+    if (!activeEnrollment) return;
+    const seconds = Math.max(0, Number(activeEnrollment.expires_at || 0) - Math.floor(Date.now() / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    pairCountdown.textContent = seconds > 0
+      ? `Expires in ${minutes}:${String(remainder).padStart(2, "0")}`
+      : "Request expired";
+    if (seconds <= 0) {
+      pairStatus.textContent = "Expired";
+      pairStatus.className = "status-pill expired";
+      copyPairCommandButton.disabled = true;
+      stopEnrollmentTimers();
+    }
+  }
+
+  async function pollEnrollmentConnection() {
+    if (!activeEnrollment) return;
+    try {
+      const response = await fetch("/api/status", {headers:{"Accept":"application/json"}});
+      const data = await response.json();
+      const agent = (data.agents || []).find((item) => item.id === activeEnrollment.agent_id);
+      if (agent?.transport === "connected") {
+        pairStatus.textContent = "Connected";
+        pairStatus.className = "status-pill connected";
+        pairCountdown.textContent = "Agent is live";
+        pairCommand.textContent = `${agent.name || activeEnrollment.agent_id} accepted the request and connected to Mesh.`;
+        copyPairCommandButton.hidden = true;
+        cancelEnrollmentButton.hidden = true;
+        stopEnrollmentTimers();
+        showToast(`${agent.name || activeEnrollment.agent_id} connected.`);
+        await refreshFleet();
+      }
+    } catch (error) {
+      console.warn("Enrollment status check failed:", error);
+    }
+  }
+
   async function pairGateway(agentId) {
-    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/pair-token`, {
-      method:"POST", headers:{"Accept":"application/json"}
+    stopEnrollmentTimers();
+    activeEnrollment = null;
+
+    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/enrollment-message`, {
+      method:"POST",
+      headers:{"Accept":"application/json"}
     });
     const data = await response.json();
 
     if (!response.ok) {
-      showToast(`Pairing unavailable: ${data.error || response.status}`);
+      showToast(`Connection request unavailable: ${data.error || response.status}`);
       return;
     }
 
-    lastPairCommand = data.gateway_command;
+    const agent = fleet.find((item) => item.id === agentId);
+    activeEnrollment = {agent_id:agentId, request_id:data.request_id, expires_at:data.expires_at};
+    lastPairCommand = data.enrollment_message;
     pairCommand.textContent = lastPairCommand;
-    copyPairCommandButton.textContent = "Copy command";
-    copyPairCommandButton.classList.remove("copy-success");
+    document.getElementById("pairModalTitle").textContent = `Connect ${agent?.name || agentId}`;
+    document.getElementById("pairInstructions").textContent =
+      `Copy this message and send it directly to ${agent?.name || "the agent"} through your existing chat. ` +
+      "The agent handles the workstation side after its local policy approves the request.";
+    pairStatus.textContent = "Waiting for agent";
+    pairStatus.className = "status-pill waiting";
+    copyPairCommandButton.textContent = "Copy message";
+    copyPairCommandButton.hidden = false;
+    copyPairCommandButton.disabled = false;
+    cancelEnrollmentButton.hidden = false;
+    cancelEnrollmentButton.disabled = false;
     pairModal.hidden = false;
     document.body.style.overflow = "hidden";
+
+    renderEnrollmentCountdown();
+    enrollmentCountdownTimer = setInterval(renderEnrollmentCountdown, 1000);
+    enrollmentPollTimer = setInterval(pollEnrollmentConnection, 2000);
+  }
+
+  async function cancelActiveEnrollment() {
+    if (activeEnrollment) {
+      const {agent_id, request_id} = activeEnrollment;
+      try {
+        await fetch(`/api/agents/${encodeURIComponent(agent_id)}/enrollment/${encodeURIComponent(request_id)}/cancel`, {
+          method:"POST",
+          headers:{"Accept":"application/json"}
+        });
+      } catch (_) {}
+    }
+    stopEnrollmentTimers();
+    activeEnrollment = null;
+    pairModal.hidden = true;
+    document.body.style.overflow = "";
+    showToast("Connection request cancelled.");
   }
 
   function monitorAgent(agentId) {
@@ -1085,6 +1201,7 @@
   messageComposer?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = messageInput.value.trim();
+    const hadAttachment = Boolean(pendingAttachment);
 
     if (pendingAttachment) {
       const sent = await sendPendingAttachment();
@@ -1149,7 +1266,7 @@
     if (!file) return;
 
     if (file.size > 20 * 1024 * 1024) {
-      showToast("Phase 7 file limit is 20 MB per file.");
+      showToast("File limit is 20 MB per file.");
       fileInput.value = "";
       return;
     }
@@ -1160,6 +1277,8 @@
 
   eventSearch?.addEventListener("input", rerenderFilteredEvents);
   severityFilter?.addEventListener("change", rerenderFilteredEvents);
+  channelFilter?.addEventListener("change", rerenderFilteredEvents);
+  cancelEnrollmentButton?.addEventListener("click", cancelActiveEnrollment);
 
   document.getElementById("requestTaskSnapshot")?.addEventListener("click", () => requestSafeAction("request_task_snapshot"));
   document.getElementById("requestTerminalSnapshot")?.addEventListener("click", () => requestSafeAction("request_terminal_snapshot"));
@@ -1199,16 +1318,78 @@
     });
   }
 
+
+  const TRAINING_STORAGE_KEY = "progretech.mesh.guided-training.completed.v1";
+  const trainingSteps = [
+    ["Welcome to ProgreTech Mesh","Mesh is a live front end for your local agents. Their runtime, memory, and active work stay on their own machine.","Cloud retention is off for live operational history.",".hero"],
+    ["Your agent fleet","Each card shows identity, connection state, current activity, runtime details, and the controls available for that agent.","A verified identity is separate from whether the local gateway is currently online.","#agentGrid"],
+    ["Connect without workstation access","Choose Connect agent, copy the short-lived enrollment request, and send it through your existing direct chat with the agent. The agent handles the local setup.","You should not need SSH, RDP, a terminal, or filesystem access to the agent computer.","#agentGrid"],
+    ["Plug-and-monitor","Connecting Mesh does not take over a running agent. Existing Telegram work can continue while Mesh observes the same agent independently.","Refreshing or disconnecting Mesh must not stop the agent's current task.","#dashboard"],
+    ["Filter activity by channel","The live stream can show all activity or narrow it to Telegram, Mesh, or system/tool activity.","A Mesh conversation remains independent from the Telegram conversation even though both can appear in the monitor.",".observability-toolbar"],
+    ["Message and speak","Use the composer for a separate Mesh conversation. Where supported, the microphone can capture speech into the editable message field.","Speech recognition is a browser capability and may depend on the browser vendor.","#messageComposer"],
+    ["Notifications","Enable notifications independently for the agents you care about. Choose replies, task completion, approvals, blockers, files, and connection changes.","Notification text stays brief and avoids copying sensitive event contents.","#agentGrid"],
+    ["Safe actions and files","Policy-gated actions require approval. File exchange is bidirectional, bounded, verified, and relayed ephemerally.","Mesh does not expose an arbitrary remote shell.",".ops-grid"],
+    ["You're ready","Monitor agents from desktop, phone, or foldable, install Mesh as a PWA, and restart Guided Training whenever you want a refresher.","Agent activity belongs to the agent; Mesh is the live console around it.",".topbar"]
+  ];
+
+  function clearTrainingHighlight() {
+    document.querySelectorAll(".training-highlight").forEach((el) => el.classList.remove("training-highlight"));
+  }
+
+  function renderTrainingStep() {
+    clearTrainingHighlight();
+    const step = trainingSteps[trainingStepIndex];
+    if (!step) return;
+    trainingTitle.textContent = step[0];
+    trainingBody.textContent = step[1];
+    trainingTip.textContent = step[2];
+    trainingStepCount.textContent = `${trainingStepIndex + 1} / ${trainingSteps.length}`;
+    trainingProgressBar.style.width = `${((trainingStepIndex + 1) / trainingSteps.length) * 100}%`;
+    document.getElementById("trainingBack").disabled = trainingStepIndex === 0;
+    document.getElementById("trainingNext").textContent =
+      trainingStepIndex === trainingSteps.length - 1 ? "Finish" : "Next";
+    const target = document.querySelector(step[3]);
+    if (target) {
+      target.classList.add("training-highlight");
+      try { target.scrollIntoView({behavior:"smooth", block:"center"}); } catch (_) {}
+    }
+  }
+
+  function startGuidedTraining() {
+    trainingStepIndex = 0;
+    trainingBackdrop.hidden = false;
+    document.body.style.overflow = "hidden";
+    renderTrainingStep();
+  }
+
+  function closeGuidedTraining(markComplete=false) {
+    clearTrainingHighlight();
+    trainingBackdrop.hidden = true;
+    document.body.style.overflow = "";
+    if (markComplete) {
+      localStorage.setItem(TRAINING_STORAGE_KEY, "true");
+      showToast("Guided Training complete.");
+    }
+  }
+
+  guidedTrainingButton?.addEventListener("click", startGuidedTraining);
+  document.getElementById("trainingSkip")?.addEventListener("click", () => closeGuidedTraining(false));
+  document.getElementById("trainingBack")?.addEventListener("click", () => {
+    if (trainingStepIndex > 0) { trainingStepIndex -= 1; renderTrainingStep(); }
+  });
+  document.getElementById("trainingNext")?.addEventListener("click", () => {
+    if (trainingStepIndex >= trainingSteps.length - 1) { closeGuidedTraining(true); return; }
+    trainingStepIndex += 1;
+    renderTrainingStep();
+  });
+
+
   configureVoice();
   if (window.innerWidth <= 760) setMobileView("stream");
   refreshFleet();
   refreshApprovals();
   refreshFileOffers();
+  renderNotificationControls();
   setInterval(refreshFleet, 5000);
 })();
 
-
-  // Notification controls are intentionally browser-local.
-  window.addEventListener("load", () => {
-    setTimeout(renderNotificationControls, 250);
-  });
