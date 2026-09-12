@@ -17,3 +17,7 @@ described in `GUIDED_TRAINING_PLAN.md`.
 
 Guided Training is a release-completion requirement and must not expose internal phase
 terminology.
+
+
+## Direct-first release gate
+Direct owner-to-agent communication is now the primary release blocker. LAN direct, internet P2P, route negotiation, and optional relay fallback must be implemented and live-tested before nonessential feature expansion.

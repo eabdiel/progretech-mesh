@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import secrets
+import socket
 import threading
 import time
 import base64
@@ -30,9 +32,110 @@ from flask import (
 )
 from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
+from urllib.parse import urlparse
 
 
-BUILD_ID = "v1-rc2-acceptance-clean-20260912"
+BUILD_ID = "v1-direct-transport-p4-trainingfix2-20260912"
+
+def _validated_http_origin(origin: str) -> str:
+    value = str(origin or "").strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("invalid_mesh_public_origin")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("invalid_mesh_public_origin")
+    return value
+
+
+def _is_loopback_or_unspecified(hostname: str) -> bool:
+    value = str(hostname or "").strip().strip("[]").lower()
+    if value in {"localhost", "0.0.0.0", "::", ""}:
+        return True
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
+
+
+def detect_local_lan_ipv4() -> str | None:
+    """Best-effort local IPv4 discovery without sending application traffic."""
+    candidates: list[str] = []
+
+    # Ask the OS which interface it would use for an external route. UDP connect
+    # does not transmit application data and works even when the destination is not reached.
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))
+        candidates.append(str(probe.getsockname()[0]))
+    except OSError:
+        pass
+    finally:
+        probe.close()
+
+    try:
+        _host, _aliases, addresses = socket.gethostbyname_ex(socket.gethostname())
+        candidates.extend(addresses)
+    except OSError:
+        pass
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if address.version != 4 or address.is_loopback or address.is_unspecified:
+            continue
+        if address.is_private:
+            return candidate
+
+    for candidate in candidates:
+        try:
+            address = ipaddress.ip_address(candidate)
+        except ValueError:
+            continue
+        if address.version == 4 and not address.is_loopback and not address.is_unspecified:
+            return candidate
+    return None
+
+
+def mesh_public_origin() -> str:
+    configured = str(os.environ.get("MESH_PUBLIC_ORIGIN", "")).strip()
+    environment = str(os.environ.get("MESH_ENVIRONMENT", "development")).strip().lower()
+
+    if configured:
+        origin = _validated_http_origin(configured)
+        if environment == "production" and urlparse(origin).scheme != "https":
+            raise ValueError("production_mesh_public_origin_requires_https")
+        return origin
+
+    if environment == "production":
+        raise ValueError("production_mesh_public_origin_required")
+
+    requested = _validated_http_origin(request.host_url)
+    parsed = urlparse(requested)
+    if not _is_loopback_or_unspecified(parsed.hostname or ""):
+        return requested
+
+    lan_ip = detect_local_lan_ipv4()
+    if not lan_ip:
+        raise ValueError("local_agent_reachable_origin_unavailable")
+
+    port = parsed.port
+    netloc = f"{lan_ip}:{port}" if port else lan_ip
+    return f"{parsed.scheme}://{netloc}"
+
+
+def websocket_origin_from_http(origin: str) -> str:
+    parsed = urlparse(_validated_http_origin(origin))
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    return f"{scheme}://{parsed.netloc}"
+
+
 PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
@@ -53,8 +156,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.4.0"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.4.0.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.0"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.0.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -91,6 +194,11 @@ ACTION_REQUESTS: dict[str, dict[str, Any]] = {}
 SESSION_FILE_TOTALS: dict[str, int] = {}
 ACTIVATION_CODES: dict[str, dict[str, Any]] = {}
 LIVE_LOCK = threading.RLock()
+
+# Direct-transport signaling state is ephemeral and exists only to introduce peers.
+DIRECT_SIGNAL_SESSIONS: dict[str, dict[str, Any]] = {}
+DIRECT_SIGNAL_TTL_SECONDS = int(os.environ.get("MESH_DIRECT_SIGNAL_TTL_SECONDS", "120"))
+
 
 
 def utcnow() -> str:
@@ -460,6 +568,10 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
                 "message": f"Agent cancelled file transfer: {meta['filename']}",
                 "payload": {"severity": "warn"},
             })
+    elif msg_type in {"mesh_direct_signal", "mesh_local_route"}:
+        # Ephemeral connection metadata only. Never persist SDP/ICE or local access credentials.
+        broadcast_to_clients(agent_id, {"type":"gateway_message","agent_id":agent_id,"message":message,"agent":public_agent(record)})
+        return
     elif msg_type == "action_result":
         payload = message.get("payload", {})
         action_id = payload.get("action_id")
@@ -603,26 +715,22 @@ def validate_mime_claim(filename: str, claimed_mime: str, first_bytes: bytes) ->
     }
 
 
+def _expire_temp_entries(entries: dict[str, dict], ttl_seconds: int, now: float) -> None:
+    for entry_id, meta in list(entries.items()):
+        created = float(meta.get("created_epoch") or 0)
+        if not created or now - created <= ttl_seconds:
+            continue
+        try:
+            Path(meta["temp_path"]).unlink(missing_ok=True)
+        except OSError:
+            pass
+        entries.pop(entry_id, None)
+
+
 def cleanup_expired_transfer_state() -> None:
     now = time.time()
-
-    for offer_id, meta in list(FILE_DOWNLOAD_EXPECTED.items()):
-        created = float(meta.get("created_epoch") or 0)
-        if created and now - created > TRANSFER_TTL_SECONDS:
-            try:
-                Path(meta["temp_path"]).unlink(missing_ok=True)
-            except OSError:
-                pass
-            FILE_DOWNLOAD_EXPECTED.pop(offer_id, None)
-
-    for offer_id, meta in list(FILE_OFFERS.items()):
-        created = float(meta.get("created_epoch") or 0)
-        if created and now - created > FILE_OFFER_TTL_SECONDS:
-            try:
-                Path(meta["temp_path"]).unlink(missing_ok=True)
-            except OSError:
-                pass
-            FILE_OFFERS.pop(offer_id, None)
+    _expire_temp_entries(FILE_DOWNLOAD_EXPECTED, TRANSFER_TTL_SECONDS, now)
+    _expire_temp_entries(FILE_OFFERS, FILE_OFFER_TTL_SECONDS, now)
 
 
 def active_reverse_transfer_count(agent_id: str) -> int:
@@ -854,12 +962,97 @@ def production_configuration_status() -> dict[str, Any]:
     }
 
 
+# noinspection PyShadowingNames
+
+def _expire_direct_signal_sessions() -> None:
+    now = unix_now()
+    with LIVE_LOCK:
+        expired = [
+            signal_id for signal_id, value in DIRECT_SIGNAL_SESSIONS.items()
+            if int(value.get("expires_at", 0)) <= now
+        ]
+        for signal_id in expired:
+            DIRECT_SIGNAL_SESSIONS.pop(signal_id, None)
+
+
+
+def _csv_env(name: str) -> list[str]:
+    raw = str(os.environ.get(name, "")).strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _transport_policy(value: str | None) -> str:
+    candidate = str(value or "direct_preferred").strip().lower()
+    if candidate not in {"direct_preferred", "direct_only", "relay_allowed"}:
+        raise ValueError("invalid_transport_policy")
+    return candidate
+
+
+def _ice_servers_for_policy(policy: str) -> list[dict[str, Any]]:
+    resolved = _transport_policy(policy)
+    servers: list[dict[str, Any]] = []
+
+    stun_urls = _csv_env("MESH_STUN_URLS")
+    if not stun_urls:
+        # Public STUN is used only for NAT discovery; it does not carry Mesh session data.
+        stun_urls = ["stun:stun.l.google.com:19302"]
+    servers.append({"urls": stun_urls})
+
+    if resolved != "direct_only":
+        turn_urls = _csv_env("MESH_TURN_URLS")
+        turn_username = str(os.environ.get("MESH_TURN_USERNAME", "")).strip()
+        turn_credential = str(os.environ.get("MESH_TURN_CREDENTIAL", "")).strip()
+        if turn_urls and turn_username and turn_credential:
+            servers.append({
+                "urls": turn_urls,
+                "username": turn_username,
+                "credential": turn_credential,
+            })
+
+    return servers
+
+
+def _relay_available() -> bool:
+    return bool(
+        _csv_env("MESH_TURN_URLS")
+        and str(os.environ.get("MESH_TURN_USERNAME", "")).strip()
+        and str(os.environ.get("MESH_TURN_CREDENTIAL", "")).strip()
+    )
+
+
+def direct_transport_contract() -> dict[str, Any]:
+    return {
+        "routing_policy": "direct_preferred",
+        "principle": "owner_and_agent_are_the_data_endpoints",
+        "paths": [
+            {"id": "lan_direct", "priority": 1, "data_via_progretech": False},
+            {"id": "internet_p2p", "priority": 2, "data_via_progretech": False},
+            {"id": "encrypted_relay", "priority": 3, "data_via_progretech": True, "optional": True},
+        ],
+        "signaling": {
+            "progretech_may_introduce_peers": True,
+            "signaling_is_ephemeral": True,
+            "signaling_is_not_agent_conversation_data": True,
+        },
+        "owner_controls": ["direct_preferred", "direct_only", "relay_allowed"],
+        "routing": {
+            "stun_supported": True,
+            "turn_supported": True,
+            "relay_configured": _relay_available(),
+            "default_policy": "direct_preferred",
+            "offline_same_lan_supported": True,
+            "cloud_signaling_required_for_same_lan_reconnect": False,
+        },
+        "release_gate": "direct transport must pass live agent acceptance before feature expansion",
+    }
+
 def create_app() -> Flask:
-    base_dir = Path(__file__).resolve().parent
     app = Flask(
         __name__,
-        template_folder=str(base_dir / "templates"),
-        static_folder=str(base_dir / "static"),
+        template_folder="templates",
+        static_folder="static",
     )
     sock = Sock(app)
 
@@ -892,7 +1085,7 @@ def create_app() -> Flask:
         response.headers.setdefault("Referrer-Policy", "same-origin")
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(), geolocation=(), payment=(), usb=()",
+            "camera=(), geolocation=(), payment=(), usb=(), local-network=(self), loopback-network=(self)",
         )
         response.headers.setdefault(
             "Content-Security-Policy",
@@ -901,7 +1094,7 @@ def create_app() -> Flask:
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self'; "
-            "connect-src 'self' ws: wss:; "
+            "connect-src 'self' http: https: ws: wss:; "
             "media-src 'self' blob:; "
             "object-src 'none'; "
             "base-uri 'self'; "
@@ -933,7 +1126,7 @@ def create_app() -> Flask:
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault(
             "Permissions-Policy",
-            "camera=(), geolocation=(), payment=(), usb=()",
+            "camera=(), geolocation=(), payment=(), usb=(), local-network=(self), loopback-network=(self)",
         )
         response.headers.setdefault(
             "Content-Security-Policy",
@@ -942,7 +1135,7 @@ def create_app() -> Flask:
             "script-src 'self'; "
             "img-src 'self' data:; "
             "font-src 'self'; "
-            "connect-src 'self' ws: wss:; "
+            "connect-src 'self' http: https: ws: wss:; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none';",
@@ -957,7 +1150,6 @@ def create_app() -> Flask:
             return redirect(url_for("index"))
 
         auth_mode = production_auth_mode()
-        # noinspection Jinja2MissingTemplate
         return render_template(
             "login.html",
             dev_auth_enabled=app.config["DEV_AUTH_ENABLED"],
@@ -990,7 +1182,6 @@ def create_app() -> Flask:
     @app.get("/")
     @require_session
     def index():
-        # noinspection Jinja2MissingTemplate
         return render_template(
             "index.html",
             version=app.config["MESH_VERSION"],
@@ -1232,6 +1423,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/enrollment-message")
     @require_session
+    # noinspection DuplicatedCode
     def create_agent_enrollment_message(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
@@ -1240,7 +1432,11 @@ def create_app() -> Flask:
             return jsonify(ok=False, error="verified_identity_required"), 403
 
         activation = issue_activation_code(agent_id)
-        mesh_origin = request.host_url.rstrip("/")
+        try:
+            mesh_origin = mesh_public_origin()
+        except ValueError as exc:
+            ACTIVATION_CODES.pop(activation["code"], None)
+            return jsonify(ok=False, error=str(exc)), 503
 
         package = openclaw_plugin_package_path()
         if not package.is_file():
@@ -1281,6 +1477,11 @@ def create_app() -> Flask:
             "mode": "plug-and-monitor",
             "observation": "read-only",
             "conversation_scope": "mesh-independent",
+            "transport_policy": {
+                "preference": "direct_preferred",
+                "cloud_role": "discovery_signaling_optional_relay",
+                "direct_data_channel_required_before_release": True,
+            },
             "plugin_package": {
                 "package_id": "progretech-mesh-openclaw",
                 "runtime": "openclaw",
@@ -1299,6 +1500,8 @@ def create_app() -> Flask:
         ).decode("ascii").rstrip("=")
 
         human_message = (
+            "Perform this ProgreTech Mesh enrollment as the current owner-authorized task. "
+            "After enrollment reaches a stable success/failure boundary, STOP and report the result. "
             "ProgreTech Mesh enrollment request. "
             "Please validate and accept this request only if your local policy permits it. "
             "Do not interrupt, restart, reset, replace, or reconfigure any current work or "
@@ -1325,10 +1528,13 @@ def create_app() -> Flask:
             payload_prefix="PTM1:",
             delivery="existing-agent-chat",
             user_workstation_access_required=False,
+            advertised_origin=mesh_origin,
+            routing_policy="direct_preferred",
         )
 
     @app.post("/api/agents/<agent_id>/enrollment/<request_id>/cancel")
     @require_session
+    # noinspection DuplicatedCode
     def cancel_agent_enrollment(agent_id: str, request_id: str):
         activation = ACTIVATION_CODES.get(request_id)
         if not activation or activation.get("agent_id") != agent_id:
@@ -1340,6 +1546,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/activation-code")
     @require_session
+    # noinspection DuplicatedCode
     def create_activation_code(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
@@ -1356,7 +1563,7 @@ def create_app() -> Flask:
             expires_at=activation["expires_at"],
             bootstrap_command=(
                 f'python install/mesh_agent_bootstrap.py '
-                f'--mesh "{request.host_url.rstrip("/")}" '
+                f'--mesh "{mesh_public_origin()}" '
                 f'--agent "{agent_id}" '
                 f'--activation-code "{activation["code"]}" '
                 f'--activation-signature "{activation["signature"]}"'
@@ -1386,8 +1593,9 @@ def create_app() -> Flask:
                 "used": False,
             }
 
-        scheme = "wss" if request.is_secure else "ws"
-        ws_url = f"{scheme}://{request.host}/ws/gateway/{agent_id}?token={token}"
+        mesh_origin = mesh_public_origin()
+        ws_base = websocket_origin_from_http(mesh_origin)
+        ws_url = f"{ws_base}/ws/gateway/{agent_id}?token={token}"
 
         device = issue_device_credential(agent_id)
 
@@ -1405,6 +1613,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/devices/<device_id>/revoke")
     @require_session
+    # noinspection DuplicatedCode
     def revoke_agent_device(agent_id: str, device_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
@@ -1432,10 +1641,110 @@ def create_app() -> Flask:
 
         return jsonify(ok=True, agent_id=agent_id, device_id=device_id, revoked=True)
 
+    @app.get("/api/transport/contract")
+    @require_session
+    def transport_contract():
+        return jsonify(ok=True, contract=direct_transport_contract())
+
+    @app.get("/api/transport/acceptance")
+    @require_session
+    def transport_acceptance():
+        return jsonify(
+            ok=True,
+            required_checks=[
+                "hands_off_enrollment",
+                "telegram_uninterrupted",
+                "same_lan_direct",
+                "internet_p2p",
+                "direct_only_blocks_relay",
+                "relay_fallback_when_allowed",
+                "offline_pwa_shell",
+                "offline_same_lan_reconnect",
+                "mesh_conversation_isolated",
+                "refresh_disconnect_does_not_interrupt_agent",
+                "credential_reconnect",
+            ],
+            live_agent_required=True,
+            reference_agent="rend",
+        )
+
+    @app.get("/api/transport/config")
+    @require_session
+    def transport_config():
+        try:
+            policy = _transport_policy(request.args.get("policy"))
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
+
+        ice_servers = _ice_servers_for_policy(policy)
+        return jsonify(
+            ok=True,
+            policy=policy,
+            ice_servers=ice_servers,
+            relay_available=_relay_available(),
+            signaling="ephemeral",
+            default_route="direct",
+        )
+
+    @app.post("/api/agents/<agent_id>/transport/signal")
+    @require_session
+    def create_transport_signal(agent_id: str):
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        payload = request.get_json(silent=True) or {}
+        signal_type = str(payload.get("type", "")).strip()
+        if signal_type not in {"offer", "answer", "ice_candidate", "route_probe"}:
+            return jsonify(ok=False, error="unsupported_signal_type"), 400
+
+        signal_id = secrets.token_urlsafe(18)
+        expires_at = unix_now() + DIRECT_SIGNAL_TTL_SECONDS
+        entry = {
+            "id": signal_id,
+            "agent_id": agent_id,
+            "type": signal_type,
+            "payload": payload.get("payload", {}),
+            "created_at": utcnow(),
+            "expires_at": expires_at,
+        }
+        _expire_direct_signal_sessions()
+        with LIVE_LOCK:
+            DIRECT_SIGNAL_SESSIONS[signal_id] = entry
+
+        # Signaling may pass through Mesh, but agent conversation/telemetry payloads do not.
+        gateway_delivered = False
+        if record.get("transport") == "connected":
+            gateway_delivered, _reason = send_gateway_message(agent_id, {
+                "type": "mesh_direct_signal",
+                "signal": entry,
+            })
+
+        return jsonify(
+            ok=True,
+            signal_id=signal_id,
+            expires_at=expires_at,
+            gateway_delivered=gateway_delivered,
+            data_path="signaling_only",
+        )
+
+    @app.get("/api/agents/<agent_id>/transport/signals/<signal_id>")
+    @require_session
+    def get_transport_signal(agent_id: str, signal_id: str):
+        _expire_direct_signal_sessions()
+        with LIVE_LOCK:
+            entry = DIRECT_SIGNAL_SESSIONS.get(signal_id)
+        if not entry or entry.get("agent_id") != agent_id:
+            return jsonify(ok=False, error="signal_not_found"), 404
+        return jsonify(ok=True, signal=entry)
+
     @app.get("/api/session")
     @require_session
     def api_session():
         return jsonify(ok=True, user=session["mesh_user"], retention="none")
+
+    @app.get("/how-it-works")
+    def how_it_works():
+        return render_template("how_it_works.html")
 
     @app.get("/api/status")
     @require_session
@@ -1505,6 +1814,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/pair-token")
     @require_session
+    # noinspection DuplicatedCode
     def create_pair_token(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
@@ -1522,8 +1832,9 @@ def create_app() -> Flask:
                 "used": False,
             }
 
-        scheme = "wss" if request.is_secure else "ws"
-        ws_url = f"{scheme}://{request.host}/ws/gateway/{agent_id}?token={token}"
+        mesh_origin = mesh_public_origin()
+        ws_base = websocket_origin_from_http(mesh_origin)
+        ws_url = f"{ws_base}/ws/gateway/{agent_id}?token={token}"
 
         return jsonify(
             ok=True,
@@ -1532,7 +1843,7 @@ def create_app() -> Flask:
             expires_in=PAIR_TOKEN_TTL_SECONDS,
             websocket_url=ws_url,
             gateway_command=(
-                f'python gateway/mesh_gateway.py --mesh "{request.host_url.rstrip("/")}" '
+                f'python gateway/mesh_gateway.py --mesh "{mesh_public_origin()}" '
                 f'--agent "{agent_id}" --token "{token}"'
             ),
         )
@@ -1548,6 +1859,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/heartbeat-request")
     @require_session
+    # noinspection DuplicatedCode
     def request_heartbeat(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
@@ -1572,6 +1884,7 @@ def create_app() -> Flask:
 
     @app.post("/api/agents/<agent_id>/message")
     @require_session
+    # noinspection DuplicatedCode
     def send_agent_message(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:

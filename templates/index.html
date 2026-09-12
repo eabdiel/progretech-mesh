@@ -30,6 +30,7 @@
       <div class="top-actions">
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
+        <a href="/how-it-works" class="ghost-btn how-link">How it works</a>
         <button class="icon-btn" aria-label="Notifications">◌</button>
         <div class="user-chip" title="Authenticated local session">
           <span class="user-dot"></span>
@@ -42,6 +43,16 @@
     </header>
 
     <main>
+      <div class="route-policy-wrap">
+        <label for="routePolicy">Connection route</label>
+        <select id="routePolicy" aria-label="Connection route">
+          <option value="direct_preferred" selected>Direct preferred</option>
+          <option value="direct_only">Direct only</option>
+          <option value="relay_allowed">Relay allowed</option>
+        </select>
+        <span id="routeStatus" class="route-status">Direct preferred</span>
+      </div>
+
       <section class="hero">
         <div class="hero-main">
           <div class="eyebrow" id="meshState">

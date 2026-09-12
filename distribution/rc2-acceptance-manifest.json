@@ -38,9 +38,9 @@
     "Refreshing or disconnecting Mesh does not interrupt Rend's Telegram work."
   ],
   "artifact_pins": {
-    "openclaw_adapter_version": "0.4.0",
-    "openclaw_adapter_sha256": "19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261",
-    "bootstrap_helper_sha256": "81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2"
+    "openclaw_adapter_version": "0.7.0",
+    "openclaw_adapter_sha256": "c925173498b81252ec7f016a5d92a40c912adce4ac35f03d52a5325d7ae38e47",
+    "bootstrap_helper_sha256": "384590508460466e579d899e422666323d4cff351392b57c9e36a081f1001f07"
   },
   "claims_not_yet_proven_until_live_test": [
     "Rend can perform the complete self-bootstrap with current real permissions.",

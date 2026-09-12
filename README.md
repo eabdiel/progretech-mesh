@@ -176,3 +176,77 @@ Also:
 - Flask template/static folders are explicit;
 - broad exception handlers were narrowed where the failure domain is known;
 - a regression test prevents the retired bootstrap API from returning.
+
+
+## IDE warning cleanup
+
+Final pre-run cleanup consolidates duplicate transfer-expiry logic, restores literal Flask
+template/static directory declarations for PyCharm/Jinja resolution, and scopes IDE suppressions
+only to intentionally repeated defensive route guards and the local Flask app factory name.
+No runtime or enrollment behavior was changed.
+
+
+## Public-origin hotfix
+
+RC2 now supports `MESH_PUBLIC_ORIGIN`, separating the browser address from the canonical
+agent-reachable address. This fixes cross-device LAN enrollment and aligns with Cloud Run/custom
+domain deployment. Production requires HTTPS and derives WSS automatically.
+
+
+## Direct-first transport priority
+Mesh now treats the owner and agent as the intended data endpoints. This build adds automatic LAN origin discovery for local enrollment, an ephemeral signaling API/contract, and owner-authorized enrollment stop boundaries. Production still requires an explicit HTTPS `MESH_PUBLIC_ORIGIN`.
+
+This is the transport foundation. Agent-side WebRTC/direct data-channel support and live route negotiation are intentionally not claimed complete in this build.
+
+
+## Direct data channel
+The browser and enrolled OpenClaw agent can negotiate a same-LAN WebRTC DataChannel. Cloud Mesh is signaling-only during negotiation; one-to-one messages prefer the direct channel once open. Adapter 0.5.0 pins `node-datachannel` 0.33.3.
+
+Adapter SHA-256: `f5059a3ea3db5a0b6ae84dd712d81756a8d5d84c579d03635abcb1146028f882`
+Bootstrap SHA-256: `b0ef1f9921ff840a6fb5d584d4dc0f247c678150af47e62cec9b89fa992705d6`
+
+
+## Internet P2P and route policy
+
+Mesh now exposes `direct_preferred`, `direct_only`, and `relay_allowed` owner policies. The browser
+fetches ephemeral ICE configuration from Mesh; STUN enables NAT discovery and optional TURN
+configuration provides a fallback for restrictive networks. The agent receives the same ICE
+configuration through ephemeral signaling and applies the owner's relay policy.
+
+Static TURN environment credentials are only an integration baseline. Production should vend
+short-lived TURN credentials.
+
+Adapter: 0.6.0
+Adapter SHA-256: `abecddc7f0e9f889ac5ec4426a8523a436621ea6e7c13a01ac8454a8fd63f4a4`
+Bootstrap SHA-256: `dad422185eef24be736860d0122866900c0de6bf7b97a04cc251e8fcddccaf07`
+
+
+## Offline PWA and acceptance readiness
+
+The PWA now caches only the application shell, never operational APIs or transfer/signaling routes.
+It remembers trusted local agent endpoint metadata in browser-local storage and can probe that endpoint
+when internet connectivity disappears. Same-LAN reconnect uses the remembered local endpoint rather than
+requiring the cloud origin.
+
+A user-facing `/how-it-works` page documents the direct/local, internet P2P, and optional encrypted relay
+routes for future guided training.
+
+The transport track is implementation-complete but still requires live acceptance with Rend before it can
+be considered production-proven.
+
+Adapter: 0.7.0
+Adapter SHA-256: `8edc0e81bc09600c17bbb9b77db642d158d0223440973cd736b8913432dde435`
+Bootstrap SHA-256: `f7f8438916e679db9410fae3e5591386c93d274666c40a25afc9eb069f6e9267`
+
+
+## UI hotfix
+
+- Guided Training dialog now always stays above highlighted page content.
+- Training navigation remains visible in tall/short viewports and Escape exits safely.
+- Connection-route option menus use the dark UI palette.
+- “How it works” is now a proper header button immediately beside Guided Training.
+- Header actions remain grouped and right-aligned instead of creating a third header column.
+
+
+## Guided Training overlay correction
+The highlighted page target no longer receives an elevated stacking layer or full-screen shadow. The training card is mounted directly under `body`, uses the browser's highest practical z-index, docks to the lower-right on desktop, and keeps its navigation actions sticky and visible.

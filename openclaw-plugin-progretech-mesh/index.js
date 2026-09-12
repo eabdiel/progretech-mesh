@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -17,6 +18,8 @@ const DEVICE_CREDENTIAL_PATH = path.join(STATE_DIR, "device-credential.json");
 const CONNECTION_STATUS_PATH = path.join(STATE_DIR, "connection-status.json");
 const LIFECYCLE_STATE_PATH = path.join(STATE_DIR, "lifecycle-state.json");
 const REVOKED_MARKER_PATH = path.join(STATE_DIR, "revoked.json");
+const LOCAL_ACCESS_PATH = path.join(STATE_DIR, "local-access.json");
+const LOCAL_SIGNAL_PORT = Number.parseInt(process.env.PROGRETECH_MESH_LOCAL_PORT || "18791", 10);
 
 
 let meshSocket = null;
@@ -25,6 +28,120 @@ let meshIdentity = null;
 let meshReconnectAttempt = 0;
 let meshReconnectDisabled = false;
 
+let directRtcModule = null;
+const directPeers = new Map();
+const MAX_DIRECT_MESSAGE_BYTES = 256 * 1024;
+let localSignalServer = null;
+const localSignalQueues = new Map();
+
+
+function privateIpv4Addresses() {
+  const found = [];
+  const nets = os.networkInterfaces();
+  for (const entries of Object.values(nets)) {
+    for (const item of entries || []) {
+      if (item.family !== "IPv4" || item.internal) continue;
+      const value = String(item.address || "");
+      if (/^10\./.test(value) || /^192\.168\./.test(value) || /^172\.(1[6-9]|2\d|3[01])\./.test(value)) found.push(value);
+    }
+  }
+  return [...new Set(found)];
+}
+
+function ensureLocalAccessCredential() {
+  const existing = readJsonIfPresent(LOCAL_ACCESS_PATH);
+  if (existing?.token && existing?.version === 1) return existing;
+  const value = {version:1, token:crypto.randomBytes(32).toString("base64url"), created_at:new Date().toISOString()};
+  atomicWriteJson(LOCAL_ACCESS_PATH, value);
+  return value;
+}
+
+function localRouteMessage() {
+  const credential = ensureLocalAccessCredential();
+  return {
+    type:"mesh_local_route",
+    timestamp:new Date().toISOString(),
+    agent_id:meshIdentity?.agent_id || null,
+    routes:privateIpv4Addresses().map((host)=>({origin:`http://${host}:${LOCAL_SIGNAL_PORT}`,host,port:LOCAL_SIGNAL_PORT,address_space:"local"})),
+    local_access_token:credential.token,
+    signaling:"local-http-permission-gated",
+    data_path:"webrtc-direct",
+  };
+}
+
+function queueLocalSignal(peerId, signal) {
+  const queue=localSignalQueues.get(peerId) || [];
+  queue.push(signal);
+  if (queue.length > 32) queue.splice(0, queue.length - 32);
+  localSignalQueues.set(peerId, queue);
+}
+
+function corsLocal(res, origin) {
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Mesh-Local-Token");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Cache-Control", "no-store");
+}
+
+async function readLocalJson(req) {
+  let total=0; const chunks=[];
+  for await (const chunk of req) {
+    total += chunk.length;
+    if (total > MAX_BODY_BYTES) throw new Error("body_too_large");
+    chunks.push(chunk);
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
+function startLocalSignalServer(api) {
+  if (localSignalServer) return;
+  const credential=ensureLocalAccessCredential();
+  localSignalServer=http.createServer((req,res)=>{
+    void (async()=>{
+      const origin=String(req.headers.origin || "");
+      corsLocal(res, origin);
+      if (req.method === "OPTIONS") { res.statusCode=204; res.end(); return; }
+      if (req.headers["x-mesh-local-token"] !== credential.token) { res.statusCode=401; res.end(JSON.stringify({ok:false,error:"local_auth_required"})); return; }
+      const url=new URL(req.url || "/", `http://127.0.0.1:${LOCAL_SIGNAL_PORT}`);
+      res.setHeader("content-type","application/json; charset=utf-8");
+      if (req.method === "GET" && url.pathname === "/mesh-local/status") {
+        res.end(JSON.stringify({ok:true,agent_id:meshIdentity?.agent_id || null,direct_webrtc:true})); return;
+      }
+      if (req.method === "GET" && url.pathname === "/mesh-local/config") {
+        res.end(JSON.stringify({ok:true,ice_servers:[],route_policy:"direct_only",offline_local:true})); return;
+      }
+      if (req.method === "POST" && url.pathname === "/mesh-local/signal") {
+        const body=await readLocalJson(req);
+        const signal=body.signal || body;
+        const peerId=trimText(signal?.payload?.peer_id || signal?.peer_id || "",120);
+        if (!peerId) throw new Error("direct_peer_id_required");
+        await handleDirectSignal(api,signal,(outgoing)=>queueLocalSignal(peerId,outgoing));
+        res.end(JSON.stringify({ok:true,peer_id:peerId})); return;
+      }
+      if (req.method === "GET" && url.pathname === "/mesh-local/signals") {
+        const peerId=trimText(url.searchParams.get("peer_id") || "",120);
+        const queue=localSignalQueues.get(peerId) || [];
+        localSignalQueues.set(peerId,[]);
+        res.end(JSON.stringify({ok:true,signals:queue})); return;
+      }
+      res.statusCode=404; res.end(JSON.stringify({ok:false,error:"not_found"}));
+    })().catch((error)=>{
+      res.statusCode=500; res.setHeader("content-type","application/json; charset=utf-8");
+      res.end(JSON.stringify({ok:false,error:trimText(error instanceof Error ? error.message : String(error),500)}));
+    });
+  });
+  localSignalServer.listen(LOCAL_SIGNAL_PORT,"0.0.0.0");
+}
+
+function stopLocalSignalServer() {
+  if (!localSignalServer) return;
+  try { localSignalServer.close(); } catch {}
+  localSignalServer=null;
+  localSignalQueues.clear();
+}
 
 function ensurePrivateStateDir() {
   fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
@@ -142,7 +259,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.4.0",
+    adapter_version: "0.7.0",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -263,6 +380,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       device_id: record.device_id,
     });
     sendMeshGatewayMessage(heartbeatPayload());
+    sendMeshGatewayMessage(localRouteMessage());
     appendEvent({
       event_type: "gateway",
       channel: "mesh",
@@ -278,6 +396,12 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
       if (msg?.type === "heartbeat_request") {
         sendMeshGatewayMessage(heartbeatPayload());
+      }
+      if (msg?.type === "mesh_direct_signal") {
+        void handleDirectSignal(api,msg.signal).catch((error)=>{
+          const detail=error instanceof Error ? error.message : String(error);
+          directSignal({type:"direct_error",payload:{peer_id:msg?.signal?.payload?.peer_id || null,error:trimText(detail,500)}});
+        });
       }
       if (msg?.type === "credential_revoked" || msg?.type === "device_revoked") {
         markRevoked(msg?.reason || "server_revoked", record);
@@ -540,6 +664,105 @@ function registerObservationHooks(api) {
   });
 }
 
+async function runMeshConversation(api, body) {
+  const agentId = trimText(body?.agent_id || meshIdentity?.agent_id || "rend", 80);
+  const text = trimText(body?.text || "", 32000);
+  const room = trimText(body?.room || "direct", 120);
+  const sender = trimText(body?.sender || "Mesh user", 200);
+  if (!text.trim()) throw new Error("empty_message");
+  const sessionId = stableConversationId({ agentId, room, sender });
+  const sessionKey = `agent:${agentId}:mesh:${sessionId}`;
+  const runId = crypto.randomUUID();
+  appendEvent({event_type:"message",channel:"mesh",state:"received",direction:"input",summary:text,payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
+  const result = await api.runtime.agent.runEmbeddedAgent({agentId,sessionId,sessionKey,runId,prompt:text});
+  const responseText = extractResultText(result);
+  appendEvent({event_type:"message",channel:"mesh",state:"sent",direction:"output",summary:responseText || "Mesh agent turn completed",payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
+  return {ok:true,text:responseText,session_id:sessionId,session_key:sessionKey,run_id:runId};
+}
+
+async function loadDirectRtc() {
+  if (directRtcModule) return directRtcModule;
+  const mod = await import("node-datachannel");
+  const runtime = mod?.default || mod;
+  if (!runtime?.PeerConnection) throw new Error("webrtc_runtime_unavailable");
+  directRtcModule = runtime;
+  try { runtime.initLogger?.("Warning"); } catch {}
+  return runtime;
+}
+
+function directSignal(signal) {
+  return sendMeshGatewayMessage({type:"mesh_direct_signal",timestamp:new Date().toISOString(),signal});
+}
+
+function closeDirectPeer(peerId, reason="closed") {
+  const state=directPeers.get(peerId);
+  if (!state) return;
+  directPeers.delete(peerId);
+  try { state.channel?.close?.(); } catch {}
+  try { state.peer?.close?.(); } catch {}
+  appendEvent({event_type:"direct_transport",channel:"mesh",state:"closed",direction:null,summary:"Direct Mesh peer closed",payload:{peer_id:peerId,reason}});
+}
+
+function configureDirectDataChannel(api, peerId, channel) {
+  const state=directPeers.get(peerId); if (state) state.channel=channel;
+  channel.onOpen(() => {
+    appendEvent({event_type:"direct_transport",channel:"mesh",state:"connected",direction:null,summary:"Direct owner-to-agent data channel connected",payload:{peer_id:peerId,path:"direct",cloud_data_path:false,route_policy:state?.routePolicy || "direct_preferred"}});
+    try { channel.sendMessage(JSON.stringify({type:"hello_ack",peer_id:peerId,agent_id:meshIdentity?.agent_id || null,path:"direct",cloud_data_path:false})); } catch {}
+  });
+  channel.onMessage((raw) => { void (async () => {
+    try {
+      const text=Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+      if (Buffer.byteLength(text,"utf8") > MAX_DIRECT_MESSAGE_BYTES) throw new Error("direct_message_too_large");
+      const message=JSON.parse(text);
+      if (message?.type === "ping") { channel.sendMessage(JSON.stringify({type:"pong",id:message.id || null,timestamp:new Date().toISOString(),agent_id:meshIdentity?.agent_id || null})); return; }
+      if (message?.type === "heartbeat_request") { channel.sendMessage(JSON.stringify(heartbeatPayload())); return; }
+      if (message?.type === "message") {
+        const requestId=trimText(message.request_id || crypto.randomUUID(),120);
+        const result=await runMeshConversation(api,{agent_id:meshIdentity?.agent_id || message.agent_id || "rend",text:message.text,room:message.room || "direct",sender:message.sender || "Mesh user",transport:"webrtc-direct"});
+        channel.sendMessage(JSON.stringify({type:"message_response",request_id:requestId,timestamp:new Date().toISOString(),...result})); return;
+      }
+      if (message?.type === "hello") channel.sendMessage(JSON.stringify({type:"hello_ack",peer_id:peerId,agent_id:meshIdentity?.agent_id || null,path:"direct",cloud_data_path:false}));
+    } catch (error) {
+      const detail=error instanceof Error ? error.message : String(error);
+      try { channel.sendMessage(JSON.stringify({type:"direct_error",error:trimText(detail,500)})); } catch {}
+    }
+  })(); });
+  channel.onClosed(() => closeDirectPeer(peerId,"data_channel_closed"));
+  channel.onError((error) => appendEvent({event_type:"direct_transport",channel:"mesh",state:"error",direction:null,summary:"Direct data channel error",payload:{peer_id:peerId,error:trimText(error,500)}}));
+}
+
+async function handleDirectSignal(api, signal, signalSink=directSignal) {
+  const peerId=trimText(signal?.payload?.peer_id || signal?.peer_id || "",120);
+  const signalType=trimText(signal?.type || "",40);
+  const payload=signal?.payload || {};
+  if (!peerId) throw new Error("direct_peer_id_required");
+  if (signalType === "offer") {
+    closeDirectPeer(peerId,"renegotiation");
+    const rtc=await loadDirectRtc();
+    const routePolicy = ["direct_preferred","direct_only","relay_allowed"].includes(String(payload.route_policy))
+      ? String(payload.route_policy)
+      : "direct_preferred";
+    const providedIceServers = Array.isArray(payload.ice_servers) ? payload.ice_servers : [];
+    const iceServers = routePolicy === "direct_only"
+      ? providedIceServers.filter((entry) => {
+          const urls = Array.isArray(entry?.urls) ? entry.urls : [entry?.urls];
+          return !urls.some((url) => String(url || "").startsWith("turn:") || String(url || "").startsWith("turns:"));
+        })
+      : providedIceServers;
+    const peer=new rtc.PeerConnection(`mesh-${peerId}`,{iceServers});
+    directPeers.set(peerId,{peer,channel:null,created_at:Date.now(),routePolicy});
+    peer.onLocalDescription((sdp,type)=>signalSink({type:"answer",payload:{peer_id:peerId,sdp,description_type:String(type || "answer").toLowerCase()}}));
+    peer.onLocalCandidate((candidate,mid)=>signalSink({type:"ice_candidate",payload:{peer_id:peerId,candidate,mid:mid || "0"}}));
+    peer.onStateChange((stateName)=>{ signalSink({type:"peer_state",payload:{peer_id:peerId,state:String(stateName)}}); if (["closed","failed","disconnected"].includes(String(stateName).toLowerCase())) closeDirectPeer(peerId,`peer_${String(stateName).toLowerCase()}`); });
+    peer.onDataChannel((channel)=>configureDirectDataChannel(api,peerId,channel));
+    peer.setRemoteDescription(String(payload.sdp || ""),"Offer");
+    return;
+  }
+  const state=directPeers.get(peerId); if (!state?.peer) throw new Error("direct_peer_not_found");
+  if (signalType === "ice_candidate") { state.peer.addRemoteCandidate(String(payload.candidate || ""),String(payload.mid || "0")); return; }
+  if (signalType === "close") closeDirectPeer(peerId,"remote_close");
+}
+
 function registerConversationBridge(api) {
   api.registerHttpRoute({
     path: ROUTE,
@@ -563,52 +786,10 @@ function registerConversationBridge(api) {
         }
 
         const body = await readJsonBody(req);
-        const agentId = trimText(body.agent_id || "rend", 80);
-        const text = trimText(body.text || "", 32000);
-        const room = trimText(body.room || "direct", 120);
-        const sender = trimText(body.sender || "Mesh user", 200);
-        if (!text.trim()) throw new Error("empty_message");
-
-        const sessionId = stableConversationId({ agentId, room, sender });
-        const sessionKey = `agent:${agentId}:mesh:${sessionId}`;
-        const runId = crypto.randomUUID();
-
-        appendEvent({
-          event_type: "message",
-          channel: "mesh",
-          state: "received",
-          direction: "input",
-          summary: text,
-          payload: { session_key: sessionKey, run_id: runId },
-        });
-
-        const result = await api.runtime.agent.runEmbeddedAgent({
-          agentId,
-          sessionId,
-          sessionKey,
-          runId,
-          prompt: text,
-        });
-
-        const responseText = extractResultText(result);
-        appendEvent({
-          event_type: "message",
-          channel: "mesh",
-          state: "sent",
-          direction: "output",
-          summary: responseText || "Mesh agent turn completed",
-          payload: { session_key: sessionKey, run_id: runId },
-        });
-
+        const result = await runMeshConversation(api, {...body, transport:"loopback-http"});
         res.statusCode = 200;
         res.setHeader("content-type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({
-          ok: true,
-          text: responseText,
-          session_id: sessionId,
-          session_key: sessionKey,
-          run_id: runId,
-        }));
+        res.end(JSON.stringify(result));
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -632,12 +813,13 @@ function registerConversationBridge(api) {
 export default definePluginEntry({
   id: PLUGIN_ID,
   name: "ProgreTech Mesh",
-  description: "Passive OpenClaw observation plus isolated Mesh conversation bridge.",
+  description: "Direct-first Mesh transport with offline same-LAN reconnect support.",
   register(api) {
     registerObservationHooks(api);
     registerConversationBridge(api);
+    startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.4.0",
+      adapter_version: "0.7.0",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",
@@ -648,6 +830,7 @@ export default definePluginEntry({
     });
 
     api.on("gateway_start", () => {
+      startLocalSignalServer(api);
       void ensureMeshConnection(api, false);
     });
 
@@ -660,6 +843,8 @@ export default definePluginEntry({
         try { meshSocket.close(); } catch {}
         meshSocket = null;
       }
+      for (const peerId of [...directPeers.keys()]) closeDirectPeer(peerId,"gateway_stop");
+      stopLocalSignalServer();
     });
   },
 });

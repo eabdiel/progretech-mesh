@@ -1,9 +1,9 @@
 {
   "name": "@progretech/openclaw-mesh",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
-  "description": "ProgreTech Mesh passive observation and isolated conversation bridge for OpenClaw.",
+  "description": "ProgreTech Mesh direct-first transport with offline same-LAN reconnect support.",
   "peerDependencies": {
     "openclaw": ">=2026.9.3"
   },
@@ -11,5 +11,8 @@
     "extensions": [
       "./index.js"
     ]
+  },
+  "dependencies": {
+    "node-datachannel": "0.33.3"
   }
 }

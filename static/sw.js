@@ -1,81 +1,41 @@
-const CACHE_NAME = "progretech-mesh-v1-release-candidate-v1";
-
-const CORE_ASSETS = [
+const CACHE_NAME = "progretech-mesh-shell-v4";
+const SHELL_ASSETS = [
   "/",
-  "/login",
+  "/how-it-works",
   "/static/css/app.css",
   "/static/js/app.js",
-  "/static/icons/icon-192.png",
-  "/static/icons/icon-512.png",
   "/manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
+  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      ))
-      .then(() => self.clients.claim())
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
   );
+  self.clients.claim();
 });
 
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
-    if (response && response.ok && response.type === "basic") {
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (_) {
-    return (await cache.match(request)) || (await cache.match("/"));
-  }
-}
-
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  const request = event.request;
+  const url = new URL(request.url);
 
-  const url = new URL(event.request.url);
-
-  // Never persist identity, enrollment, session or future live-agent API data.
-  if (
-    url.pathname.startsWith("/api/") ||
-    url.pathname === "/healthz" ||
-    url.pathname === "/readyz"
-  ) {
-    event.respondWith(fetch(event.request));
+  // Operational data is never stored in the service-worker cache.
+  if (request.method !== "GET" ||
+      url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/ws/") ||
+      url.pathname.startsWith("/plugins/") ||
+      url.pathname.startsWith("/distribution/")) {
     return;
   }
 
-  if (
-    event.request.mode === "navigate" ||
-    url.pathname.startsWith("/static/") ||
-    url.pathname === "/manifest.webmanifest"
-  ) {
-    event.respondWith(networkFirst(event.request));
+  if (request.mode === "navigate") {
+    event.respondWith(fetch(request).catch(() => caches.match(request).then((r) => r || caches.match("/"))));
+    return;
   }
-});
 
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-      for (const client of windows) {
-        if ("focus" in client) return client.focus();
-      }
-      if (clients.openWindow) return clients.openWindow("/");
-      return undefined;
-    })
-  );
+  event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
 });

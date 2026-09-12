@@ -25,6 +25,9 @@
   const channelFilter = document.getElementById("channelFilter");
   const pairStatus = document.getElementById("pairStatus");
   const pairCountdown = document.getElementById("pairCountdown");
+  const advertisedAgentEndpoint = document.getElementById("advertisedAgentEndpoint");
+  const routePolicySelect = document.getElementById("routePolicy");
+  const routeStatus = document.getElementById("routeStatus");
   const cancelEnrollmentButton = document.getElementById("cancelEnrollmentButton");
   const guidedTrainingButton = document.getElementById("guidedTrainingButton");
   const trainingBackdrop = document.getElementById("trainingBackdrop");
@@ -46,6 +49,16 @@
   let selectedAgentId = null;
   let monitorSocket = null;
   let monitorReconnectTimer = null;
+  let directPeer = null;
+  let directChannel = null;
+  let directPeerId = null;
+  let directRouteState = "idle";
+  let currentRoutePolicy = localStorage.getItem("mesh-route-policy") || "direct_preferred";
+  let currentIceServers = [];
+  const LOCAL_ROUTE_KEY = "mesh-local-routes-v1";
+  let localRoutes = {};
+  let localSignalPollTimer = null;
+  const pendingDirectMessages = new Map();
   let lastPairCommand = "";
   let activeEnrollment = null;
   let enrollmentCountdownTimer = null;
@@ -867,7 +880,10 @@
     const data = await response.json();
 
     if (!response.ok) {
-      showToast(`Connection request unavailable: ${data.error || response.status}`);
+      const reason = data.error === "local_agent_reachable_origin_unavailable"
+        ? "Mesh could not detect a LAN-reachable address for this computer."
+        : (data.error || response.status);
+      showToast(`Connection request unavailable: ${reason}`);
       return;
     }
 
@@ -879,9 +895,13 @@
     document.getElementById("pairInstructions").textContent =
       `Copy this message and send it directly to ${agent?.name || "the agent"} through your existing chat. ` +
       "The agent handles the workstation side after its local policy approves the request.";
+    if (advertisedAgentEndpoint) {
+      advertisedAgentEndpoint.hidden = false;
+      advertisedAgentEndpoint.textContent = `Agent-reachable endpoint: ${data.advertised_origin || "unavailable"}`;
+    }
     pairStatus.textContent = "Waiting for agent";
     pairStatus.className = "status-pill waiting";
-    copyPairCommandButton.textContent = "Copy message";
+    copyPairCommandButton.textContent = "Copy enrollment message";
     copyPairCommandButton.hidden = false;
     copyPairCommandButton.disabled = false;
     cancelEnrollmentButton.hidden = false;
@@ -911,6 +931,164 @@
     showToast("Connection request cancelled.");
   }
 
+
+  function loadLocalRoutes() {
+    try { localRoutes=JSON.parse(localStorage.getItem(LOCAL_ROUTE_KEY) || "{}"); }
+    catch (_) { localRoutes={}; }
+  }
+
+  function saveLocalRouteMessage(message) {
+    if (!message?.agent_id || !Array.isArray(message.routes) || !message.local_access_token) return;
+    localRoutes[message.agent_id]={routes:message.routes,token:message.local_access_token,updated_at:Date.now()};
+    localStorage.setItem(LOCAL_ROUTE_KEY,JSON.stringify(localRoutes));
+  }
+
+  async function localFetch(url, options={}) {
+    const opts={...options,mode:"cors",cache:"no-store",targetAddressSpace:"local"};
+    try { return await fetch(url,opts); }
+    catch (firstError) {
+      // Older browsers may not understand targetAddressSpace; retry normally.
+      const {targetAddressSpace,...fallback}=opts;
+      return fetch(url,fallback);
+    }
+  }
+
+  async function requestLocalNetworkPermission() {
+    if (!navigator.permissions?.query) return "unknown";
+    try { const result=await navigator.permissions.query({name:"local-network"}); return result.state || "unknown"; }
+    catch (_) { return "unknown"; }
+  }
+
+  async function findReachableLocalRoute(agentId) {
+    loadLocalRoutes();
+    const saved=localRoutes[agentId];
+    if (!saved?.routes?.length || !saved.token) return null;
+    for (const route of saved.routes) {
+      const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),1600);
+      try {
+        const response=await localFetch(`${route.origin}/mesh-local/status`,{headers:{"Accept":"application/json","X-Mesh-Local-Token":saved.token},signal:controller.signal});
+        clearTimeout(timer); if (response.ok) return {...route,token:saved.token};
+      } catch (_) { clearTimeout(timer); }
+    }
+    return null;
+  }
+
+  async function postLocalSignal(route, signal) {
+    const response=await localFetch(`${route.origin}/mesh-local/signal`,{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json","X-Mesh-Local-Token":route.token},body:JSON.stringify({signal})});
+    const data=await response.json(); if (!response.ok) throw new Error(data.error || `local_signal_${response.status}`); return data;
+  }
+
+  async function pollLocalSignals(agentId, route, peerId) {
+    if (localSignalPollTimer) clearTimeout(localSignalPollTimer);
+    const poll=async()=>{
+      if (directPeerId!==peerId || directChannelReady()) return;
+      try {
+        const response=await localFetch(`${route.origin}/mesh-local/signals?peer_id=${encodeURIComponent(peerId)}`,{headers:{"Accept":"application/json","X-Mesh-Local-Token":route.token}});
+        const data=await response.json();
+        for (const signal of (data.signals || [])) await handleDirectSignalFromAgent(agentId,signal);
+      } catch (_) {}
+      if (directPeerId===peerId && !directChannelReady()) localSignalPollTimer=setTimeout(poll,250);
+    };
+    await poll();
+  }
+
+  function classifyCandidate(candidate) {
+    const text = String(candidate || "");
+    if (/\styp relay\s/i.test(text)) return "relay";
+    if (/\styp srflx\s/i.test(text)) return "internet_p2p";
+    if (/\styp host\s/i.test(text)) return "lan_direct";
+    return "direct";
+  }
+
+  function setRouteStatus(label) {
+    if (routeStatus) routeStatus.textContent = label;
+  }
+
+  function directChannelReady() { return directChannel && directChannel.readyState === "open"; }
+  function closeDirectTransport(reason="closed") {
+    if (directChannelReady()) { try { directChannel.send(JSON.stringify({type:"close",reason})); } catch (_) {} }
+    try { directChannel?.close(); } catch (_) {} try { directPeer?.close(); } catch (_) {}
+    directChannel=null; directPeer=null; directPeerId=null; directRouteState="idle";
+  }
+  async function postDirectSignal(agentId,type,payload) {
+    const response=await fetch(`/api/agents/${encodeURIComponent(agentId)}/transport/signal`,{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"},body:JSON.stringify({type,payload})});
+    const data=await response.json(); if (!response.ok) throw new Error(data.error || `signal_${response.status}`); return data;
+  }
+  async function startDirectTransport(agentId, localRoute=null) {
+    closeDirectTransport("replace"); if (!window.RTCPeerConnection) { directRouteState="unsupported"; return false; }
+    const peerId=crypto?.randomUUID?.() || `peer-${Date.now()}-${Math.random().toString(16).slice(2)}`; directPeerId=peerId; directRouteState="negotiating";
+    if (localRoute) {
+      currentIceServers=[];
+    } else {
+      const configResponse = await fetch(`/api/transport/config?policy=${encodeURIComponent(currentRoutePolicy)}`, {headers:{"Accept":"application/json"}});
+      const configData = await configResponse.json();
+      if (!configResponse.ok) throw new Error(configData.error || `transport_config_${configResponse.status}`);
+      currentIceServers = Array.isArray(configData.ice_servers) ? configData.ice_servers : [];
+    }
+    const peer = new RTCPeerConnection({iceServers:currentIceServers, iceTransportPolicy:"all"});
+    directPeer=peer;
+    const channel=peer.createDataChannel("progretech-mesh",{ordered:true}); directChannel=channel;
+    channel.addEventListener("open",()=>{ directRouteState="lan_direct"; channel.send(JSON.stringify({type:"hello",peer_id:peerId,timestamp:new Date().toISOString()})); document.getElementById("eventStreamLabel").textContent=`${fleet.find((a)=>a.id===agentId)?.name || agentId} · direct`; showToast("Direct owner-to-agent connection established."); });
+    channel.addEventListener("close",()=>{ if (directPeerId===peerId) directRouteState="closed"; });
+    channel.addEventListener("message",(event)=>{ let data; try { data=JSON.parse(event.data); } catch (_) { return; }
+      if (data.type==="message_response") { pendingDirectMessages.delete(data.request_id); appendLiveEvent({type:"message_response",timestamp:data.timestamp || new Date().toISOString(),message:data.text || "",payload:{transport:"webrtc-direct",cloud_data_path:false}}); return; }
+      if (data.type==="heartbeat") { appendLiveEvent({type:"heartbeat",timestamp:data.timestamp || new Date().toISOString(),message:data.payload?.message || "Direct heartbeat received",payload:{...(data.payload||{}),transport:"webrtc-direct",cloud_data_path:false}}); return; }
+      if (data.type==="hello_ack") { directRouteState=data.path || "lan_direct"; return; }
+      if (data.type==="direct_error") showToast(`Direct connection error: ${data.error || "unknown error"}`);
+    });
+    peer.addEventListener("icecandidate",(event)=>{ if (!event.candidate || directPeerId!==peerId) return; void (localRoute
+      ? postLocalSignal(localRoute,{type:"ice_candidate",payload:{peer_id:peerId,candidate:event.candidate.candidate,mid:event.candidate.sdpMid || "0"}})
+      : postDirectSignal(agentId,"ice_candidate",{peer_id:peerId,candidate:event.candidate.candidate,mid:event.candidate.sdpMid || "0"})
+    ).catch(()=>{}); });
+    peer.addEventListener("connectionstatechange", async () => {
+      if (peer.connectionState === "connected" && directPeerId === peerId) {
+        try {
+          const stats = await peer.getStats();
+          let selectedPair = null;
+          let localCandidate = null;
+          for (const stat of stats.values()) {
+            if (stat.type === "transport" && stat.selectedCandidatePairId) {
+              selectedPair = stats.get(stat.selectedCandidatePairId);
+            }
+          }
+          if (selectedPair?.localCandidateId) localCandidate = stats.get(selectedPair.localCandidateId);
+          const candidateType = localCandidate?.candidateType || "";
+          if (candidateType === "relay") {
+            directRouteState = "relay";
+            setRouteStatus("Encrypted relay");
+          } else if (candidateType === "srflx" || candidateType === "prflx") {
+            directRouteState = "internet_p2p";
+            setRouteStatus("Direct internet");
+          } else {
+            directRouteState = "lan_direct";
+            setRouteStatus("Direct local");
+          }
+        } catch (_) {
+          setRouteStatus("Direct connected");
+        }
+      }
+      if (["failed","closed"].includes(peer.connectionState) && directPeerId===peerId) {
+        directRouteState=peer.connectionState;
+        setRouteStatus(peer.connectionState === "failed" ? "Direct unavailable" : "Disconnected");
+      }
+    });
+    const offer=await peer.createOffer(); await peer.setLocalDescription(offer); const offerSignal={type:"offer",payload:{peer_id:peerId,sdp:peer.localDescription.sdp,description_type:peer.localDescription.type,route_policy:localRoute ? "direct_only" : currentRoutePolicy,ice_servers:currentIceServers}};
+    if (localRoute) {
+      await postLocalSignal(localRoute,offerSignal);
+      void pollLocalSignals(agentId,localRoute,peerId);
+      setRouteStatus("Direct local · negotiating");
+    } else {
+      await postDirectSignal(agentId,"offer",offerSignal.payload);
+    }
+    return true;
+  }
+  async function handleDirectSignalFromAgent(agentId,signal) {
+    if (!directPeer || !directPeerId || agentId!==selectedAgentId) return; const payload=signal?.payload || {}; if (payload.peer_id!==directPeerId) return;
+    if (signal.type==="answer") { await directPeer.setRemoteDescription({type:"answer",sdp:payload.sdp}); return; }
+    if (signal.type==="ice_candidate" && payload.candidate) { await directPeer.addIceCandidate({candidate:payload.candidate,sdpMid:payload.mid || "0"}); return; }
+    if (signal.type==="direct_error") { directRouteState="error"; showToast(`Direct negotiation failed: ${payload.error || "unknown error"}`); }
+  }
+
   function monitorAgent(agentId) {
     selectedAgentId = agentId;
     clearTimeout(monitorReconnectTimer);
@@ -934,7 +1112,8 @@
     monitorSocket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
 
     monitorSocket.addEventListener("open", () => {
-      document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · live`;
+      document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · signaling`;
+      void startDirectTransport(agentId).catch((error) => { directRouteState="error"; showToast(`Direct transport unavailable: ${error?.message || error}`); });
     });
 
     monitorSocket.addEventListener("message", (event) => {
@@ -950,6 +1129,8 @@
       }
 
       if (data.type === "gateway_message") {
+        if (data.message?.type === "mesh_direct_signal") { void handleDirectSignalFromAgent(agentId,data.message.signal).catch((error)=>{ directRouteState="error"; showToast(`Direct signaling error: ${error?.message || error}`); }); return; }
+        if (data.message?.type === "mesh_local_route") { saveLocalRouteMessage(data.message); return; }
         fleet = fleet.map((item) => item.id === agentId ? data.agent : item);
         renderFleet();
         renderTelemetry(data.agent);
@@ -994,6 +1175,7 @@
     });
 
     monitorSocket.addEventListener("close", () => {
+      closeDirectTransport("signaling_closed");
       document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · reconnecting`;
       monitorReconnectTimer = setTimeout(() => {
         if (selectedAgentId === agentId) monitorAgent(agentId);
@@ -1068,21 +1250,16 @@
   }
 
   async function sendDirectMessage(text) {
-    const agent = fleet.find((a) => a.id === selectedAgentId);
+    const agent=fleet.find((a)=>a.id===selectedAgentId);
     if (!agent) { showToast("Select an agent first."); return; }
-    if (agent.transport !== "connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
-
-    const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/message`, {
-      method:"POST",
-      headers:{"Accept":"application/json","Content-Type":"application/json"},
-      body:JSON.stringify({text})
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      showToast(`Message failed: ${data.error || response.status}`);
-      return;
+    if (agent.transport!=="connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
+    if (directChannelReady()) {
+      const requestId=crypto?.randomUUID?.() || `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`; pendingDirectMessages.set(requestId,Date.now());
+      directChannel.send(JSON.stringify({type:"message",request_id:requestId,agent_id:agent.id,room:"direct",sender:"Mesh user",text}));
+      appendLiveEvent({type:"user_message",timestamp:new Date().toISOString(),message:text,payload:{sender:"You",transport:"webrtc-direct",cloud_data_path:false}}); messageInput.value=""; return;
     }
-    messageInput.value = "";
+    const response=await fetch(`/api/agents/${encodeURIComponent(agent.id)}/message`,{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"},body:JSON.stringify({text})});
+    const data=await response.json(); if (!response.ok) { showToast(`Message failed: ${data.error || response.status}`); return; } messageInput.value="";
   }
 
   function openGroupRoom() {
@@ -1169,7 +1346,7 @@
       copyPairCommandButton.classList.add("copy-success");
       showToast("Gateway command copied to clipboard.");
       setTimeout(() => {
-        copyPairCommandButton.textContent = "Copy command";
+        copyPairCommandButton.textContent = "Copy enrollment message";
         copyPairCommandButton.classList.remove("copy-success");
       }, 2200);
     } catch (_) {
@@ -1228,8 +1405,8 @@
 
   document.getElementById("openFleetButton")?.addEventListener("click", () => document.getElementById("agents")?.scrollIntoView({behavior:"smooth"}));
   document.getElementById("mobileAgentsButton")?.addEventListener("click", () => document.getElementById("agents")?.scrollIntoView({behavior:"smooth"}));
-  document.getElementById("manageAgentsButton")?.addEventListener("click", () => showToast("Expanded lifecycle management comes in a later phase."));
-  document.querySelectorAll("[data-later]").forEach((b) => b.addEventListener("click", () => showToast("Scheduled for a later Mesh phase.")));
+  document.getElementById("manageAgentsButton")?.addEventListener("click", () => showToast("Lifecycle management is not available in this build."));
+  document.querySelectorAll("[data-later]").forEach((b) => b.addEventListener("click", () => showToast("This capability is not currently available.")));
 
   [agentModal,pairModal,identityModal,groupModal].forEach((modal) => modal?.addEventListener("click", (event) => {
     if (event.target === modal) closeModal(modal);
@@ -1353,18 +1530,35 @@
       target.classList.add("training-highlight");
       try { target.scrollIntoView({behavior:"smooth", block:"center"}); } catch (_) {}
     }
+    // Always keep the training card above the highlighted page target.
+    const card = trainingBackdrop?.querySelector(".training-card");
+    if (card) {
+      card.scrollTop = 0;
+      card.focus?.({preventScroll:true});
+    }
   }
 
   function startGuidedTraining() {
     trainingStepIndex = 0;
+    clearTrainingHighlight();
+    if (!trainingBackdrop) {
+      showToast("Guided Training is unavailable. Refresh Mesh and try again.");
+      return;
+    }
     trainingBackdrop.hidden = false;
+    trainingBackdrop.setAttribute("aria-hidden", "false");
+    document.body.classList.add("training-open");
     document.body.style.overflow = "hidden";
     renderTrainingStep();
   }
 
   function closeGuidedTraining(markComplete=false) {
     clearTrainingHighlight();
-    trainingBackdrop.hidden = true;
+    if (trainingBackdrop) {
+      trainingBackdrop.hidden = true;
+      trainingBackdrop.setAttribute("aria-hidden", "true");
+    }
+    document.body.classList.remove("training-open");
     document.body.style.overflow = "";
     if (markComplete) {
       localStorage.setItem(TRAINING_STORAGE_KEY, "true");
@@ -1373,6 +1567,13 @@
   }
 
   guidedTrainingButton?.addEventListener("click", startGuidedTraining);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && trainingBackdrop && !trainingBackdrop.hidden) {
+      event.preventDefault();
+      closeGuidedTraining(false);
+    }
+  });
+
   document.getElementById("trainingSkip")?.addEventListener("click", () => closeGuidedTraining(false));
   document.getElementById("trainingBack")?.addEventListener("click", () => {
     if (trainingStepIndex > 0) { trainingStepIndex -= 1; renderTrainingStep(); }
@@ -1391,5 +1592,43 @@
   refreshFileOffers();
   renderNotificationControls();
   setInterval(refreshFleet, 5000);
+
+  loadLocalRoutes();
+  window.addEventListener("offline",()=>{
+    if (!selectedAgentId) return;
+    setRouteStatus("Offline · looking for local agent");
+    void (async()=>{
+      const permission=await requestLocalNetworkPermission();
+      const route=await findReachableLocalRoute(selectedAgentId);
+      if (!route) { setRouteStatus(permission === "denied" ? "Local network permission denied" : "Offline · local agent unavailable"); return; }
+      try { await startDirectTransport(selectedAgentId,route); }
+      catch (_) { setRouteStatus("Offline · direct connection failed"); }
+    })();
+  });
+  window.addEventListener("online",()=>{ if (selectedAgentId) setRouteStatus("Network restored"); });
+
+  if (routePolicySelect) {
+    if (!["direct_preferred","direct_only","relay_allowed"].includes(currentRoutePolicy)) {
+      currentRoutePolicy = "direct_preferred";
+    }
+    routePolicySelect.value = currentRoutePolicy;
+    routePolicySelect.addEventListener("change", () => {
+      currentRoutePolicy = routePolicySelect.value;
+      localStorage.setItem("mesh-route-policy", currentRoutePolicy);
+      const labels = {
+        direct_preferred:"Direct preferred",
+        direct_only:"Direct only",
+        relay_allowed:"Relay allowed",
+      };
+      setRouteStatus(labels[currentRoutePolicy] || "Direct preferred");
+      if (selectedAgentId && monitorSocket?.readyState === WebSocket.OPEN) {
+        void startDirectTransport(selectedAgentId).catch((error) => {
+          directRouteState = "error";
+          showToast(`Route update failed: ${error?.message || error}`);
+        });
+      }
+    });
+  }
+
 })();
 

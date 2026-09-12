@@ -17,3 +17,6 @@ The local conversation bridge uses a stable Mesh-specific session identity and d
 This is an integration candidate, not yet proven on Rend. Do not claim production channel isolation until the included validation steps pass twice sequentially while Telegram remains active.
 
 The bridge is loopback-only. Set `PROGRETECH_MESH_LOCAL_TOKEN` in both the OpenClaw Gateway environment and the Python Mesh gateway environment to require a shared local bearer-style header.
+
+
+Offline same-LAN signaling: authenticated local HTTP listener on port 18791; WebRTC remains the session data path.

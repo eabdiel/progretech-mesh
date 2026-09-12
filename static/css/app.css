@@ -284,3 +284,156 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
 @media(max-width:600px){.event{grid-template-columns:62px 72px minmax(0,1fr)}.event .channel-badge{grid-column:2}.event .desc{grid-column:3;grid-row:1/span 2}}
 @media(max-width:480px){#guidedTrainingButton{padding:7px 9px;font-size:11px}.connect-agent-card{width:calc(100vw - 14px)}.split-actions{align-items:stretch;flex-direction:column-reverse}.modal-action-group{display:grid;grid-template-columns:1fr 1fr;width:100%}.split-actions>.danger-soft{width:100%}.observability-toolbar{grid-template-columns:1fr 1fr}#eventSearch{grid-column:1/-1}.training-card{padding:18px;border-radius:18px}}
 @media(min-width:600px) and (max-width:760px){.connect-agent-card{width:min(680px,calc(100vw - 24px))}.training-card{width:min(600px,calc(100vw - 30px))}}
+
+.connection-endpoint {
+  margin: 10px 0; padding: 9px 11px; border: 1px solid rgba(255,255,255,.10);
+  border-radius: 10px; font-size: .82rem; color: var(--muted, #a6b0bd);
+  overflow-wrap: anywhere;
+}
+
+.route-policy-wrap {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 10px; margin:8px 0;
+  border:1px solid rgba(255,255,255,.08); border-radius:10px;
+}
+.route-policy-wrap label { font-size:.78rem; color:var(--muted,#a6b0bd); }
+.route-policy-wrap select {
+  background:rgba(255,255,255,.04); color:inherit;
+  border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:6px 8px;
+}
+.route-status { font-size:.76rem; color:var(--muted,#a6b0bd); }
+
+.how-link,.back-link{color:inherit;text-decoration:none;font-size:.84rem;opacity:.82}.how-link:hover,.back-link:hover{opacity:1}.how-it-works-page{width:min(1100px,calc(100% - 28px));margin:0 auto;padding:28px 0 56px}.how-it-works-page .hero-card{margin:14px 0}.how-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:14px 0}.how-grid article{border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:18px;background:rgba(255,255,255,.025)}.route-pill{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem;opacity:.78;margin-top:16px}@media(max-width:760px){.how-grid{grid-template-columns:1fr}}
+
+
+/* UI hotfix: keep header actions together on the right. */
+.topbar {
+  justify-content: space-between;
+}
+.top-actions {
+  margin-left: auto;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+.top-actions .how-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  white-space: nowrap;
+}
+
+/* Keep native route menus readable in the dark UI. */
+.route-policy-wrap select {
+  background-color: #11151a;
+  color: #f4f7fb;
+  color-scheme: dark;
+}
+.route-policy-wrap select option,
+.route-policy-wrap select optgroup {
+  background: #11151a;
+  color: #f4f7fb;
+}
+
+/* Training page targets may be highlighted, but never above the training dialog. */
+.training-backdrop {
+  z-index: 3000;
+}
+.training-card {
+  position: relative;
+  z-index: 3030;
+  max-height: min(82dvh, 760px);
+  overflow: auto;
+}
+.training-highlight {
+  z-index: 3010 !important;
+  pointer-events: none;
+}
+.training-actions {
+  position: sticky;
+  bottom: -1px;
+  z-index: 3040;
+  padding-top: 12px;
+  background: linear-gradient(to bottom, rgba(15,20,26,0), #0f141a 34%);
+}
+.training-open .topbar,
+.training-open .bottom-nav {
+  pointer-events: none;
+}
+
+/* Responsive header: keep actions right-aligned without making the banner wider. */
+@media (max-width: 760px) {
+  .topbar {
+    align-items: center;
+    gap: 10px;
+  }
+  .top-actions {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  .top-actions .how-link,
+  #guidedTrainingButton {
+    padding: 8px 9px;
+    font-size: 11px;
+  }
+}
+@media (max-width: 599px) {
+  .top-actions .how-link,
+  #guidedTrainingButton {
+    display: none;
+  }
+}
+
+
+/* Guided Training stacking correction: highlighted content must never become an overlay. */
+.training-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483600 !important;
+  display: block;
+  padding: 0;
+  background: rgba(4,7,10,.76);
+  backdrop-filter: blur(7px);
+  overflow: hidden;
+}
+.training-backdrop[hidden] { display: none !important; }
+.training-card {
+  position: fixed !important;
+  right: max(18px, env(safe-area-inset-right)) !important;
+  bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  left: auto !important;
+  top: auto !important;
+  z-index: 2147483640 !important;
+  width: min(460px, calc(100vw - 36px)) !important;
+  max-height: min(78dvh, 720px) !important;
+  overflow: auto !important;
+  margin: 0 !important;
+  isolation: isolate;
+}
+.training-highlight {
+  position: relative !important;
+  z-index: auto !important;
+  box-shadow: 0 0 0 3px rgba(111,183,255,.72) !important;
+  outline: 1px solid rgba(111,183,255,.45) !important;
+  outline-offset: 4px !important;
+  border-radius: 16px;
+  pointer-events: none !important;
+}
+.training-actions {
+  position: sticky !important;
+  bottom: -1px !important;
+  z-index: 2 !important;
+  padding: 14px 0 2px !important;
+  background: linear-gradient(to bottom, rgba(15,20,26,0), #0f141a 30%) !important;
+}
+.training-actions button { pointer-events: auto !important; }
+
+@media (max-width: 600px) {
+  .training-card {
+    right: 10px !important;
+    left: 10px !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-height: 72dvh !important;
+  }
+}
