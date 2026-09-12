@@ -114,3 +114,53 @@ The helper downloads/verifies while work may still be active, but refuses to inv
 Helper SHA-256: `3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40`
 
 See `docs/OPENCLAW_SELF_BOOTSTRAP.md`.
+
+
+## Automatic post-install handoff
+
+The OpenClaw Mesh adapter is now `0.3.0`. A PTM1-directed self-bootstrap writes a one-time
+pending enrollment before managed installation. When OpenClaw loads the adapter, it automatically:
+
+- redeems the pending activation;
+- persists the signed device reconnect credential;
+- deletes the one-time pending activation;
+- establishes the outbound Mesh WebSocket;
+- forwards passive observation activity;
+- reconnects automatically on later runtime starts.
+
+No second owner instruction is required.
+
+Plugin SHA-256: `6eeffc110a025f77745a62415394df6c21141bf9edef818584e0f78133361ccc`  
+Bootstrap helper SHA-256: `538f0e09ec9a61d26fc3d0a2a45830ef83633985a789fefbbaf096fbeb566b8c`
+
+See `docs/POST_INSTALL_HANDOFF.md`.
+
+
+## Lifecycle hardening
+
+OpenClaw adapter `0.4.0` adds bounded reconnect backoff, expiry/revocation handling, re-enrollment,
+same-version idempotence, downgrade rejection, and failure isolation. Mesh credential problems
+stop Mesh only and never stop OpenClaw or Telegram.
+
+Plugin SHA-256: `19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261`  
+Bootstrap helper SHA-256: `81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2`
+
+See `docs/LIFECYCLE_HARDENING.md`.
+
+
+## RC2 acceptance candidate
+
+This package is ready for the first live hands-off acceptance attempt against Rend.
+
+The reference test deliberately treats Rend as a third-party agent:
+- no Mesh component is preinstalled;
+- no workstation access is allowed;
+- Telegram is the only human-to-agent entrypoint;
+- the agent must self-discover, verify, install, enroll, and connect.
+
+Run `python tests/rc2_acceptance_preflight.py` before a live enrollment attempt.
+
+See:
+- `docs/REND_RC2_LIVE_ACCEPTANCE_CARD.md`
+- `docs/AGENT_FACING_ACCEPTANCE_INSTRUCTION.md`
+- `docs/RC2_ACCEPTANCE_CHECKLIST.md`

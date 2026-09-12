@@ -23,9 +23,9 @@
   },
   "package": {
     "package_id": "progretech-mesh-openclaw",
-    "version": "0.2.0",
-    "filename": "progretech-mesh-openclaw-0.2.0.tgz",
-    "sha256": "3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271",
+    "version": "0.4.0",
+    "filename": "progretech-mesh-openclaw-0.4.0.tgz",
+    "sha256": "19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261",
     "integrity_algorithm": "sha256",
     "codeseal_verified": false
   },
@@ -88,5 +88,20 @@
     "capability_consent_block": "Use the owner's existing agent/chat approval mechanism if available; otherwise report the required approval.",
     "runtime_busy": "Wait/defer. Do not force installation or restart.",
     "channel_probe_failure": "Report degraded channel state and stop further Mesh activation work."
+  },
+  "post_install": {
+    "manual_second_instruction_required": false,
+    "pending_state_file": "~/.progretech-mesh/pending-enrollment.json",
+    "credential_state_file": "~/.progretech-mesh/device-credential.json",
+    "connection_status_file": "~/.progretech-mesh/connection-status.json",
+    "reconnect_behavior": "automatic"
+  },
+  "lifecycle": {
+    "same_version": "skip reinstall and reconnect using existing credential when valid",
+    "upgrade": "verify new package, wait for idle if managed plugin install is required, preserve old runtime on failure",
+    "downgrade": "reject by default",
+    "revoked": "stop Mesh reconnect only; require new PTM1 enrollment",
+    "expired": "stop Mesh reconnect only; require new PTM1 enrollment",
+    "agent_runtime_effect": "none outside Mesh adapter lifecycle"
   }
 }

@@ -32,7 +32,7 @@ from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-BUILD_ID = "v1-rc2-openclaw-selfbootstrap-20260912"
+BUILD_ID = "v1-rc2-lifecycle-hardening-20260912"
 PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
@@ -53,8 +53,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.2.0"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.2.0.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.4.0"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.4.0.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -1309,7 +1309,7 @@ def create_app() -> Flask:
                         "bootstrap_helper_url": (
                             f"{mesh_origin}/api/enrollment/adapters/openclaw/bootstrap"
                         ),
-                        "bootstrap_helper_sha256": "3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40",
+                        "bootstrap_helper_sha256": "81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2",
                     }
                 },
             },

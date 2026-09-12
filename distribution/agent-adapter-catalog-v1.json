@@ -16,8 +16,8 @@
       },
       "package": {
         "package_id": "progretech-mesh-openclaw",
-        "version": "0.2.0",
-        "sha256": "3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271",
+        "version": "0.4.0",
+        "sha256": "19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261",
         "format": "tgz"
       },
       "installation": {
@@ -33,9 +33,34 @@
       "self_bootstrap": {
         "plan_path": "/api/enrollment/adapters/openclaw/install-plan",
         "helper_path": "/api/enrollment/adapters/openclaw/bootstrap",
-        "helper_sha256": "3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40",
+        "helper_sha256": "81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2",
         "preinstalled_component_required": false,
         "owner_workstation_access_required": false
+      },
+      "post_install": {
+        "pending_enrollment_handoff": true,
+        "automatic_activation_redeem": true,
+        "credential_persistence": true,
+        "automatic_outbound_reconnect": true,
+        "second_owner_instruction_required": false
+      },
+      "lifecycle": {
+        "idempotent_same_version": true,
+        "automatic_reconnect": true,
+        "bounded_exponential_backoff_seconds": [
+          2,
+          4,
+          8,
+          16,
+          32,
+          60
+        ],
+        "credential_expiry_stops_mesh_only": true,
+        "server_revocation_stops_mesh_only": true,
+        "reenrollment_after_revocation": true,
+        "downgrade_default": "reject",
+        "failed_install_preserves_existing_runtime": true,
+        "mesh_disconnect_does_not_stop_agent": true
       }
     },
     {

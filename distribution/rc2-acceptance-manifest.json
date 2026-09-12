@@ -1,0 +1,51 @@
+{
+  "product": "ProgreTech Mesh",
+  "candidate": "RC2",
+  "acceptance_model": "universal-agent-enrollment",
+  "human_workstation_access_required": false,
+  "preinstalled_progretech_component_required": false,
+  "reference_agent": "Rend",
+  "reference_entrypoint": "Telegram",
+  "runtime": "OpenClaw",
+  "required_user_actions": [
+    "Open Mesh and create an enrollment request for Rend.",
+    "Copy the complete agent-facing enrollment instruction containing PTM1.",
+    "Send that instruction to Rend through the existing Telegram conversation.",
+    "Respond through Telegram only if Rend's normal security policy explicitly requests owner approval.",
+    "Observe Mesh for connected/passive-monitoring state."
+  ],
+  "forbidden_user_actions": [
+    "SSH into Rend",
+    "RDP or remote desktop into Rend",
+    "open a terminal on Rend",
+    "manually copy a Mesh archive to Rend",
+    "manually install or enable the Mesh plugin",
+    "manually restart OpenClaw for Mesh",
+    "alter Telegram configuration for Mesh"
+  ],
+  "pass_conditions": [
+    "Rend understands the PTM1-directed enrollment as an owner instruction.",
+    "Rend discovers the universal enrollment protocol and OpenClaw adapter.",
+    "Rend downloads and verifies the pinned package himself.",
+    "Rend waits for an idle/safe point before managed plugin installation if runtime reload is required.",
+    "Rend uses existing permissions only.",
+    "The plugin automatically redeems the pending enrollment after installation.",
+    "A local reconnect credential is persisted.",
+    "Rend connects outbound to Mesh.",
+    "Telegram remains operational.",
+    "Telegram-originated activity is observable in Mesh.",
+    "Mesh conversation remains independent from Telegram conversation state.",
+    "Refreshing or disconnecting Mesh does not interrupt Rend's Telegram work."
+  ],
+  "artifact_pins": {
+    "openclaw_adapter_version": "0.4.0",
+    "openclaw_adapter_sha256": "19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261",
+    "bootstrap_helper_sha256": "81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2"
+  },
+  "claims_not_yet_proven_until_live_test": [
+    "Rend can perform the complete self-bootstrap with current real permissions.",
+    "OpenClaw passive hooks expose all desired activity without side effects.",
+    "Mesh conversation isolation is correct under sequential live usage.",
+    "OpenClaw managed installation can complete on Rend without a workstation-side approval path."
+  ]
+}

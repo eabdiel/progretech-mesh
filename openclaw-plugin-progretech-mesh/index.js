@@ -10,6 +10,311 @@ const ROUTE = "/plugins/progretech-mesh/message";
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_EVENT_TEXT = 4000;
 
+const STATE_DIR = process.env.PROGRETECH_MESH_STATE_DIR?.trim()
+  || path.join(os.homedir(), ".progretech-mesh");
+const PENDING_ENROLLMENT_PATH = path.join(STATE_DIR, "pending-enrollment.json");
+const DEVICE_CREDENTIAL_PATH = path.join(STATE_DIR, "device-credential.json");
+const CONNECTION_STATUS_PATH = path.join(STATE_DIR, "connection-status.json");
+const LIFECYCLE_STATE_PATH = path.join(STATE_DIR, "lifecycle-state.json");
+const REVOKED_MARKER_PATH = path.join(STATE_DIR, "revoked.json");
+
+
+let meshSocket = null;
+let meshReconnectTimer = null;
+let meshIdentity = null;
+let meshReconnectAttempt = 0;
+let meshReconnectDisabled = false;
+
+
+function ensurePrivateStateDir() {
+  fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
+}
+
+function atomicWriteJson(target, value) {
+  ensurePrivateStateDir();
+  const temp = `${target}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  fs.renameSync(temp, target);
+  try { fs.chmodSync(target, 0o600); } catch {}
+}
+
+function readJsonIfPresent(target) {
+  try {
+    return JSON.parse(fs.readFileSync(target, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function readLifecycleState() {
+  return readJsonIfPresent(LIFECYCLE_STATE_PATH) || {};
+}
+
+function writeLifecycleState(patch) {
+  const prior = readLifecycleState();
+  atomicWriteJson(LIFECYCLE_STATE_PATH, {
+    ...prior,
+    ...patch,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function markRevoked(reason, record = null) {
+  meshReconnectDisabled = true;
+  atomicWriteJson(REVOKED_MARKER_PATH, {
+    revoked: true,
+    reason: reason || "credential_revoked",
+    agent_id: record?.agent_id || meshIdentity?.agent_id || null,
+    device_id: record?.device_id || meshIdentity?.device_id || null,
+    updated_at: new Date().toISOString(),
+  });
+  writeLifecycleState({
+    enrollment_state: "revoked",
+    reconnect_enabled: false,
+    revocation_reason: reason || "credential_revoked",
+  });
+}
+
+function clearRevokedMarker() {
+  try { fs.unlinkSync(REVOKED_MARKER_PATH); } catch {}
+  meshReconnectDisabled = false;
+  writeLifecycleState({
+    enrollment_state: "enrolled",
+    reconnect_enabled: true,
+    revocation_reason: null,
+  });
+}
+
+function writeConnectionStatus(state, detail = "", extra = {}) {
+  atomicWriteJson(CONNECTION_STATUS_PATH, {
+    state,
+    detail,
+    updated_at: new Date().toISOString(),
+    ...extra,
+  });
+}
+
+function parseMeshOrigin(value) {
+  const url = new URL(String(value || ""));
+  if (!["https:", "http:"].includes(url.protocol)) throw new Error("invalid_mesh_origin");
+  if (url.protocol !== "https:" && process.env.MESH_ALLOW_INSECURE_PACKAGE_URL !== "1") {
+    throw new Error("mesh_https_required");
+  }
+  return url.origin;
+}
+
+async function redeemPendingEnrollment() {
+  const pending = readJsonIfPresent(PENDING_ENROLLMENT_PATH);
+  if (!pending) return null;
+
+  const meshOrigin = parseMeshOrigin(pending.mesh);
+  writeConnectionStatus("redeeming", "Redeeming pending Mesh enrollment");
+
+  const response = await fetch(`${meshOrigin}/api/activation/redeem`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "accept": "application/json" },
+    body: JSON.stringify({
+      agent_id: pending.agent_id,
+      activation_code: pending.activation_code,
+      activation_signature: pending.activation_signature,
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body?.ok) {
+    throw new Error(`mesh_activation_rejected:${body?.error || response.status}`);
+  }
+
+  const record = {
+    mesh: meshOrigin,
+    agent_id: body.agent_id || pending.agent_id,
+    websocket_url: body.websocket_url,
+    device_credential: body.device_credential,
+    device_id: body.device_id,
+    device_credential_expires_at: body.device_credential_expires_at,
+    reconnect_mode: body.reconnect_mode,
+    enrolled_at: new Date().toISOString(),
+  };
+  atomicWriteJson(DEVICE_CREDENTIAL_PATH, record);
+  clearRevokedMarker();
+  writeLifecycleState({
+    enrollment_state: "enrolled",
+    reconnect_enabled: true,
+    agent_id: record.agent_id,
+    device_id: record.device_id,
+    credential_expires_at: record.device_credential_expires_at || null,
+    adapter_version: "0.4.0",
+  });
+
+  try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
+
+  writeConnectionStatus("credential_ready", "Mesh reconnect credential stored", {
+    agent_id: record.agent_id,
+    device_id: record.device_id,
+  });
+  return record;
+}
+
+function credentialWebSocketUrl(record, initialPairing = false) {
+  if (initialPairing && record.websocket_url) return record.websocket_url;
+  const origin = new URL(record.mesh);
+  const scheme = origin.protocol === "https:" ? "wss:" : "ws:";
+  const url = new URL(`${scheme}//${origin.host}/ws/gateway/${encodeURIComponent(record.agent_id)}`);
+  url.searchParams.set("credential", record.device_credential);
+  return url.toString();
+}
+
+function sendMeshGatewayMessage(message) {
+  if (!meshSocket || meshSocket.readyState !== WebSocket.OPEN) return false;
+  try {
+    meshSocket.send(JSON.stringify(message));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function heartbeatPayload() {
+  return {
+    type: "heartbeat",
+    timestamp: new Date().toISOString(),
+    payload: {
+      state: "online",
+      task: "Mesh connected",
+      phase: "Passive monitoring active",
+      progress: 100,
+      model: "OpenClaw agent runtime",
+      runtime: "OpenClaw",
+      message: `${meshIdentity?.agent_id || "Agent"} connected to Mesh`,
+      telemetry: {},
+      runtime_adapter: "openclaw-plugin",
+      observation_adapter: "openclaw-hooks",
+      identity_mode: "enrolled-device",
+    },
+  };
+}
+
+function scheduleReconnect(api, explicitDelayMs = null) {
+  if (meshReconnectDisabled || meshReconnectTimer) return;
+  const delayMs = explicitDelayMs ?? Math.min(60000, 2000 * (2 ** Math.min(meshReconnectAttempt, 5)));
+  meshReconnectAttempt += 1;
+  meshReconnectTimer = setTimeout(() => {
+    meshReconnectTimer = null;
+    void ensureMeshConnection(api, false);
+  }, delayMs);
+  meshReconnectTimer.unref?.();
+}
+
+async function ensureMeshConnection(api, preferInitialPairing = true) {
+  if (meshReconnectDisabled || readJsonIfPresent(REVOKED_MARKER_PATH)?.revoked) {
+    writeConnectionStatus("revoked", "Mesh credential revoked; reconnect disabled");
+    return;
+  }
+  if (typeof WebSocket === "undefined") {
+    writeConnectionStatus("error", "Node WebSocket API unavailable");
+    return;
+  }
+  if (meshSocket && [WebSocket.OPEN, WebSocket.CONNECTING].includes(meshSocket.readyState)) return;
+
+  let record = readJsonIfPresent(DEVICE_CREDENTIAL_PATH);
+  let justRedeemed = false;
+  if (!record) {
+    try {
+      record = await redeemPendingEnrollment();
+      justRedeemed = Boolean(record);
+    } catch (error) {
+      writeConnectionStatus("error", error?.message || String(error));
+      api.logger?.error?.(`[mesh] enrollment handoff failed: ${error?.message || String(error)}`);
+      return;
+    }
+  }
+  if (!record?.agent_id || !record?.device_credential || !record?.mesh) return;
+
+  if (record.device_credential_expires_at) {
+    const expires = Date.parse(record.device_credential_expires_at);
+    if (Number.isFinite(expires) && Date.now() >= expires) {
+      writeConnectionStatus("expired", "Mesh reconnect credential expired; re-enrollment required", {
+        agent_id: record.agent_id,
+        device_id: record.device_id,
+      });
+      writeLifecycleState({
+        enrollment_state: "expired",
+        reconnect_enabled: false,
+      });
+      meshReconnectDisabled = true;
+      return;
+    }
+  }
+
+  meshIdentity = record;
+  const url = credentialWebSocketUrl(record, preferInitialPairing && justRedeemed);
+
+  writeConnectionStatus("connecting", "Connecting outbound to Mesh", {
+    agent_id: record.agent_id,
+    device_id: record.device_id,
+  });
+
+  const socket = new WebSocket(url);
+  meshSocket = socket;
+
+  socket.addEventListener("open", () => {
+    meshReconnectAttempt = 0;
+    writeConnectionStatus("connected", "Passive monitoring connected", {
+      agent_id: record.agent_id,
+      device_id: record.device_id,
+    });
+    sendMeshGatewayMessage(heartbeatPayload());
+    appendEvent({
+      event_type: "gateway",
+      channel: "mesh",
+      state: "connected",
+      direction: null,
+      summary: "Mesh passive monitoring connected",
+      payload: { device_id: record.device_id },
+    });
+  });
+
+  socket.addEventListener("message", (event) => {
+    try {
+      const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+      if (msg?.type === "heartbeat_request") {
+        sendMeshGatewayMessage(heartbeatPayload());
+      }
+      if (msg?.type === "credential_revoked" || msg?.type === "device_revoked") {
+        markRevoked(msg?.reason || "server_revoked", record);
+        writeConnectionStatus("revoked", "Mesh credential revoked; reconnect disabled", {
+          agent_id: record.agent_id,
+          device_id: record.device_id,
+        });
+        try { socket.close(4003, "revoked"); } catch {}
+      }
+    } catch {}
+  });
+
+  socket.addEventListener("close", (event) => {
+    if (meshSocket === socket) meshSocket = null;
+
+    if ([4001, 4003, 4401, 4403].includes(Number(event?.code))) {
+      markRevoked(`gateway_auth_${event.code}`, record);
+      writeConnectionStatus("revoked", "Mesh authentication rejected; re-enrollment required", {
+        agent_id: record.agent_id,
+        device_id: record.device_id,
+      });
+      return;
+    }
+
+    writeConnectionStatus("reconnecting", "Mesh connection closed; reconnect scheduled", {
+      agent_id: record.agent_id,
+      device_id: record.device_id,
+      reconnect_attempt: meshReconnectAttempt + 1,
+    });
+    scheduleReconnect(api);
+  });
+
+  socket.addEventListener("error", () => {
+    // Close event owns retry scheduling.
+  });
+}
+
 function eventPath() {
   const configured = process.env.PROGRETECH_MESH_EVENT_PATH?.trim();
   if (configured) return configured;
@@ -55,6 +360,26 @@ function appendEvent(event) {
     ...event,
   };
   fs.appendFileSync(target, `${JSON.stringify(row)}\n`, { encoding: "utf8", mode: 0o600 });
+
+  if (meshSocket && meshSocket.readyState === WebSocket.OPEN) {
+    try {
+      meshSocket.send(JSON.stringify({
+        type: "agent_activity",
+        timestamp: row.timestamp,
+        message: row.summary || row.event_type || "Agent activity",
+        payload: {
+          channel: row.channel || "system",
+          direction: row.direction ?? null,
+          state: row.state || "active",
+          summary: row.summary || "",
+          event_type: row.event_type,
+          read_only: true,
+          observer: row.observer,
+          ...safeValue(row.payload || {}),
+        },
+      }));
+    } catch {}
+  }
 }
 
 function channelFromContext(ctx, fallback = "system") {
@@ -311,5 +636,30 @@ export default definePluginEntry({
   register(api) {
     registerObservationHooks(api);
     registerConversationBridge(api);
+    writeLifecycleState({
+      adapter_version: "0.4.0",
+      runtime: "openclaw",
+      observation_mode: "read-only",
+      conversation_scope: "mesh-independent",
+    });
+
+    queueMicrotask(() => {
+      void ensureMeshConnection(api, true);
+    });
+
+    api.on("gateway_start", () => {
+      void ensureMeshConnection(api, false);
+    });
+
+    api.on("gateway_stop", () => {
+      if (meshReconnectTimer) {
+        clearTimeout(meshReconnectTimer);
+        meshReconnectTimer = null;
+      }
+      if (meshSocket) {
+        try { meshSocket.close(); } catch {}
+        meshSocket = null;
+      }
+    });
   },
 });

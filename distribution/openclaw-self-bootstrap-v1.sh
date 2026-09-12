@@ -7,9 +7,12 @@ set -euo pipefail
 
 OPENCLAW="${OPENCLAW:-$(command -v openclaw || true)}"
 PACKAGE_URL="${MESH_PLUGIN_PACKAGE_URL:-}"
-EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271}"
+EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261}"
 WORK="${MESH_BOOTSTRAP_WORK_DIR:-${XDG_RUNTIME_DIR:-/tmp}/progretech-mesh-enroll}"
 ARCHIVE="$WORK/progretech-mesh-openclaw.tgz"
+PTM1="${MESH_ENROLLMENT_PAYLOAD:-}"
+STATE="${PROGRETECH_MESH_STATE_DIR:-$HOME/.progretech-mesh}"
+PENDING="$STATE/pending-enrollment.json"
 
 fail() {
   printf 'Mesh enrollment bootstrap: %s\n' "$*" >&2
@@ -18,6 +21,7 @@ fail() {
 
 [ -n "$OPENCLAW" ] || fail "OpenClaw executable not found"
 [ -n "$PACKAGE_URL" ] || fail "MESH_PLUGIN_PACKAGE_URL is required"
+[ -n "$PTM1" ] || fail "MESH_ENROLLMENT_PAYLOAD is required"
 
 mkdir -p "$WORK"
 chmod 700 "$WORK" 2>/dev/null || true
@@ -31,6 +35,44 @@ case "$PACKAGE_URL" in
 esac
 
 "$OPENCLAW" --version
+
+mkdir -p "$STATE"
+chmod 700 "$STATE" 2>/dev/null || true
+python3 - "$PTM1" "$PENDING" <<'PY'
+import base64, json, os, pathlib, sys
+raw=sys.argv[1]
+target=pathlib.Path(sys.argv[2])
+if not raw.startswith("PTM1:"):
+    raise SystemExit("invalid Mesh enrollment payload")
+token=raw[5:].strip()
+token += "=" * ((4-len(token)%4)%4)
+try:
+    payload=json.loads(base64.urlsafe_b64decode(token))
+except Exception as exc:
+    raise SystemExit("invalid PTM1 payload") from exc
+if payload.get("type") != "PROGRETECH_MESH_ENROLL":
+    raise SystemExit("unexpected Mesh enrollment type")
+if payload.get("mode") != "plug-and-monitor" or payload.get("observation") != "read-only":
+    raise SystemExit("unsafe Mesh enrollment mode")
+if payload.get("conversation_scope") != "mesh-independent":
+    raise SystemExit("Mesh conversation isolation missing")
+minimum={
+    "type": payload.get("type"),
+    "version": payload.get("version"),
+    "mesh": payload.get("mesh"),
+    "agent_id": payload.get("agent_id"),
+    "activation_code": payload.get("activation_code"),
+    "activation_signature": payload.get("activation_signature"),
+    "expires_at": payload.get("expires_at"),
+    "mode": payload.get("mode"),
+    "observation": payload.get("observation"),
+    "conversation_scope": payload.get("conversation_scope"),
+}
+tmp=target.with_suffix(".tmp")
+tmp.write_text(json.dumps(minimum, indent=2), encoding="utf-8")
+os.chmod(tmp, 0o600)
+tmp.replace(target)
+PY
 
 python3 - "$PACKAGE_URL" "$ARCHIVE" <<'PY'
 import sys
@@ -75,6 +117,10 @@ required={
 }
 if not required.issubset(names):
     raise SystemExit("required plugin files missing")
+pkg_member=tf.extractfile("progretech-mesh/package.json")
+pkg=json.load(pkg_member)
+if pkg.get("name") != "@progretech/openclaw-mesh" or pkg.get("version") != "0.4.0":
+    raise SystemExit("unexpected Mesh plugin identity/version")
 PY
 
 # A failure to determine state counts as busy/unsafe.
@@ -105,7 +151,41 @@ done
 is_idle || fail "OpenClaw became busy; installation deferred"
 
 # Supported managed archive installation.
-"$OPENCLAW" plugins install "$ARCHIVE" --force --accept-capabilities
+INSTALLED_VERSION="$("$OPENCLAW" plugins inspect progretech-mesh --json 2>/dev/null | python3 -c '
+import json,sys
+try: d=json.load(sys.stdin)
+except Exception: raise SystemExit(0)
+v=d.get("version") or d.get("plugin",{}).get("version") or ""
+print(v)
+' 2>/dev/null || true)"
+
+python3 - "$INSTALLED_VERSION" "0.4.0" <<'PY'
+import re,sys
+old,new=sys.argv[1],sys.argv[2]
+def parts(v):
+    m=re.match(r"^(\d+)\.(\d+)\.(\d+)", v or "")
+    return tuple(map(int,m.groups())) if m else None
+o,n=parts(old),parts(new)
+if o and n and o > n:
+    raise SystemExit("refusing Mesh adapter downgrade")
+PY
+
+if [ "$INSTALLED_VERSION" = "0.4.0" ]; then
+  printf 'Mesh OpenClaw adapter 0.4.0 already installed; skipping reinstall.\n'
+else
+  BACKUP_DIR="$STATE/adapter-backups"
+  mkdir -p "$BACKUP_DIR"
+  chmod 700 "$BACKUP_DIR" 2>/dev/null || true
+
+  # Managed installer remains authoritative. Keep the verified archive as rollback input;
+  # never touch OpenClaw internals directly.
+  cp "$ARCHIVE" "$BACKUP_DIR/progretech-mesh-openclaw-0.4.0.tgz"
+  chmod 600 "$BACKUP_DIR/progretech-mesh-openclaw-0.4.0.tgz" 2>/dev/null || true
+
+  if ! "$OPENCLAW" plugins install "$ARCHIVE" --force --accept-capabilities; then
+    fail "managed plugin installation failed; existing agent/runtime left untouched"
+  fi
+fi
 
 "$OPENCLAW" plugins inspect progretech-mesh --runtime --json
 "$OPENCLAW" channels status --probe
