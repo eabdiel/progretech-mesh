@@ -7,9 +7,9 @@ The user should need only Mesh and an existing authorized direct chat with the a
 ## Current OpenClaw adapter
 
 - Package ID: `progretech-mesh-openclaw`
-- Version: `0.7.5`
-- Archive: `progretech-mesh-openclaw-0.7.5.tgz`
-- SHA-256: `d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c`
+- Version: `0.7.7`
+- Archive: `progretech-mesh-openclaw-0.7.7.tgz`
+- SHA-256: `ffcde913f823ea5986c23a2e445e6cfe4ccb262ae38169ece782db321c7675c3`
 - Minimum OpenClaw contract target: `2026.9.3`
 
 SHA-256 is integrity pinning, not identity/signature verification. CodeSeal package verification remains deliberately unimplemented and must not be represented as active until the real verifier is integrated.

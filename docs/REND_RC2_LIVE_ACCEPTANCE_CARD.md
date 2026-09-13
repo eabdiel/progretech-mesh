@@ -13,9 +13,9 @@ Edwin must not access Rend's workstation.
 Confirm:
 - Mesh is running from this RC2 candidate.
 - The enrollment endpoint produces PTM1 v3.
-- OpenClaw adapter package is version `0.7.5`.
-- Package SHA-256 is `d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c`.
-- Bootstrap helper SHA-256 is `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`.
+- OpenClaw adapter package is version `0.7.7`.
+- Package SHA-256 is `ffcde913f823ea5986c23a2e445e6cfe4ccb262ae38169ece782db321c7675c3`.
+- Bootstrap helper SHA-256 is `7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6`.
 
 ## Live sequence
 

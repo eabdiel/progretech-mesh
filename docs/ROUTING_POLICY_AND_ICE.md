@@ -23,6 +23,6 @@ For production, TURN credentials should be short-lived rather than static enviro
 The environment-variable credential support in this build is an integration baseline, not the final
 credential-vending design.
 
-Adapter version: 0.7.5
-Adapter SHA-256: `d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c`
-Bootstrap SHA-256: `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`
+Adapter version: 0.7.7
+Adapter SHA-256: `ffcde913f823ea5986c23a2e445e6cfe4ccb262ae38169ece782db321c7675c3`
+Bootstrap SHA-256: `7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6`

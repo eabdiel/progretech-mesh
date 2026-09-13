@@ -115,7 +115,7 @@ The supported managed install operation is:
 
 The helper downloads/verifies while work may still be active, but refuses to invoke managed installation until OpenClaw has been idle across multiple checks.
 
-Helper SHA-256: `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`
+Helper SHA-256: `7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6`
 
 See `docs/OPENCLAW_SELF_BOOTSTRAP.md`.
 
@@ -238,7 +238,7 @@ routes for future guided training.
 The transport track is implementation-complete but still requires live acceptance with Rend before it can
 be considered production-proven.
 
-Adapter: 0.7.5
+Adapter: 0.7.7
 Adapter SHA-256: `8edc0e81bc09600c17bbb9b77db642d158d0223440973cd736b8913432dde435`
 Bootstrap SHA-256: `f7f8438916e679db9410fae3e5591386c93d274666c40a25afc9eb069f6e9267`
 
@@ -272,3 +272,12 @@ The backdrop itself is now transparent. A separate fixed spotlight layer creates
 The OpenClaw adapter install plan no longer waits for generic runtime idle merely because the enrollment conversation itself is active. After package verification, the declared managed install may run during the enrollment turn and must not automatically restart OpenClaw. If the runtime explicitly requires a reload/restart before activation, enrollment stops with `activation_reload_required` and preserves current work.
 
 Bootstrap SHA-256: `8da4e01c369983ce3dd1c0d05bbb884ad320e3c5d5b63b3703d464c7b5433b42`
+
+## RC2 outbound command dispatch fix
+
+Adapter 0.7.7 completes the server-to-agent half of the enrolled WebSocket protocol. The OpenClaw plugin now consumes `message_request` and approved safe-action commands directly from the authenticated Mesh gateway connection, returns `message_response` / `action_result`, and emits `command_ack` delivery acknowledgement before execution. Safe terminal snapshots remain bounded and read-only; no arbitrary remote shell is exposed. Action state now progresses from approval to dispatched, acknowledged, and completed/failed instead of treating local approval as proof of agent execution.
+
+### RC2 terminal and file exchange acceptance update
+Adapter 0.7.7 keeps the proven reconnect/outbound-dispatch behavior and changes the live monitor into a terminal-style activity view with explicit IN / OUT / SYS / ERR / FILE direction markers, wrapped message bodies, and expandable full payload details. Browser attachments now traverse the authenticated Mesh gateway into a non-executable `~/.progretech-mesh/inbox` staging area with size and SHA-256 verification. Agent file offers render inline with a Get file action; the demo artifact request now exercises the real reverse-transfer path. Arbitrary remote shell remains disabled.
+
+The Mesh conversation runner continues to use OpenClaw's documented `api.runtime.agent.runEmbeddedAgent(...)` helper. Provider/auth-profile cooldown or model unavailability is reported as a runtime blocker rather than bypassing the owner's configured model/auth policy.

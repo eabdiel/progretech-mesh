@@ -19,6 +19,10 @@ const CONNECTION_STATUS_PATH = path.join(STATE_DIR, "connection-status.json");
 const LIFECYCLE_STATE_PATH = path.join(STATE_DIR, "lifecycle-state.json");
 const REVOKED_MARKER_PATH = path.join(STATE_DIR, "revoked.json");
 const LOCAL_ACCESS_PATH = path.join(STATE_DIR, "local-access.json");
+const FILE_INBOX_DIR = path.join(STATE_DIR, "inbox");
+const MAX_MESH_FILE_BYTES = 20 * 1024 * 1024;
+const MESH_FILE_CHUNK_BYTES = 64 * 1024;
+const inboundMeshTransfers = new Map();
 const LOCAL_SIGNAL_PORT = Number.parseInt(process.env.PROGRETECH_MESH_LOCAL_PORT || "18791", 10);
 
 
@@ -335,7 +339,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.5",
+    adapter_version: "0.7.7",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -364,6 +368,268 @@ function sendMeshGatewayMessage(message) {
   } catch {
     return false;
   }
+}
+
+
+
+function safeTransferName(value) {
+  const base = path.basename(String(value || "mesh-file")).replace(/[^A-Za-z0-9._ -]/g, "_").slice(0, 180);
+  return base || "mesh-file";
+}
+
+function uniqueInboxPath(filename) {
+  fs.mkdirSync(FILE_INBOX_DIR, {recursive:true, mode:0o700});
+  const safe = safeTransferName(filename);
+  let target = path.join(FILE_INBOX_DIR, safe);
+  if (!fs.existsSync(target)) return target;
+  const ext = path.extname(safe);
+  const stem = safe.slice(0, Math.max(1, safe.length - ext.length));
+  for (let i = 1; i < 1000; i += 1) {
+    target = path.join(FILE_INBOX_DIR, `${stem}-${i}${ext}`);
+    if (!fs.existsSync(target)) return target;
+  }
+  return path.join(FILE_INBOX_DIR, `${stem}-${crypto.randomUUID().slice(0,8)}${ext}`);
+}
+
+function cancelInboundTransfer(transferId) {
+  const state = inboundMeshTransfers.get(transferId);
+  inboundMeshTransfers.delete(transferId);
+  if (!state) return;
+  try { fs.unlinkSync(state.tempPath); } catch {}
+}
+
+function handleInboundFileTransfer(msg) {
+  const type = String(msg?.type || "");
+  const payload = msg?.payload || {};
+  const transferId = trimText(payload.transfer_id || "", 160);
+  if (!transferId) throw new Error("file_transfer_id_required");
+
+  if (type === "file_transfer_start") {
+    const filename = safeTransferName(payload.filename || "mesh-file");
+    const size = Number(payload.size || 0);
+    if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_MESH_FILE_BYTES) throw new Error("file_transfer_size_invalid");
+    fs.mkdirSync(FILE_INBOX_DIR, {recursive:true, mode:0o700});
+    const tempPath = path.join(FILE_INBOX_DIR, `.${transferId}.part`);
+    fs.writeFileSync(tempPath, Buffer.alloc(0), {mode:0o600});
+    inboundMeshTransfers.set(transferId, {
+      filename,
+      size,
+      sha256:String(payload.sha256 || "").toLowerCase(),
+      mime:trimText(payload.mime || "application/octet-stream", 160),
+      tempPath,
+      received:0,
+      nextIndex:0,
+      hasher:crypto.createHash("sha256"),
+    });
+    sendCommandAck("file_transfer_start", {transfer_id:transferId, filename});
+    return true;
+  }
+
+  const state = inboundMeshTransfers.get(transferId);
+  if (!state) throw new Error("file_transfer_unknown");
+
+  if (type === "file_transfer_chunk") {
+    const index = Number(payload.index || 0);
+    if (index !== state.nextIndex) throw new Error("file_transfer_sequence_mismatch");
+    const chunk = Buffer.from(String(payload.content_base64 || ""), "base64");
+    if (!chunk.length || chunk.length > MESH_FILE_CHUNK_BYTES) throw new Error("file_transfer_chunk_invalid");
+    if (state.received + chunk.length > state.size) throw new Error("file_transfer_overflow");
+    fs.appendFileSync(state.tempPath, chunk);
+    state.hasher.update(chunk);
+    state.received += chunk.length;
+    state.nextIndex += 1;
+    return true;
+  }
+
+  if (type === "file_transfer_end") {
+    const digest = state.hasher.digest("hex");
+    if (state.received !== state.size) { cancelInboundTransfer(transferId); throw new Error("file_transfer_size_mismatch"); }
+    if (state.sha256 && digest !== state.sha256) { cancelInboundTransfer(transferId); throw new Error("file_transfer_sha256_mismatch"); }
+    const finalPath = uniqueInboxPath(state.filename);
+    fs.renameSync(state.tempPath, finalPath);
+    inboundMeshTransfers.delete(transferId);
+    sendMeshGatewayMessage({
+      type:"agent_activity",
+      timestamp:new Date().toISOString(),
+      message:`Mesh file received: ${state.filename}`,
+      payload:{channel:"mesh",direction:"input",state:"completed",event_class:"file_received",filename:state.filename,size:state.size,sha256:digest,saved_to:finalPath},
+    });
+    sendCommandAck("file_transfer_end", {transfer_id:transferId, filename:state.filename, sha256:digest});
+    return true;
+  }
+
+  if (type === "file_transfer_cancel") {
+    cancelInboundTransfer(transferId);
+    return true;
+  }
+  return false;
+}
+
+function offerBufferToMesh(filename, mime, content) {
+  const buffer = Buffer.isBuffer(content) ? content : Buffer.from(String(content), "utf8");
+  if (!buffer.length || buffer.length > MAX_MESH_FILE_BYTES) throw new Error("file_offer_size_invalid");
+  const offerId = crypto.randomUUID();
+  const digest = crypto.createHash("sha256").update(buffer).digest("hex");
+  const safeName = safeTransferName(filename);
+  sendMeshGatewayMessage({type:"file_offer_start",timestamp:new Date().toISOString(),payload:{offer_id:offerId,filename:safeName,mime,size:buffer.length,sha256:digest}});
+  let index = 0;
+  for (let offset=0; offset < buffer.length; offset += MESH_FILE_CHUNK_BYTES) {
+    const chunk = buffer.subarray(offset, Math.min(buffer.length, offset + MESH_FILE_CHUNK_BYTES));
+    sendMeshGatewayMessage({type:"file_offer_chunk",timestamp:new Date().toISOString(),payload:{offer_id:offerId,index,content_base64:chunk.toString("base64")}});
+    index += 1;
+  }
+  sendMeshGatewayMessage({type:"file_offer_end",timestamp:new Date().toISOString(),payload:{offer_id:offerId}});
+  return {offer_id:offerId, filename:safeName, size:buffer.length, sha256:digest};
+}
+
+function sendCommandAck(commandType, correlation = {}) {
+  return sendMeshGatewayMessage({
+    type: "command_ack",
+    timestamp: new Date().toISOString(),
+    message: `Mesh command received: ${commandType}`,
+    payload: {
+      command_type: commandType,
+      ...correlation,
+    },
+  });
+}
+
+function readOnlyTerminalSnapshot() {
+  return [
+    `host=${os.hostname()}`,
+    `platform=${os.platform()} ${os.release()}`,
+    `node=${process.version}`,
+    `adapter=@progretech/openclaw-mesh 0.7.7`,
+    "mode=read-only-snapshot",
+    "shell=disabled",
+  ];
+}
+
+async function handleApprovedAction(api, msg) {
+  const payload = msg?.payload || {};
+  const actionId = trimText(payload.action_id || "", 160);
+  const actionType = trimText(payload.action_type || "", 120);
+  sendCommandAck("approved_action", { action_id: actionId, action_type: actionType });
+
+  if (actionType === "request_terminal_snapshot") {
+    sendMeshGatewayMessage({
+      type: "terminal",
+      timestamp: new Date().toISOString(),
+      message: "Read-only terminal snapshot",
+      payload: { action_id: actionId, lines: readOnlyTerminalSnapshot(), severity: "info" },
+    });
+    sendMeshGatewayMessage({
+      type: "action_result",
+      timestamp: new Date().toISOString(),
+      message: "Terminal snapshot completed",
+      payload: { action_id: actionId, status: "completed" },
+    });
+    return;
+  }
+
+  if (actionType === "request_task_snapshot") {
+    sendMeshGatewayMessage({
+      type: "event",
+      timestamp: new Date().toISOString(),
+      message: "Task snapshot: OpenClaw gateway connected and Mesh adapter responsive",
+      payload: { action_id: actionId, severity: "info", event_class: "task" },
+    });
+    sendMeshGatewayMessage({
+      type: "action_result",
+      timestamp: new Date().toISOString(),
+      message: "Task snapshot completed",
+      payload: { action_id: actionId, status: "completed" },
+    });
+    return;
+  }
+
+  if (actionType === "request_status") {
+    sendMeshGatewayMessage(heartbeatPayload());
+    sendMeshGatewayMessage({
+      type: "action_result",
+      timestamp: new Date().toISOString(),
+      message: "Status request completed",
+      payload: { action_id: actionId, status: "completed" },
+    });
+    return;
+  }
+
+  sendMeshGatewayMessage({
+    type: "action_result",
+    timestamp: new Date().toISOString(),
+    message: "Unsupported approved action",
+    payload: { action_id: actionId, status: "failed", error: "unsupported_action" },
+  });
+}
+
+async function handleGatewayCommand(api, msg) {
+  if (["file_transfer_start","file_transfer_chunk","file_transfer_end","file_transfer_cancel"].includes(msg?.type)) {
+    try { handleInboundFileTransfer(msg); }
+    catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const transferId = trimText(msg?.payload?.transfer_id || "", 160);
+      if (transferId) cancelInboundTransfer(transferId);
+      sendMeshGatewayMessage({type:"agent_activity",timestamp:new Date().toISOString(),message:"Mesh file receive failed",payload:{channel:"mesh",direction:"input",state:"error",severity:"error",error:trimText(detail,500),transfer_id:transferId}});
+    }
+    return true;
+  }
+
+  if (msg?.type === "demo_file_offer_request") {
+    const status = [
+      "ProgreTech Mesh agent file exchange",
+      `agent=${meshIdentity?.agent_id || "unknown"}`,
+      `adapter=@progretech/openclaw-mesh 0.7.7`,
+      `generated_at=${new Date().toISOString()}`,
+      "purpose=RC2 file exchange acceptance artifact",
+    ].join("\n") + "\n";
+    const offered = offerBufferToMesh("mesh-agent-status.txt", "text/plain", status);
+    sendCommandAck("demo_file_offer_request", {offer_id:offered.offer_id, filename:offered.filename});
+    return true;
+  }
+  if (msg?.type === "message_request") {
+    const requestId = trimText(msg.request_id || crypto.randomUUID(), 160);
+    const payload = msg.payload || {};
+    sendCommandAck("message_request", { request_id: requestId });
+    try {
+      const result = await runMeshConversation(api, {
+        agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
+        text: payload.text,
+        room: payload.room || "direct",
+        sender: payload.sender || "Mesh user",
+        transport: "mesh-websocket",
+      });
+      sendMeshGatewayMessage({
+        type: "message_response",
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+        message: result.text || "",
+        payload: {
+          request_id: requestId,
+          room: payload.room || "direct",
+          agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
+          runtime: { adapter: "openclaw-embedded", session_id: result.session_id, session_key: result.session_key, run_id: result.run_id },
+        },
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      appendEvent({ event_type: "bridge", channel: "mesh", state: "error", direction: null, summary: "Mesh WebSocket conversation failed", payload: { request_id: requestId, error: trimText(detail, 500) } });
+      sendMeshGatewayMessage({
+        type: "message_response",
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+        message: "The agent could not complete the Mesh request through the configured runtime.",
+        payload: { request_id: requestId, room: payload.room || "direct", severity: "error", runtime_error: trimText(detail, 500) },
+      });
+    }
+    return true;
+  }
+
+  if (msg?.type === "approved_action") {
+    await handleApprovedAction(api, msg);
+    return true;
+  }
+
+  return false;
 }
 
 function heartbeatPayload() {
@@ -576,26 +842,35 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   });
 
   socket.addEventListener("message", (event) => {
-    try {
-      const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
-      if (msg?.type === "heartbeat_request") {
-        sendMeshGatewayMessage(heartbeatPayload());
+    void (async () => {
+      try {
+        const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+        if (await handleGatewayCommand(api, msg)) return;
+        if (msg?.type === "heartbeat_request") {
+          sendCommandAck("heartbeat_request", {});
+          sendMeshGatewayMessage(heartbeatPayload());
+          return;
+        }
+        if (msg?.type === "mesh_direct_signal") {
+          await handleDirectSignal(api,msg.signal).catch((error)=>{
+            const detail=error instanceof Error ? error.message : String(error);
+            directSignal({type:"direct_error",payload:{peer_id:msg?.signal?.payload?.peer_id || null,error:trimText(detail,500)}});
+          });
+          return;
+        }
+        if (msg?.type === "credential_revoked" || msg?.type === "device_revoked") {
+          markRevoked(msg?.reason || "server_revoked", record);
+          writeConnectionStatus("revoked", "Mesh credential revoked; reconnect disabled", {
+            agent_id: record.agent_id,
+            device_id: record.device_id,
+          });
+          try { socket.close(4003, "revoked"); } catch {}
+        }
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        appendEvent({ event_type: "gateway_command", channel: "mesh", state: "error", direction: "input", summary: "Mesh gateway command handling failed", payload: { error: trimText(detail, 500) } });
       }
-      if (msg?.type === "mesh_direct_signal") {
-        void handleDirectSignal(api,msg.signal).catch((error)=>{
-          const detail=error instanceof Error ? error.message : String(error);
-          directSignal({type:"direct_error",payload:{peer_id:msg?.signal?.payload?.peer_id || null,error:trimText(detail,500)}});
-        });
-      }
-      if (msg?.type === "credential_revoked" || msg?.type === "device_revoked") {
-        markRevoked(msg?.reason || "server_revoked", record);
-        writeConnectionStatus("revoked", "Mesh credential revoked; reconnect disabled", {
-          agent_id: record.agent_id,
-          device_id: record.device_id,
-        });
-        try { socket.close(4003, "revoked"); } catch {}
-      }
-    } catch {}
+    })();
   });
 
   socket.addEventListener("close", (event) => {
@@ -1005,7 +1280,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.5",
+      adapter_version: "0.7.7",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",

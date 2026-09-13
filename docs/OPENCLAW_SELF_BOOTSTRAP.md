@@ -10,7 +10,7 @@ The human owner does not install this package. An OpenClaw agent receiving PTM1 
 4. Read `/api/enrollment/adapters/openclaw/install-plan`.
 5. Download the declared Mesh plugin package.
 6. Verify SHA-256 `3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271` for the current package.
-7. Optionally fetch the helper at `/api/enrollment/adapters/openclaw/bootstrap` and verify helper SHA-256 `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`.
+7. Optionally fetch the helper at `/api/enrollment/adapters/openclaw/bootstrap` and verify helper SHA-256 `7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6`.
 8. Perform the declared hot-safe managed plugin install after verification; do not wait for generic idle merely because the enrollment chat is active.
 9. Use OpenClaw's supported managed plugin installer for the verified local archive:
    `openclaw plugins install <verified-archive> --force --accept-capabilities`

@@ -155,8 +155,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.5"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.5.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.7"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.7.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -571,6 +571,24 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
         # Ephemeral connection metadata only. Never persist SDP/ICE or local access credentials.
         broadcast_to_clients(agent_id, {"type":"gateway_message","agent_id":agent_id,"message":message,"agent":public_agent(record)})
         return
+    elif msg_type == "command_ack":
+        payload = message.get("payload", {})
+        action_id = payload.get("action_id")
+        action = ACTION_REQUESTS.get(str(action_id)) if action_id else None
+        if action and action.get("status") in {"approved", "dispatched", "approved_waiting_for_gateway"}:
+            action["status"] = "acknowledged"
+            action["acknowledged_at"] = utcnow()
+        append_event(agent_id, {
+            "type": "delivery",
+            "message": message.get("message", "Mesh command acknowledged by agent adapter"),
+            "payload": {**payload, "severity": "info"},
+        })
+        broadcast_to_clients(agent_id, {
+            "type": "command_ack",
+            "agent_id": agent_id,
+            "message": message,
+            "action": action,
+        })
     elif msg_type == "action_result":
         payload = message.get("payload", {})
         action_id = payload.get("action_id")
@@ -1076,7 +1094,7 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         ENVIRONMENT=environment,
-        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.8-v1-rc2-idempotent-handoff"),
+        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.10-v1-rc2-terminal-file-exchange"),
         BUILD_ID=os.environ.get("BUILD_ID", BUILD_ID),
         DEV_AUTH_ENABLED=os.environ.get("DEV_AUTH_ENABLED", dev_auth_default) == "1",
         DEV_SEED_AGENTS=os.environ.get("DEV_SEED_AGENTS", dev_seed_default) == "1",
@@ -2143,6 +2161,8 @@ def create_app() -> Flask:
             action["status"] = "approved_waiting_for_gateway"
             return jsonify(ok=False, error=error, action=action), 409
 
+        action["status"] = "dispatched"
+        action["dispatched_at"] = utcnow()
         append_event(action["agent_id"], {
             "type": "approval",
             "message": f"Approved action: {action['action_type']}",

@@ -284,6 +284,7 @@
 
     if (progress) progress.style.width = "100%";
     showToast(`Sent ${file.name} · ${formatBytes(file.size)}`);
+    appendLiveEvent({type:"file_transfer",timestamp:new Date().toISOString(),message:`Attached file: ${file.name}`,payload:{direction:"outbound",filename:file.name,size:file.size,transfer_id:data.transfer_id,sha256:data.sha256}});
     pendingAttachment = null;
     fileInput.value = "";
     setTimeout(renderAttachment, 400);
@@ -1183,15 +1184,19 @@
 
       if (
         data.type === "approval_request" ||
+        data.type === "command_ack" ||
         data.type === "action_result" ||
         data.type === "file_offer_start" ||
         data.type === "file_offer_progress" ||
         data.type === "file_offer_ready"
       ) {
-        if (data.type === "approval_request" || data.type === "action_result") refreshApprovals();
+        if (["approval_request","command_ack","action_result"].includes(data.type)) refreshApprovals();
         if (data.type === "file_offer_ready") {
           showToast(`${data.file.filename} is ready to download.`);
+          appendLiveEvent({type:"file_offer_ready", timestamp:new Date().toISOString(), message:`Agent offered file: ${data.file.filename}`, file:data.file, payload:{direction:"inbound", size:data.file.size, sha256:data.file.sha256}});
           refreshFileOffers();
+        } else if (["command_ack","action_result"].includes(data.type)) {
+          appendLiveEvent(data);
         }
         return;
       }
@@ -1243,10 +1248,48 @@
     rerenderFilteredEvents();
   }
 
+  function terminalDirection(message) {
+    const type = String(message?.type || "event");
+    const payload = message?.payload || {};
+    const direction = String(payload.direction || "").toLowerCase();
+    const severity = String(payload.severity || "").toLowerCase();
+    if (severity === "error" || type === "direct_error") return {label:"ERR", cls:"dir-err"};
+    if (type.startsWith("file_") || type === "file" || type === "file_transfer") return {label:"FILE", cls:"dir-file"};
+    if (["user_message","group_message"].includes(type) || direction === "input" || direction === "out" || direction === "outbound") return {label:"OUT", cls:"dir-out"};
+    if (type === "message_response" || direction === "output" || direction === "in" || direction === "inbound") return {label:"IN", cls:"dir-in"};
+    if (type === "command_ack") return {label:"IN", cls:"dir-in"};
+    return {label:"SYS", cls:"dir-sys"};
+  }
+
+  function safeDetailPayload(message) {
+    const payload = {...(message?.payload || {})};
+    delete payload.content_base64;
+    delete payload.token;
+    delete payload.credential;
+    return payload;
+  }
+
+  function appendTerminalFileCard(item, file) {
+    if (!file?.id || !file?.filename) return;
+    const card = document.createElement("div");
+    card.className = "mesh-file-card";
+    card.innerHTML = `
+      <div>
+        <strong>${escapeHtml(file.filename)}</strong>
+        <span>${formatBytes(file.size)}${file.sha256 ? ` · SHA-256 ${escapeHtml(String(file.sha256).slice(0,16))}…` : ""}</span>
+      </div>
+      <button type="button" data-terminal-download="${escapeHtml(file.id)}">Get file</button>
+    `;
+    card.querySelector("[data-terminal-download]")?.addEventListener("click", () => {
+      window.location.href = `/api/files/${encodeURIComponent(file.id)}/download`;
+    });
+    item.appendChild(card);
+  }
+
   function appendLiveEvent(message, track = true) {
     if (track) {
       liveEvents.push(message);
-      if (liveEvents.length > 100) liveEvents = liveEvents.slice(-100);
+      if (liveEvents.length > 160) liveEvents = liveEvents.slice(-160);
       if (!eventMatchesFilters(message)) return;
     }
     if (eventList.querySelector(".empty-stream")) eventList.innerHTML = "";
@@ -1254,33 +1297,30 @@
     const type = message.type || "event";
     const payload = message.payload || {};
     const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+    const direction = terminalDirection(message);
+    const bodyText = message.message || (type === "file_offer_ready" ? `Agent offered ${message.file?.filename || "a file"}` : "Event received");
+    const item = document.createElement("div");
+    item.className = `mesh-line ${direction.cls} severity-${severityFor(message)}`;
+    item.innerHTML = `
+      <time>${escapeHtml(time)}</time>
+      <span class="mesh-dir">${escapeHtml(direction.label)}</span>
+      <span class="mesh-kind">${escapeHtml(type)}</span>
+      <span class="mesh-body">${escapeHtml(bodyText)}</span>
+    `;
 
-    if (["user_message","group_message","message_response"].includes(type)) {
-      const bubble = document.createElement("div");
-      bubble.className = `chat-bubble ${type === "message_response" ? "agent" : "user"}`;
-      bubble.innerHTML = `
-        <div class="chat-meta">
-          <span>${type === "message_response" ? "Agent" : escapeHtml(payload.sender || "You")}</span>
-          <span>${escapeHtml(time)}</span>
-        </div>
-        <div class="chat-text">${escapeHtml(message.message || "")}</div>
-      `;
-      eventList.appendChild(bubble);
-      if (type === "message_response") {
-        speakAgentReply(message.message || "");
-      }
-    } else {
-      const item = document.createElement("div");
-      item.className = `event live-flash severity-${severityFor(message)}`;
-      item.innerHTML = `
-        <time>${escapeHtml(time)}</time>
-        <span class="kind">${escapeHtml(type)}</span>
-        <span class="desc">${escapeHtml(message.message || "Event received")}</span>
-      `;
-      eventList.appendChild(item);
+    const detail = safeDetailPayload(message);
+    if (Object.keys(detail).length) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "mesh-detail";
+      wrapper.innerHTML = `<details><summary>details</summary><pre>${escapeHtml(JSON.stringify(detail, null, 2))}</pre></details>`;
+      item.appendChild(wrapper);
     }
 
-    while (eventList.children.length > 16) eventList.firstElementChild.remove();
+    if (type === "file_offer_ready" && message.file) appendTerminalFileCard(item, message.file);
+    eventList.appendChild(item);
+    if (type === "message_response") speakAgentReply(message.message || "");
+
+    while (eventList.children.length > 80) eventList.firstElementChild.remove();
     eventList.lastElementChild?.scrollIntoView({block:"nearest"});
   }
 

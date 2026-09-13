@@ -110,7 +110,7 @@
       <section class="dashboard" id="dashboard">
         <div class="panel" id="streamPanel">
           <div class="panel-head">
-            <h3>Live event stream</h3>
+            <h3>Mesh terminal</h3>
             <span id="eventStreamLabel">Select an agent</span>
           </div>
 
@@ -132,8 +132,8 @@
             <button class="ghost-btn compact" id="requestTerminalSnapshot">Terminal snapshot</button>
           </div>
 
-          <div class="event-list" id="eventList">
-            <div class="empty-stream">Choose <strong>Monitor live</strong> on an agent to attach the browser to its ephemeral event stream.</div>
+          <div class="mesh-terminal-stream" id="eventList" role="log" aria-live="polite" aria-label="Mesh terminal activity">
+            <div class="empty-stream">Choose <strong>Monitor live</strong> on an agent to attach the browser to its ephemeral terminal stream.</div>
           </div>
 
           <form class="composer" id="messageComposer">

@@ -7,7 +7,7 @@ set -euo pipefail
 
 OPENCLAW="${OPENCLAW:-$(command -v openclaw || true)}"
 PACKAGE_URL="${MESH_PLUGIN_PACKAGE_URL:-}"
-EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c}"
+EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-ffcde913f823ea5986c23a2e445e6cfe4ccb262ae38169ece782db321c7675c3}"
 WORK="${MESH_BOOTSTRAP_WORK_DIR:-${XDG_RUNTIME_DIR:-/tmp}/progretech-mesh-enroll}"
 ARCHIVE="$WORK/progretech-mesh-openclaw.tgz"
 PTM1="${MESH_ENROLLMENT_PAYLOAD:-}"
@@ -119,7 +119,7 @@ if not required.issubset(names):
     raise SystemExit("required plugin files missing")
 pkg_member=tf.extractfile("progretech-mesh/package.json")
 pkg=json.load(pkg_member)
-if pkg.get("name") != "@progretech/openclaw-mesh" or pkg.get("version") != "0.7.5":
+if pkg.get("name") != "@progretech/openclaw-mesh" or pkg.get("version") != "0.7.7":
     raise SystemExit("unexpected Mesh plugin identity/version")
 PY
 
@@ -134,7 +134,7 @@ v=d.get("version") or d.get("plugin",{}).get("version") or ""
 print(v)
 ' 2>/dev/null || true)"
 
-python3 - "$INSTALLED_VERSION" "0.7.5" <<'PY'
+python3 - "$INSTALLED_VERSION" "0.7.7" <<'PY'
 import re,sys
 old,new=sys.argv[1],sys.argv[2]
 def parts(v):
@@ -145,8 +145,8 @@ if o and n and o > n:
     raise SystemExit("refusing Mesh adapter downgrade")
 PY
 
-if [ "$INSTALLED_VERSION" = "0.7.5" ]; then
-  printf 'Mesh OpenClaw adapter 0.7.5 already installed; skipping reinstall.\n'
+if [ "$INSTALLED_VERSION" = "0.7.7" ]; then
+  printf 'Mesh OpenClaw adapter 0.7.7 already installed; skipping reinstall.\n'
 else
   BACKUP_DIR="$STATE/adapter-backups"
   mkdir -p "$BACKUP_DIR"
@@ -154,8 +154,8 @@ else
 
   # Managed installer remains authoritative. Keep the verified archive as rollback input;
   # never touch OpenClaw internals directly.
-  cp "$ARCHIVE" "$BACKUP_DIR/progretech-mesh-openclaw-0.7.5.tgz"
-  chmod 600 "$BACKUP_DIR/progretech-mesh-openclaw-0.7.5.tgz" 2>/dev/null || true
+  cp "$ARCHIVE" "$BACKUP_DIR/progretech-mesh-openclaw-0.7.7.tgz"
+  chmod 600 "$BACKUP_DIR/progretech-mesh-openclaw-0.7.7.tgz" 2>/dev/null || true
 
   if ! "$OPENCLAW" plugins install "$ARCHIVE" --force --accept-capabilities; then
     fail "managed plugin installation failed; existing agent/runtime left untouched"
