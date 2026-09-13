@@ -1,284 +1,546 @@
 # ProgreTech Mesh v1 — RC1 Integration candidate 1
 <img width="1761" height="900" alt="firefox_ybIdXT0Xw0" src="https://github.com/user-attachments/assets/de674b43-4bbb-487e-85bb-ea7617f955c1" />
 
-## Target
+# ProgreTech Mesh
 
-**Release Candidate + Customer Workflow Validation**
+> A direct-first, local-owned monitoring and interaction console for independently running AI agents.
 
-This is the first consolidated Mesh v1 release-candidate package.
+**ProgreTech Mesh** is an open project exploring how humans can monitor, communicate with, and safely coordinate autonomous AI agents **without taking ownership of the agent runtime away from the user's machine**.
 
-The application frontend contains no internal development phase/revision terminology.
+Mesh is designed around a simple principle:
 
-## Completed customer-facing work
+**Connect to the agent. Observe it. Work with it. Don't take it over.**
 
-### Connect Agent
-The normal UI no longer shows a workstation command. It generates a user-controlled
-agent-led enrollment message for the user to send through the agent's existing chat.
+The agent keeps its own runtime, memory, files, tools, models, tasks, and existing communication channels. Mesh provides a separate operational layer around it.
 
-The modal includes copy confirmation, explicit cancel, active/waiting state, automatic
-connection polling, connected state, and plug-and-monitor assurance.
+---
 
-### Channel activity
-Live activity supports:
+## Why Mesh?
 
-- All activity
-- Telegram
-- Mesh
-- System & tools
+AI agents are becoming increasingly capable of operating independently across local machines, development environments, messaging platforms, and automation systems.
 
-### Guided Training
-Guided Training is now built into Mesh and can be restarted from the top bar.
+But operating several autonomous agents creates a different problem:
 
-### Release candidate
-All earlier foundations remain included: notifications, passive observation,
-channel-isolated Mesh conversation, persistent local reconnect credentials, identity
-boundaries, Cloud Run staging baseline, approvals/safe actions, bidirectional files,
-transfer hardening, PWA support, and mobile/foldable responsiveness.
+**How do you see what they're doing, communicate with them, exchange artifacts, approve sensitive actions, and understand their health without turning the monitoring system itself into the agent platform?**
 
-## Deployment
+Mesh is an experiment in answering that question.
 
-Cloud deployment remains intentionally deferred until after local release-candidate
-testing. When ready, perform the Cloud Run/service/IAM/secrets/OIDC/CodeSeal/domain/DNS
-setup as a separate guided activity.
+Instead of moving agents into a centralized runtime, Mesh connects to agents where they already operate.
 
-## Validation documents
+```text
+                         ProgreTech Mesh
+                               │
+                identity / discovery / signaling
+                               │
+              ┌────────────────┼────────────────┐
+              │                │                │
+            Rend             Agent B          Agent C
+              │
+       existing runtime
+              │
+   ┌──────────┼───────────┐
+   │          │           │
+ Telegram   Tasks       Tools
+   │          │           │
+ Memory     Files       Models
+```
 
-- `docs/RELEASE_CANDIDATE_VALIDATION.md`
-- `docs/V1_PRODUCT_ACCEPTANCE.md`
-- `docs/GUIDED_TRAINING.md`
+Mesh is the **control and visibility plane**.
 
-## Next activity
+It is not the agent.
 
-Run the release candidate locally against a real Rend session before cloud deployment.
+---
 
+## Core Principles
 
-## RC1 Integration candidate 1
+### Plug and monitor
 
-Fixed a real runtime defect in `main.py` where `device_credential_secret()` referenced
-an undefined `app_secret_key()` helper.
+Connecting or disconnecting Mesh should never restart, reset, pause, replace, or seize control of an existing agent workload.
 
-The helper now resolves the same `SECRET_KEY` fallback used by the Flask app without
-requiring a Flask application context.
+### Local ownership
 
-No user-facing behavior was changed.
+The agent runtime, durable memory, files, tools, credentials, and reconnect identity remain on the owner's machine.
 
+### Independent conversations
 
-## RC2 OpenClaw integration candidate
+A Mesh conversation is separate from Telegram or any other agent communication channel.
 
-Adds a native OpenClaw plugin observer and loopback isolated-conversation bridge. See `docs/OPENCLAW_RC2_INTEGRATION.md`. The legacy `openclaw` CLI adapter remains available only for comparison; the target adapter is `openclaw_bridge`.
+Mesh can observe activity across supported channels without merging their conversation histories.
 
+### Direct-first communication
 
-## RC2 Integration 2 — agent-led bootstrap
+When possible, the owner device communicates directly with the agent.
 
-The OpenClaw enrollment flow now defaults to `openclaw_bridge` + `openclaw_hooks` and schedules an agent-operated bootstrap that stages the plugin immediately but waits for OpenClaw to be idle before activation/restart. See `SEND_THIS_TO_REND.txt` and `docs/AGENT_LED_ENROLLMENT.md`.
+The intended routing hierarchy is:
 
+```text
+Same LAN
+   ↓
+Direct peer-to-peer
+   ↓
+Optional encrypted relay
+```
 
-## RC2 package-flow update
+Cloud infrastructure can provide identity, discovery, package distribution, and ephemeral signaling without becoming the default conversation pipe.
 
-Mesh now serves a versioned OpenClaw plugin package itself. PTM1 v2 includes the package URL and SHA-256 pin, and the agent enrollment helper verifies and stages that package before activation. This removes the intended ZIP-transfer/workstation-login step. See `docs/PLUGIN_PACKAGE_PROTOCOL.md`.
+### Bounded control
 
-Current package: `progretech-mesh-openclaw-0.2.0.tgz`  
-SHA-256: `3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271`
+Mesh supports explicit, policy-gated actions.
 
-CodeSeal package verification is still a production gate and is not simulated.
+It is deliberately **not an unrestricted remote shell**.
 
+### Ephemeral operational data
 
+Operational conversations, telemetry, task streams, terminal snapshots, and transferred files are intended to remain ephemeral rather than becoming permanent cloud history.
 
+---
 
-## RC2 universal agent enrollment
+## What Mesh Looks Like
 
-Mesh no longer assumes an enrollment bootstrap or any other ProgreTech component is already
-present on an agent. PTM1 v3 contains discovery URLs for a machine-readable enrollment protocol
-and adapter catalog. The user's existing conversation with the agent is the only guaranteed
-entry point.
+Mesh provides a responsive browser/PWA console for a fleet of independently running agents.
 
-Rend must pass the same enrollment test as a third-party agent: Telegram-only instruction,
-self-discovery, self-install using existing authority, idle-safe activation, and outbound Mesh
-connection with no owner workstation access.
+Current areas include:
 
-See:
-- `docs/UNIVERSAL_AGENT_ENROLLMENT.md`
-- `docs/REND_UNIVERSAL_ENROLLMENT_ACCEPTANCE.md`
-- `docs/ADR_UNIVERSAL_AGENT_ONBOARDING.md`
+- Agent fleet and identity status
+- Gateway connectivity
+- Live agent activity
+- Heartbeat and telemetry
+- Independent Mesh conversations
+- Read-only operational snapshots
+- Policy-gated approvals
+- Bidirectional file exchange
+- Per-agent notifications
+- Guided Training
+- Direct/P2P routing controls
+- PWA/mobile/foldable layouts
 
+The live monitor uses a terminal-style stream with explicit traffic direction:
+
+```text
+SYS  Gateway connected
+SYS  Passive monitoring active
 
-## Universal website-prompt enrollment
+OUT  User → Agent
+     Review the current task.
 
-The website-generated enrollment message is the only required bootstrap input. No ProgreTech software, PTM1 recognizer, or Mesh plugin is assumed to be preinstalled. The agent decodes PTM1, reads the Mesh-hosted protocol/catalog, matches its known runtime identity against Mesh's bounded adapter catalog and self-installs the single compatible adapter using authority it already has. Human workstation access is a failure path, not normal onboarding.
+IN   Command acknowledged
 
-## OpenClaw self-bootstrap path
+IN   Agent → User
+     Task completed.
 
-The universal enrollment catalog now exposes an executable OpenClaw installation plan plus an optional agent-run helper. No preinstalled Mesh bootstrap is assumed.
+FILE Agent offered artifact
+     report.html
+```
 
-The supported managed install operation is:
+This makes the communication boundary visible rather than hiding agent operations behind a conventional chat interface.
 
-`openclaw plugins install <verified-local-archive> --force --accept-capabilities`
+---
+
+## Agent-Led Enrollment
+
+A major design goal is **zero-workstation onboarding for the owner**.
+
+The user should not need to SSH into the agent machine, open a terminal, install a Mesh client manually, or manipulate the agent filesystem.
+
+Instead:
+
+```text
+Open Mesh
+    │
+    ▼
+Choose Connect Agent
+    │
+    ▼
+Mesh generates an enrollment instruction
+    │
+    ▼
+Send it through an existing authorized
+conversation with the agent
+    │
+    ▼
+Agent validates the request
+    │
+    ▼
+Agent discovers and verifies its adapter
+    │
+    ▼
+Agent installs/configures it using
+its existing authority
+    │
+    ▼
+Agent connects to Mesh
+```
 
-The helper downloads/verifies while work may still be active, but refuses to invoke managed installation until OpenClaw has been idle across multiple checks.
+Enrollment is bounded and fail-closed.
 
-Helper SHA-256: `7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6`
+A successfully enrolled agent receives a durable local reconnect credential so subsequent connections do not require repeating discovery or installation.
 
-See `docs/OPENCLAW_SELF_BOOTSTRAP.md`.
+---
 
+## Current Reference Agent: Rend
 
-## Automatic post-install handoff
+Mesh is currently being developed and acceptance-tested against **Rend**, an independently running OpenClaw-based autonomous agent.
 
-The OpenClaw Mesh adapter is now `0.3.0`. A PTM1-directed self-bootstrap writes a one-time
-pending enrollment before managed installation. When OpenClaw loads the adapter, it automatically:
+Rend is intentionally treated as an external agent from Mesh's perspective.
 
-- redeems the pending activation;
-- persists the signed device reconnect credential;
-- deletes the one-time pending activation;
-- establishes the outbound Mesh WebSocket;
-- forwards passive observation activity;
-- reconnects automatically on later runtime starts.
+This helps enforce an important architectural requirement:
 
-No second owner instruction is required.
+> Mesh should integrate with an agent through a defined adapter and protocol rather than through assumptions about the machine running it.
 
-Plugin SHA-256: `6eeffc110a025f77745a62415394df6c21141bf9edef818584e0f78133361ccc`  
-Bootstrap helper SHA-256: `538f0e09ec9a61d26fc3d0a2a45830ef83633985a789fefbbaf096fbeb566b8c`
+The OpenClaw integration therefore acts as the first reference adapter—not as a requirement that future agents use OpenClaw.
 
-See `docs/POST_INSTALL_HANDOFF.md`.
+---
 
+## Adapter Architecture
 
-## Lifecycle hardening
+Mesh is intended to support multiple agent runtimes through bounded adapters.
 
-OpenClaw adapter `0.4.0` adds bounded reconnect backoff, expiry/revocation handling, re-enrollment,
-same-version idempotence, downgrade rejection, and failure isolation. Mesh credential problems
-stop Mesh only and never stop OpenClaw or Telegram.
+```text
+                         Mesh Protocol
+                              │
+              ┌───────────────┼───────────────┐
+              │               │               │
+          OpenClaw        Runtime B       Runtime C
+           Adapter          Adapter         Adapter
+              │               │               │
+           Agent A          Agent B         Agent C
+```
 
-Plugin SHA-256: `19de065094abc09a4c5a70ea6c2974d0d1ce1811bcd13195abd0641a74bb7261`  
-Bootstrap helper SHA-256: `81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2`
+Adapters are responsible for translating runtime-specific capabilities into Mesh concepts such as:
 
-See `docs/LIFECYCLE_HARDENING.md`.
+- passive observation
+- heartbeat
+- runtime status
+- isolated conversation
+- safe actions
+- file exchange
+- reconnect lifecycle
 
+Mesh should not require recursive inspection of an unknown agent framework or unrestricted workstation access to discover how it works.
 
-## RC2 acceptance candidate
+---
 
-This package is ready for the first live hands-off acceptance attempt against Rend.
+## Direct-First Architecture
 
-The reference test deliberately treats Rend as a third-party agent:
-- no Mesh component is preinstalled;
-- no workstation access is allowed;
-- Telegram is the only human-to-agent entrypoint;
-- the agent must self-discover, verify, install, enroll, and connect.
+The long-term architecture separates the control surface from the agent runtime and prefers direct owner-to-agent transport.
 
-Run `python tests/rc2_acceptance_preflight.py` before a live enrollment attempt.
+```text
+OWNER DEVICE / PWA
+      │
+      ├──────── Same LAN ─────────────────────┐
+      │                                       │
+      ├──── WebRTC peer-to-peer ──────────────┤
+      │          ▲                            │
+      │          │ signaling                  │
+      │      Mesh service                     │
+      │                                       ▼
+      └──── Optional encrypted relay ──► LOCAL MESH ADAPTER
+                                                │
+                            ┌───────────────────┴──────────────────┐
+                            │                                      │
+                     Passive Observation                 Mesh Conversation
+                            │                                      │
+                            └───────────────────┬──────────────────┘
+                                                ▼
+                                         AGENT RUNTIME
+```
 
-See:
-- `docs/REND_RC2_LIVE_ACCEPTANCE_CARD.md`
-- `docs/AGENT_FACING_ACCEPTANCE_INSTRUCTION.md`
-- `docs/RC2_ACCEPTANCE_CHECKLIST.md`
+Mesh currently uses a Flask/PWA architecture with an OpenClaw reference adapter while the direct data-plane architecture continues through release acceptance.
 
+---
 
-## RC2 pre-run cleanup
+## File Exchange
 
-Removed the obsolete trusted-enrollment-bootstrap HTTP routes and stale constant references.
-The universal PTM1/self-bootstrap flow remains the only enrollment architecture.
+Mesh supports bounded bidirectional file exchange.
 
-Also:
-- current RC2 build/version labels are aligned;
-- Flask template/static folders are explicit;
-- broad exception handlers were narrowed where the failure domain is known;
-- a regression test prevents the retired bootstrap API from returning.
+### User → Agent
 
+Files are transferred through the authenticated Mesh connection and delivered into the adapter's controlled inbox.
 
-## IDE warning cleanup
+Transfers include:
 
-Final pre-run cleanup consolidates duplicate transfer-expiry logic, restores literal Flask
-template/static directory declarations for PyCharm/Jinja resolution, and scopes IDE suppressions
-only to intentionally repeated defensive route guards and the local Flask app factory name.
-No runtime or enrollment behavior was changed.
+- file-size limits
+- SHA-256 verification
+- temporary staging
+- atomic completion
+- bounded concurrency
+- extension/content policy
+- no automatic execution
 
+### Agent → User
 
-## Public-origin hotfix
+Agents can offer generated artifacts back through Mesh.
 
-RC2 now supports `MESH_PUBLIC_ORIGIN`, separating the browser address from the canonical
-agent-reachable address. This fixes cross-device LAN enrollment and aligns with Cloud Run/custom
-domain deployment. Production requires HTTPS and derives WSS automatically.
+Files remain ephemeral and can be retrieved by the user through the Mesh interface.
 
+Mesh is not intended to become permanent artifact storage.
 
-## Direct-first transport priority
-Mesh now treats the owner and agent as the intended data endpoints. This build adds automatic LAN origin discovery for local enrollment, an ephemeral signaling API/contract, and owner-authorized enrollment stop boundaries. Production still requires an explicit HTTPS `MESH_PUBLIC_ORIGIN`.
+---
 
-This is the transport foundation. Agent-side WebRTC/direct data-channel support and live route negotiation are intentionally not claimed complete in this build.
+## Security Model
 
+Security boundaries are part of the product architecture rather than an optional hardening phase.
 
-## Direct data channel
-The browser and enrolled OpenClaw agent can negotiate a same-LAN WebRTC DataChannel. Cloud Mesh is signaling-only during negotiation; one-to-one messages prefer the direct channel once open. Adapter 0.5.0 pins `node-datachannel` 0.33.3.
+Mesh follows several rules:
 
-Adapter SHA-256: `f5059a3ea3db5a0b6ae84dd712d81756a8d5d84c579d03635abcb1146028f882`
-Bootstrap SHA-256: `b0ef1f9921ff840a6fb5d584d4dc0f247c678150af47e62cec9b89fa992705d6`
+- Enrollment must originate from an already-authorized agent conversation.
+- Agent packages and helpers must pass declared integrity verification.
+- Unknown runtime behavior fails closed.
+- Arbitrary remote shell access is not exposed.
+- Reconnect credentials remain agent-local.
+- Sensitive operational content should not appear in notifications.
+- Production identity must use real authentication.
+- Production trust claims require real cryptographic verification.
 
+Development identity scaffolding must never be presented as production trust.
 
-## Internet P2P and route policy
+---
 
-Mesh now exposes `direct_preferred`, `direct_only`, and `relay_allowed` owner policies. The browser
-fetches ephemeral ICE configuration from Mesh; STUN enables NAT discovery and optional TURN
-configuration provides a fallback for restrictive networks. The agent receives the same ICE
-configuration through ephemeral signaling and applies the owner's relay policy.
+## Munder Difflin Integration
 
-Static TURN environment credentials are only an integration baseline. Production should vend
-short-lived TURN credentials.
+Mesh is also intended to become an operational integration surface for **Munder Difflin**, ProgreTech's broader agent-control and visualization work.
 
-Adapter: 0.6.0
-Adapter SHA-256: `abecddc7f0e9f889ac5ec4426a8523a436621ea6e7c13a01ac8454a8fd63f4a4`
-Bootstrap SHA-256: `dad422185eef24be736860d0122866900c0de6bf7b97a04cc251e8fcddccaf07`
+The intended boundary is:
 
+```text
+                    Munder Difflin
+                 visualization / control
+                         │
+                         ▼
+                 ProgreTech Mesh
+            policy + identity + live state
+                         │
+              ┌──────────┼──────────┐
+              ▼          ▼          ▼
+            Rend       Agent B    Agent C
+```
 
-## Offline PWA and acceptance readiness
+Munder Difflin may consume Mesh topology, health, runtime state, metrics, activity, and timeline information for visualization.
 
-The PWA now caches only the application shell, never operational APIs or transfer/signaling routes.
-It remembers trusted local agent endpoint metadata in browser-local storage and can probe that endpoint
-when internet connectivity disappears. Same-LAN reconnect uses the remembered local endpoint rather than
-requiring the cloud origin.
+Supervisory actions should flow through Mesh's authenticated and policy-gated interfaces rather than creating a second unrestricted control path into an agent.
 
-A user-facing `/how-it-works` page documents the direct/local, internet P2P, and optional encrypted relay
-routes for future guided training.
+This integration is a future requirement and is **not part of the current RC acceptance gate**.
 
-The transport track is implementation-complete but still requires live acceptance with Rend before it can
-be considered production-proven.
+---
 
-Adapter: 0.7.7
-Adapter SHA-256: `8edc0e81bc09600c17bbb9b77db642d158d0223440973cd736b8913432dde435`
-Bootstrap SHA-256: `f7f8438916e679db9410fae3e5591386c93d274666c40a25afc9eb069f6e9267`
+## Technology
 
+The current implementation is intentionally lightweight.
+
+| Layer | Technology |
+|---|---|
+| Backend | Python / Flask |
+| Frontend | HTML, CSS, vanilla JavaScript |
+| Application | Progressive Web App |
+| Realtime gateway | WebSocket |
+| Direct data plane | WebRTC / RTCDataChannel |
+| NAT traversal | STUN |
+| Optional fallback | TURN |
+| Reference runtime | OpenClaw |
+| Reference adapter | Native OpenClaw plugin |
+| Telemetry | psutil |
+| Integrity / credentials | Cryptographic + signed credential boundaries |
+| Production target | Google Cloud Run |
 
-## UI hotfix
+The architecture is expected to evolve as real multi-agent deployments expose requirements that cannot be learned from mocks.
 
-- Guided Training dialog now always stays above highlighted page content.
-- Training navigation remains visible in tall/short viewports and Escape exits safely.
-- Connection-route option menus use the dark UI palette.
-- “How it works” is now a proper header button immediately beside Guided Training.
-- Header actions remain grouped and right-aligned instead of creating a third header column.
+---
 
+## Project Status
 
-## Guided Training overlay correction
-The highlighted page target no longer receives an elevated stacking layer or full-screen shadow. The training card is mounted directly under `body`, uses the browser's highest practical z-index, docks to the lower-right on desktop, and keeps its navigation actions sticky and visible.
+**Current stage: v1 RC2 — live integration and acceptance**
 
+Mesh is actively being developed and tested. It should **not** currently be treated as production-ready software.
 
-## Guided Training spotlight correction
-The backdrop itself is now transparent. A separate fixed spotlight layer creates the dimmed surround and leaves the active target visible inside a blue cutout, while the training card stays above it.
+Live acceptance with Rend has already demonstrated several important behaviors, including:
 
+- hands-off agent enrollment
+- signed local reconnect identity
+- automatic reconnect after Mesh becomes unavailable
+- passive monitoring
+- outbound command delivery and acknowledgement
+- isolation from the existing Telegram conversation
+- readable bidirectional operational signaling
 
-### Enrollment/reconnect timing
-- Website enrollment activations are single-use and remain active until the user cancels the request or the agent successfully redeems it.
-- Enrollment has no normal countdown. The PWA shows an active request until cancellation or successful connection; reconnect credentials handle future sessions.
-- Existing compatible installations reconnect with their durable agent-local credential and skip discovery/reinstallation.
-- If only the reconnect credential is unavailable, the active PTM1 authorization re-authorizes the existing installation without repeating adapter discovery/install.
+Current work is focused on completing:
 
+- isolated Mesh conversation acceptance
+- bidirectional file-transfer acceptance
+- safe-action/snapshot acceptance
+- active-task non-interference testing
+- same-LAN direct transport
+- remote P2P transport
+- relay policy behavior
+- offline PWA reconnect
+- production authentication and trust integration
 
-## RC2 hot-safe enrollment upgrade
+The project intentionally prioritizes **real-agent acceptance over feature count**.
 
-The OpenClaw adapter install plan no longer waits for generic runtime idle merely because the enrollment conversation itself is active. After package verification, the declared managed install may run during the enrollment turn and must not automatically restart OpenClaw. If the runtime explicitly requires a reload/restart before activation, enrollment stops with `activation_reload_required` and preserves current work.
+---
 
-Bootstrap SHA-256: `8da4e01c369983ce3dd1c0d05bbb884ad320e3c5d5b63b3703d464c7b5433b42`
+## What Mesh Is Not
 
-## RC2 outbound command dispatch fix
+Mesh is not:
 
-Adapter 0.7.7 completes the server-to-agent half of the enrolled WebSocket protocol. The OpenClaw plugin now consumes `message_request` and approved safe-action commands directly from the authenticated Mesh gateway connection, returns `message_response` / `action_result`, and emits `command_ack` delivery acknowledgement before execution. Safe terminal snapshots remain bounded and read-only; no arbitrary remote shell is exposed. Action state now progresses from approval to dispatched, acknowledged, and completed/failed instead of treating local approval as proof of agent execution.
+- a replacement for an agent runtime
+- a hosted AI-agent platform
+- a Telegram replacement
+- an SSH frontend
+- unrestricted remote administration
+- permanent agent memory
+- permanent conversation storage
+- a mechanism for bypassing an agent's existing permissions
 
-### RC2 terminal and file exchange acceptance update
-Adapter 0.7.7 keeps the proven reconnect/outbound-dispatch behavior and changes the live monitor into a terminal-style activity view with explicit IN / OUT / SYS / ERR / FILE direction markers, wrapped message bodies, and expandable full payload details. Browser attachments now traverse the authenticated Mesh gateway into a non-executable `~/.progretech-mesh/inbox` staging area with size and SHA-256 verification. Agent file offers render inline with a Get file action; the demo artifact request now exercises the real reverse-transfer path. Arbitrary remote shell remains disabled.
+Those boundaries are intentional.
 
-The Mesh conversation runner continues to use OpenClaw's documented `api.runtime.agent.runEmbeddedAgent(...)` helper. Provider/auth-profile cooldown or model unavailability is reported as a runtime blocker rather than bypassing the owner's configured model/auth policy.
+---
+
+## Repository Structure
+
+```text
+progretech-mesh/
+├── main.py
+├── templates/
+├── static/
+│   ├── css/
+│   ├── js/
+│   ├── manifest.webmanifest
+│   └── sw.js
+│
+├── openclaw-plugin-progretech-mesh/
+│   ├── index.js
+│   ├── package.json
+│   └── openclaw.plugin.json
+│
+├── distribution/
+│   ├── adapter packages
+│   ├── enrollment protocol
+│   ├── adapter catalog
+│   └── acceptance manifest
+│
+├── docs/
+│   ├── architecture
+│   ├── routing
+│   ├── enrollment
+│   └── acceptance
+│
+└── tests/
+```
+
+---
+
+## Running Locally
+
+Mesh is currently an RC/development project.
+
+A typical development environment uses Python 3.12+.
+
+```bash
+git clone <repository-url>
+cd progretech-mesh
+
+python -m venv .venv
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
+Install the repository requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+Then start the development server using the configuration appropriate to your environment.
+
+> **Important:** Development authentication, local HTTP allowances, test credentials, and RC enrollment behavior must not be interpreted as production security configuration.
+
+See the project documentation before exposing a development instance outside a trusted test environment.
+
+---
+
+## Contributing
+
+Mesh is being developed in public because agent interoperability, local ownership, monitoring boundaries, and human control are problems worth exploring with the broader community.
+
+Contributions and technical discussion are welcome around areas such as:
+
+- agent runtime adapters
+- agent interoperability
+- WebRTC and NAT traversal
+- local-first architecture
+- safe agent supervision
+- agent observability
+- capability negotiation
+- trust and signing
+- accessibility
+- PWA/mobile UX
+- privacy-preserving telemetry
+- multi-agent visualization
+
+If you are experimenting with another autonomous-agent runtime and think it could be a useful Mesh adapter target, opening a discussion or issue is especially useful.
+
+Before submitting substantial implementation work, please open an issue describing the proposed change and how it preserves Mesh's security and ownership boundaries.
+
+---
+
+## Community & Research
+
+Mesh is as much an exploration of **how autonomous agents should be operated** as it is a software project.
+
+Some of the questions driving the project are:
+
+- Can independently developed agents expose a common operational interface?
+- How much observability can we provide without centralizing agent state?
+- Can an agent safely enroll itself without asking its owner to administer the workstation?
+- What should an agent control plane be allowed to do?
+- How should human approvals cross an agent boundary?
+- Can local-first agents remain useful when cloud infrastructure disappears?
+- How should a fleet of heterogeneous agents expose capabilities without surrendering autonomy?
+
+If those problems overlap with work you're doing, contributions, experiments, issue reports, architecture discussions, and adapter prototypes are welcome.
+
+---
+
+## Roadmap
+
+The immediate goal is **v1.0 acceptance**, not rapid feature expansion.
+
+Broadly:
+
+**RC2 → live acceptance → production identity/trust → v1.0**
+
+Future work includes broader runtime adapters, stronger visualization and fleet management, closed-PWA notifications, production trust infrastructure, scale testing, and Munder Difflin integration.
+
+The roadmap will evolve based on observed behavior from real autonomous agents rather than assumptions made solely during development.
+
+---
+
+## License
+
+See [`LICENSE.md`](LICENSE.md) for ownership, attribution, redistribution, and modification terms.
+
+Please review the license before redistributing or incorporating ProgreTech Mesh into another product.
+
+---
+
+## ProgreTech
+
+ProgreTech Mesh is developed by **ProgreTech LLC** as part of its work exploring practical autonomous-agent systems, developer tooling, AI-assisted software engineering, and local AI infrastructure.
+
+The project is under active development.
+
+**Issues, technical discussion, adapter experiments, and constructive feedback are welcome.**
+
+---
+
+*Built around a simple idea: the agent can remain autonomous without becoming invisible.*
