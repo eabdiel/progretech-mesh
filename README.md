@@ -1,7 +1,6 @@
-# ProgreTech Mesh v1 — RC1 Integration candidate 1
+# ProgreTech Mesh
 <img width="1761" height="900" alt="firefox_ybIdXT0Xw0" src="https://github.com/user-attachments/assets/de674b43-4bbb-487e-85bb-ea7617f955c1" />
 
-# ProgreTech Mesh
 
 > A direct-first, local-owned monitoring and interaction console for independently running AI agents.
 
@@ -298,13 +297,19 @@ Development identity scaffolding must never be presented as production trust.
 
 ## Munder Difflin Integration
 
-Mesh is also intended to become an operational integration surface for **Munder Difflin**, ProgreTech's broader agent-control and visualization work.
+Mesh may integrate in the future with **Munder Difflin**, an independent open-source project by **Chaitanya Giri**:
 
-The intended boundary is:
+https://github.com/chaitanyagiri/munder-difflin
+
+Munder Difflin is not a ProgreTech product and is not maintained or owned by ProgreTech.
+
+The project is distributed under the MIT License. Any use or redistribution of Munder Difflin source within or alongside Mesh must preserve the applicable copyright and MIT license notice.
+
+The intended integration boundary is:
 
 ```text
                     Munder Difflin
-                 visualization / control
+              third-party visualization/control
                          │
                          ▼
                  ProgreTech Mesh
