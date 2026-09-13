@@ -59,12 +59,12 @@ The latter should only appear when the production verifier has actually succeede
 
 ## Enrollment
 
-Agent-led enrollment remains short-lived and agent-bound.
+Agent-led enrollment remains single-use, user-controlled, and agent-bound.
 
 Production enrollment must combine:
 
 1. authenticated Mesh user
-2. signed/short-lived enrollment request
+2. signed/user-controlled enrollment request
 3. agent-local authorization
 4. cryptographically verified agent identity
 5. outbound gateway connection

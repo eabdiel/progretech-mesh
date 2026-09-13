@@ -3,11 +3,11 @@ set -euo pipefail
 
 # ProgreTech Mesh OpenClaw self-bootstrap helper
 # Intended to be fetched/executed by the agent itself from a PTM1-directed enrollment flow.
-# It never grants privileges and never installs while OpenClaw reports active work.
+# It never grants privileges. The declared managed plugin install is hot-safe for enrollment and never performs an automatic OpenClaw restart.
 
 OPENCLAW="${OPENCLAW:-$(command -v openclaw || true)}"
 PACKAGE_URL="${MESH_PLUGIN_PACKAGE_URL:-}"
-EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-c925173498b81252ec7f016a5d92a40c912adce4ac35f03d52a5325d7ae38e47}"
+EXPECTED_SHA256="${MESH_PLUGIN_SHA256:-d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c}"
 WORK="${MESH_BOOTSTRAP_WORK_DIR:-${XDG_RUNTIME_DIR:-/tmp}/progretech-mesh-enroll}"
 ARCHIVE="$WORK/progretech-mesh-openclaw.tgz"
 PTM1="${MESH_ENROLLMENT_PAYLOAD:-}"
@@ -28,10 +28,9 @@ chmod 700 "$WORK" 2>/dev/null || true
 
 case "$PACKAGE_URL" in
   https://*) ;;
-  http://127.0.0.1:*|http://localhost:*)
-    [ "${MESH_ALLOW_INSECURE_PACKAGE_URL:-0}" = "1" ] || fail "HTTPS is required"
-    ;;
-  *) fail "HTTPS is required" ;;
+  http://127.*|http://localhost:*|http://10.*|http://192.168.*|http://172.1[6-9].*|http://172.2[0-9].*|http://172.3[0-1].*) ;;
+  http://*) fail "HTTP package URLs are allowed only for loopback/private-LAN Mesh hosts" ;;
+  *) fail "Mesh package URL must use HTTP or HTTPS" ;;
 esac
 
 "$OPENCLAW" --version
@@ -50,7 +49,7 @@ try:
     payload=json.loads(base64.urlsafe_b64decode(token))
 except Exception as exc:
     raise SystemExit("invalid PTM1 payload") from exc
-if payload.get("type") != "PROGRETECH_MESH_ENROLL":
+if payload.get("type") != "PROGRETECH_MESH_CONNECT_OR_ENROLL":
     raise SystemExit("unexpected Mesh enrollment type")
 if payload.get("mode") != "plug-and-monitor" or payload.get("observation") != "read-only":
     raise SystemExit("unsafe Mesh enrollment mode")
@@ -63,7 +62,8 @@ minimum={
     "agent_id": payload.get("agent_id"),
     "activation_code": payload.get("activation_code"),
     "activation_signature": payload.get("activation_signature"),
-    "expires_at": payload.get("expires_at"),
+    "issued_at": payload.get("issued_at"),
+    "activation_lifecycle": payload.get("activation_lifecycle", "until_cancelled_or_redeemed"),
     "mode": payload.get("mode"),
     "observation": payload.get("observation"),
     "conversation_scope": payload.get("conversation_scope"),
@@ -119,36 +119,11 @@ if not required.issubset(names):
     raise SystemExit("required plugin files missing")
 pkg_member=tf.extractfile("progretech-mesh/package.json")
 pkg=json.load(pkg_member)
-if pkg.get("name") != "@progretech/openclaw-mesh" or pkg.get("version") != "0.7.0":
+if pkg.get("name") != "@progretech/openclaw-mesh" or pkg.get("version") != "0.7.5":
     raise SystemExit("unexpected Mesh plugin identity/version")
 PY
 
-# A failure to determine state counts as busy/unsafe.
-is_idle() {
-  "$OPENCLAW" sessions --all-agents --json 2>/dev/null | python3 -c '
-import json,sys
-try: d=json.load(sys.stdin)
-except Exception: raise SystemExit(1)
-busy={"running","processing","active","starting","queued","waiting_for_tool","tool_running"}
-for s in d.get("sessions",[]):
-    if str(s.get("status") or "").strip().lower() in busy:
-        raise SystemExit(1)
-'
-}
-
-printf 'Package downloaded and verified. Waiting for OpenClaw to become idle.\n'
-stable=0
-while [ "$stable" -lt 3 ]; do
-  if is_idle; then
-    stable=$((stable+1))
-  else
-    stable=0
-  fi
-  sleep 5
-done
-
-# Re-check immediately before the supported managed installation.
-is_idle || fail "OpenClaw became busy; installation deferred"
+printf 'Package downloaded and verified. Proceeding with declared hot-safe managed installation; no generic idle wait and no automatic runtime restart.\n'
 
 # Supported managed archive installation.
 INSTALLED_VERSION="$("$OPENCLAW" plugins inspect progretech-mesh --json 2>/dev/null | python3 -c '
@@ -159,7 +134,7 @@ v=d.get("version") or d.get("plugin",{}).get("version") or ""
 print(v)
 ' 2>/dev/null || true)"
 
-python3 - "$INSTALLED_VERSION" "0.7.0" <<'PY'
+python3 - "$INSTALLED_VERSION" "0.7.5" <<'PY'
 import re,sys
 old,new=sys.argv[1],sys.argv[2]
 def parts(v):
@@ -170,8 +145,8 @@ if o and n and o > n:
     raise SystemExit("refusing Mesh adapter downgrade")
 PY
 
-if [ "$INSTALLED_VERSION" = "0.7.0" ]; then
-  printf 'Mesh OpenClaw adapter 0.7.0 already installed; skipping reinstall.\n'
+if [ "$INSTALLED_VERSION" = "0.7.5" ]; then
+  printf 'Mesh OpenClaw adapter 0.7.5 already installed; skipping reinstall.\n'
 else
   BACKUP_DIR="$STATE/adapter-backups"
   mkdir -p "$BACKUP_DIR"
@@ -179,8 +154,8 @@ else
 
   # Managed installer remains authoritative. Keep the verified archive as rollback input;
   # never touch OpenClaw internals directly.
-  cp "$ARCHIVE" "$BACKUP_DIR/progretech-mesh-openclaw-0.7.0.tgz"
-  chmod 600 "$BACKUP_DIR/progretech-mesh-openclaw-0.7.0.tgz" 2>/dev/null || true
+  cp "$ARCHIVE" "$BACKUP_DIR/progretech-mesh-openclaw-0.7.5.tgz"
+  chmod 600 "$BACKUP_DIR/progretech-mesh-openclaw-0.7.5.tgz" 2>/dev/null || true
 
   if ! "$OPENCLAW" plugins install "$ARCHIVE" --force --accept-capabilities; then
     fail "managed plugin installation failed; existing agent/runtime left untouched"
@@ -190,4 +165,4 @@ fi
 "$OPENCLAW" plugins inspect progretech-mesh --runtime --json
 "$OPENCLAW" channels status --probe
 
-printf 'Mesh OpenClaw adapter installed and existing channels probed.\n'
+printf 'Mesh OpenClaw adapter installed and existing channels probed. No runtime restart was requested by this helper. Activation handoff is runtime-managed from ~/.progretech-mesh/pending-enrollment.json; do not connect to the local OpenClaw gateway or invent another transport path.\n'

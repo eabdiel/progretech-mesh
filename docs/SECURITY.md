@@ -40,7 +40,7 @@ DEV_AUTH_ENABLED=0
 
 ## Activation
 
-Activation is one-time and short-lived.
+Activation is one-time and user-lifecycle-bound: it remains valid until explicitly cancelled or successfully redeemed. It is not governed by a normal countdown.
 
 ```text
 signed agent identity

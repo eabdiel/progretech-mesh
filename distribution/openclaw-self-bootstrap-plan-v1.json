@@ -1,6 +1,6 @@
 {
   "adapter": "openclaw",
-  "plan_version": 1,
+  "plan_version": 4,
   "status": "available",
   "minimum_openclaw_version": "2026.9.3",
   "user_workstation_access_required": false,
@@ -9,23 +9,24 @@
   "safety_contract": {
     "do_not_interrupt_active_work": true,
     "download_and_verify_while_busy": true,
-    "install_only_when_idle": true,
     "privilege_escalation_allowed": false,
     "arbitrary_shell_exposed_to_mesh_user": false,
-    "existing_channels_must_survive": true
+    "existing_channels_must_survive": true,
+    "hot_safe_managed_install_during_enrollment": true,
+    "automatic_runtime_restart_allowed": false
   },
   "discovery": {
     "detect_commands": [
-      "command -v openclaw",
       "openclaw --version"
     ],
-    "runtime_match": "OpenClaw 2026.9.3 or newer"
+    "runtime_match": "OpenClaw 2026.9.3 or newer",
+    "identification_rule": "Use this plan only after the bounded Mesh adapter catalog has matched OpenClaw. Do not use this plan to explore whether the runtime might be OpenClaw."
   },
   "package": {
     "package_id": "progretech-mesh-openclaw",
-    "version": "0.7.0",
-    "filename": "progretech-mesh-openclaw-0.7.0.tgz",
-    "sha256": "c925173498b81252ec7f016a5d92a40c912adce4ac35f03d52a5325d7ae38e47",
+    "version": "0.7.5",
+    "filename": "progretech-mesh-openclaw-0.7.5.tgz",
+    "sha256": "d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c",
     "integrity_algorithm": "sha256",
     "codeseal_verified": false
   },
@@ -51,16 +52,12 @@
       "mutates_runtime": false
     },
     {
-      "id": "wait_for_idle",
-      "description": "If any agent/session work is active or runtime state is uncertain, defer managed installation.",
-      "mutates_runtime": false
-    },
-    {
       "id": "install",
-      "description": "Use OpenClaw's supported managed archive installer. Arbitrary local/archive provenance requires --force in noninteractive mode; capability consent requires --accept-capabilities.",
+      "description": "Use OpenClaw's supported managed archive installer immediately after verification. The adapter is ownership-aware: if the stable local Mesh signaling port is already held by a verified prior Mesh adapter, reuse that listener during handoff instead of killing/rebinding it. Unknown ownership fails closed as port_conflict. Never restart the agent/runtime.",
       "command_template": "openclaw plugins install {local_verified_archive} --force --accept-capabilities",
       "mutates_runtime": true,
-      "requires_idle": true
+      "requires_idle": false,
+      "restart_allowed": false
     },
     {
       "id": "inspect_runtime",
@@ -76,8 +73,10 @@
     },
     {
       "id": "redeem_and_connect",
-      "description": "Redeem the short-lived Mesh activation and establish the plugin/gateway outbound Mesh connection.",
-      "mutates_runtime": true
+      "description": "Do not manually redeem/connect. The installed adapter consumes ~/.progretech-mesh/pending-enrollment.json and connects outbound to the decoded PTM1 mesh endpoint. Never substitute the local OpenClaw gateway. Check ~/.progretech-mesh/connection-status.json for at most 60 seconds; if not connected, stop with its exact blocker.",
+      "mutates_runtime": false,
+      "max_wait_seconds": 60,
+      "max_manual_connection_attempts": 0
     }
   ],
   "failure_behavior": {
@@ -86,8 +85,11 @@
     "hash_mismatch": "Stop immediately; do not install.",
     "install_policy_block": "Report the OpenClaw install-policy block; do not bypass it.",
     "capability_consent_block": "Use the owner's existing agent/chat approval mechanism if available; otherwise report the required approval.",
-    "runtime_busy": "Wait/defer. Do not force installation or restart.",
-    "channel_probe_failure": "Report degraded channel state and stop further Mesh activation work."
+    "runtime_busy": "Do not defer merely because the enrollment chat is active. Continue only the declared hot-safe managed install; if OpenClaw explicitly blocks installation because of another active operation, report runtime_busy.",
+    "channel_probe_failure": "Report degraded channel state and stop further Mesh activation work.",
+    "activation_handoff_missing": "Do not search OpenClaw internals or alternate ports. Report activation_reload_required unless the declared connection-status file contains a more specific error.",
+    "mesh_unreachable": "Report the PTM1 mesh endpoint as unreachable; do not fall back to the local OpenClaw gateway or a guessed endpoint.",
+    "local_signal_port_in_use": "Authenticate the existing listener with the Mesh-local credential. If verified as ProgreTech Mesh, reuse it and continue activation; otherwise stop with port_conflict. Never kill the listener."
   },
   "post_install": {
     "manual_second_instruction_required": false,
@@ -98,10 +100,30 @@
   },
   "lifecycle": {
     "same_version": "skip reinstall and reconnect using existing credential when valid",
-    "upgrade": "verify new package, wait for idle if managed plugin install is required, preserve old runtime on failure",
+    "upgrade": "verify new package, perform one ownership-aware hot-safe managed in-place install for the known runtime; reuse a verified existing Mesh local listener; never auto-restart; unknown port ownership fails closed",
     "downgrade": "reject by default",
     "revoked": "stop Mesh reconnect only; require new PTM1 enrollment",
     "expired": "stop Mesh reconnect only; require new PTM1 enrollment",
     "agent_runtime_effect": "none outside Mesh adapter lifecycle"
+  },
+  "time_budget": {
+    "bootstrap_total_target_seconds": 180,
+    "post_install_connection_check_max_seconds": 60,
+    "total_enrollment_hard_stop_seconds": 600,
+    "hot_safe_install_max_seconds": 60
+  },
+  "activation_handoff": {
+    "authoritative_mesh_target": "Use the decoded PTM1 mesh field. Never substitute the local OpenClaw HTTP/gateway address (for example 127.0.0.1:18789).",
+    "pending_state_file": "~/.progretech-mesh/pending-enrollment.json",
+    "connection_status_file": "~/.progretech-mesh/connection-status.json",
+    "runtime_owner": "The installed Mesh adapter consumes pending-enrollment.json and performs activation redemption/outbound Mesh connection.",
+    "agent_must_not": "Do not manually construct a gateway connection, search for alternate ports, reinstall the adapter, or probe framework internals when activation handoff does not complete.",
+    "bounded_check": "After install/runtime verification, check the declared connection-status file for up to 60 seconds. If it is absent or not connected, stop with activation_reload_required, activation_rejected, mesh_unreachable, or the exact status/error already reported.",
+    "restart_rule": "Do not restart automatically. A verified existing Mesh local signaling listener may remain active and be reused while the new adapter performs redemption/outbound connection. If the runtime explicitly requires reload/restart, stop with activation_reload_required. Unknown listener ownership is port_conflict."
+  },
+  "existing_installation_fast_path": {
+    "credential_state_file": "~/.progretech-mesh/device-credential.json",
+    "valid_credential": "connect using stored credential and skip discovery/install/redeem",
+    "adapter_present_credential_missing": "only when installed adapter version matches the offered current version: redeem current activation directly and skip reinstall/runtime discovery; if installed version is older, perform one verified in-place upgrade first"
   }
 }

@@ -13,3 +13,8 @@ package, activation, pairing, and WebSocket URLs use the canonical origin.
 
 `MESH_ENVIRONMENT=production` requires HTTPS. WebSocket URLs derive automatically:
 `http -> ws` and `https -> wss`.
+
+
+## Local acceptance transport policy
+
+For development/local acceptance, Mesh permits plain HTTP/WS only when the canonical origin host is loopback or an RFC1918 private-LAN IPv4 address (127/8, 10/8, 172.16/12, 192.168/16). Public/non-private HTTP is rejected by the agent adapter. Production still requires HTTPS/WSS.

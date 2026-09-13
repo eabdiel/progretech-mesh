@@ -75,7 +75,7 @@ The user should need only:
 1. access to `mesh.progretech.com`
 2. a direct chat line to the agent
 
-Mesh generates a short-lived enrollment message.
+Mesh generates a user-controlled enrollment message that remains active until cancelled or successfully redeemed.
 
 The user sends that message through Telegram or another existing direct channel.
 

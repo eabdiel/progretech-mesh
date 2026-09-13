@@ -25,8 +25,9 @@ class TestDirectTransportFoundation(unittest.TestCase):
         self.assertIn('data_path="signaling_only"', self.source)
 
     def test_owner_task_boundary_is_in_enrollment(self):
-        self.assertIn("Perform this ProgreTech Mesh enrollment as the current owner-authorized task.", self.source)
-        self.assertIn("stable success/failure boundary, STOP and report the result", self.source)
+        self.assertIn("This is a machine-directed enrollment request from the current chat owner.", self.source)
+        self.assertIn("validate that this sender is authorized by your existing local policy", self.source)
+        self.assertIn("At the first stable success/failure boundary, STOP.", self.source)
 
     def test_frontend_has_no_internal_phase_labels(self):
         joined = "\n".join(

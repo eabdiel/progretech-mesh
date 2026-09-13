@@ -1,6 +1,6 @@
 {
   "catalog": "progretech-mesh-agent-adapters",
-  "version": 1,
+  "version": 2,
   "adapters": [
     {
       "id": "openclaw",
@@ -12,18 +12,34 @@
         "package_hints": [
           "openclaw"
         ],
-        "minimum_version": "2026.9.3"
+        "minimum_version": "2026.9.3",
+        "names": [
+          "openclaw",
+          "OpenClaw"
+        ],
+        "identification_probes": [
+          {
+            "command": "openclaw --version",
+            "read_only": true,
+            "expected_contains": "OpenClaw"
+          }
+        ],
+        "probe_policy": "Use only when runtime identity is not already known. Do not scan filesystem or enumerate plugins to identify the runtime."
       },
       "package": {
         "package_id": "progretech-mesh-openclaw",
-        "version": "0.7.0",
-        "sha256": "c925173498b81252ec7f016a5d92a40c912adce4ac35f03d52a5325d7ae38e47",
+        "version": "0.7.5",
+        "sha256": "d8fb8acbcef79fabb8476d6f39132319f9d1a2e31e3ffff484554d138c40451c",
         "format": "tgz"
       },
       "installation": {
         "strategy": "agent-managed",
-        "requires_runtime_restart": true,
-        "restart_policy": "idle-only"
+        "requires_runtime_restart": false,
+        "restart_policy": "never-automatic; report activation_reload_required if runtime explicitly requires reload/restart",
+        "preinstalled_component_required": false,
+        "owner_workstation_access_required": false,
+        "hot_safe_managed_install_during_enrollment": true,
+        "stable_listener_handoff": "If the declared local signaling port is occupied by an authenticated prior ProgreTech Mesh adapter, reuse it during hot upgrade; never kill/rebind it. Unknown owner => port_conflict."
       },
       "capabilities": {
         "passive_observation": true,
@@ -33,16 +49,20 @@
       "self_bootstrap": {
         "plan_path": "/api/enrollment/adapters/openclaw/install-plan",
         "helper_path": "/api/enrollment/adapters/openclaw/bootstrap",
-        "helper_sha256": "384590508460466e579d899e422666323d4cff351392b57c9e36a081f1001f07",
+        "helper_sha256": "e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f",
         "preinstalled_component_required": false,
-        "owner_workstation_access_required": false
+        "owner_workstation_access_required": false,
+        "optional_accelerator": true,
+        "description": "Optional agent-fetched helper advertised by Mesh. It is not preinstalled and is not an enrollment prerequisite."
       },
       "post_install": {
         "pending_enrollment_handoff": true,
         "automatic_activation_redeem": true,
         "credential_persistence": true,
         "automatic_outbound_reconnect": true,
-        "second_owner_instruction_required": false
+        "second_owner_instruction_required": false,
+        "fast_reconnect_first": true,
+        "reauthorize_without_reinstall": true
       },
       "lifecycle": {
         "idempotent_same_version": true,
@@ -60,7 +80,8 @@
         "reenrollment_after_revocation": true,
         "downgrade_default": "reject",
         "failed_install_preserves_existing_runtime": true,
-        "mesh_disconnect_does_not_stop_agent": true
+        "mesh_disconnect_does_not_stop_agent": true,
+        "ownership_aware_port_reuse": true
       }
     },
     {
@@ -68,7 +89,9 @@
       "status": "planned",
       "runtime_match": {
         "executable_hints": [],
-        "package_hints": []
+        "package_hints": [],
+        "names": [],
+        "identification_probes": []
       },
       "installation": {
         "strategy": "agent-managed",
@@ -80,5 +103,18 @@
         "independent_mesh_conversation": "adapter-dependent"
       }
     }
-  ]
+  ],
+  "contract": {
+    "preinstalled_progretech_component_required": false,
+    "owner_workstation_access_required": false,
+    "selection": "Match known runtime identity to runtime_match.names first. If unknown, use only catalog-declared read-only identification probes (max one per available adapter, max three total). Select exactly one status=available adapter; otherwise stop.",
+    "recursive_runtime_inspection_allowed": false,
+    "public_web_search_allowed": false,
+    "multi_adapter_trial_allowed": false,
+    "time_budget_seconds": {
+      "target": 300,
+      "hard_stop": 600
+    },
+    "existing_installation_fast_path": "If a compatible adapter and valid reconnect credential already exist, reconnect immediately. If adapter exists but credential is unavailable, re-authorize only; do not rediscover runtime or reinstall."
+  }
 }

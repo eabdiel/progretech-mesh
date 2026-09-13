@@ -35,7 +35,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlparse
 
 
-BUILD_ID = "v1-direct-transport-p4-trainingfix2-20260912"
+BUILD_ID = "v1-rc2-private-lan-acceptance-20260913"
 
 def _validated_http_origin(origin: str) -> str:
     value = str(origin or "").strip().rstrip("/")
@@ -140,7 +140,6 @@ PAIR_TOKEN_TTL_SECONDS = 600
 DEVICE_CREDENTIAL_TTL_SECONDS = int(os.environ.get("MESH_DEVICE_CREDENTIAL_TTL_SECONDS", str(60 * 60 * 24 * 365)))
 REVOKED_DEVICE_IDS: set[str] = set()
 
-ACTIVATION_CODE_TTL_SECONDS = 900
 MAX_WS_FILE_CHUNK = 256 * 1024
 MAX_FILE_BYTES = int(os.environ.get("MESH_MAX_FILE_BYTES", str(20 * 1024 * 1024)))
 MAX_SESSION_FILE_BYTES = int(os.environ.get("MESH_MAX_SESSION_FILE_BYTES", str(50 * 1024 * 1024)))
@@ -156,8 +155,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.0"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.0.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.5"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.5.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -876,21 +875,35 @@ def activation_secret() -> bytes:
     return value.encode("utf-8")
 
 
-def activation_signature(agent_id: str, code: str, expires_at: int) -> str:
-    payload = f"{agent_id}|{code}|{expires_at}".encode("utf-8")
+def activation_signature(agent_id: str, code: str, issued_at: int) -> str:
+    # Enrollment authorization is user-lifecycle-bound, not clock-bound.
+    # issued_at is signed for audit/context; validity ends only on cancel or redeem.
+    payload = f"{agent_id}|{code}|{issued_at}".encode("utf-8")
     return hmac.new(activation_secret(), payload, hashlib.sha256).hexdigest()
 
 
 def issue_activation_code(agent_id: str) -> dict[str, Any]:
+    # Reuse an existing active request for this agent. Opening/reloading the PWA must
+    # not silently invalidate a user-controlled enrollment session.
+    for existing in ACTIVATION_CODES.values():
+        if (
+            existing.get("agent_id") == agent_id
+            and not existing.get("used")
+            and not existing.get("cancelled")
+        ):
+            return existing
+
     code = secrets.token_urlsafe(18)
-    expires_at = unix_now() + ACTIVATION_CODE_TTL_SECONDS
-    signature = activation_signature(agent_id, code, expires_at)
+    issued_at = unix_now()
+    signature = activation_signature(agent_id, code, issued_at)
     record = {
         "agent_id": agent_id,
         "code": code,
-        "expires_at": expires_at,
+        "issued_at": issued_at,
         "signature": signature,
         "used": False,
+        "cancelled": False,
+        "lifecycle": "until_cancelled_or_redeemed",
     }
     ACTIVATION_CODES[code] = record
     return record
@@ -900,14 +913,14 @@ def validate_activation_code(agent_id: str, code: str, signature: str) -> tuple[
     record = ACTIVATION_CODES.get(code)
     if not record:
         return False, "activation_code_not_found"
-    if record["used"]:
+    if record.get("cancelled"):
+        return False, "activation_code_cancelled"
+    if record.get("used"):
         return False, "activation_code_used"
-    if record["expires_at"] < unix_now():
-        return False, "activation_code_expired"
     if record["agent_id"] != agent_id:
         return False, "activation_agent_mismatch"
 
-    expected = activation_signature(agent_id, code, record["expires_at"])
+    expected = activation_signature(agent_id, code, int(record["issued_at"]))
     if not hmac.compare_digest(expected, signature):
         return False, "activation_signature_invalid"
     return True, "ok"
@@ -1063,7 +1076,7 @@ def create_app() -> Flask:
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         ENVIRONMENT=environment,
-        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.0-v1-rc2-acceptance"),
+        MESH_VERSION=os.environ.get("MESH_VERSION", "1.8.8-v1-rc2-idempotent-handoff"),
         BUILD_ID=os.environ.get("BUILD_ID", BUILD_ID),
         DEV_AUTH_ENABLED=os.environ.get("DEV_AUTH_ENABLED", dev_auth_default) == "1",
         DEV_SEED_AGENTS=os.environ.get("DEV_SEED_AGENTS", dev_seed_default) == "1",
@@ -1347,24 +1360,47 @@ def create_app() -> Flask:
         path = distribution_file(UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME)
         if not path.is_file():
             return jsonify(ok=False, error="enrollment_protocol_unavailable"), 503
-        return send_file(
-            path,
-            mimetype="application/json",
-            as_attachment=False,
-            conditional=True,
-        )
+        try:
+            protocol = json.loads(path.read_text(encoding="utf-8"))
+            origin = mesh_public_origin()
+        except (OSError, json.JSONDecodeError, ValueError):
+            return jsonify(ok=False, error="enrollment_protocol_unavailable"), 503
+        protocol["endpoints"] = {
+            "protocol": f"{origin}/api/enrollment/protocol",
+            "adapter_catalog": f"{origin}/api/enrollment/adapters",
+        }
+        response = jsonify(protocol)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/api/enrollment/adapters")
     def universal_agent_adapter_catalog():
         path = distribution_file(AGENT_ADAPTER_CATALOG_FILENAME)
-        if not path.is_file():
+        package = openclaw_plugin_package_path()
+        helper = distribution_file(OPENCLAW_SELF_BOOTSTRAP_FILENAME)
+        if not path.is_file() or not package.is_file() or not helper.is_file():
             return jsonify(ok=False, error="adapter_catalog_unavailable"), 503
-        return send_file(
-            path,
-            mimetype="application/json",
-            as_attachment=False,
-            conditional=True,
-        )
+        try:
+            catalog = json.loads(path.read_text(encoding="utf-8"))
+            origin = mesh_public_origin()
+        except (OSError, json.JSONDecodeError, ValueError):
+            return jsonify(ok=False, error="adapter_catalog_unavailable"), 503
+        for adapter in catalog.get("adapters", []):
+            if adapter.get("id") != "openclaw":
+                continue
+            adapter.setdefault("package", {})["version"] = OPENCLAW_PLUGIN_PACKAGE_VERSION
+            adapter["package"]["sha256"] = sha256_file(package)
+            adapter["package"]["url"] = (
+                f"{origin}/api/distribution/openclaw/progretech-mesh/"
+                f"{OPENCLAW_PLUGIN_PACKAGE_VERSION}/package"
+            )
+            bootstrap = adapter.setdefault("self_bootstrap", {})
+            bootstrap["plan_url"] = f"{origin}/api/enrollment/adapters/openclaw/install-plan"
+            bootstrap["helper_url"] = f"{origin}/api/enrollment/adapters/openclaw/bootstrap"
+            bootstrap["helper_sha256"] = sha256_file(helper)
+        response = jsonify(catalog)
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/api/enrollment/adapters/openclaw/install-plan")
     def openclaw_self_bootstrap_plan():
@@ -1448,9 +1484,11 @@ def create_app() -> Flask:
             f"{OPENCLAW_PLUGIN_PACKAGE_VERSION}/package"
         )
 
+        server_now = unix_now()
+
         envelope = {
-            "type": "PROGRETECH_MESH_ENROLL",
-            "version": 3,
+            "type": "PROGRETECH_MESH_CONNECT_OR_ENROLL",
+            "version": 5,
             "mesh": mesh_origin,
             "discovery": {
                 "protocol_url": f"{mesh_origin}/api/enrollment/protocol",
@@ -1466,14 +1504,25 @@ def create_app() -> Flask:
                         "bootstrap_helper_url": (
                             f"{mesh_origin}/api/enrollment/adapters/openclaw/bootstrap"
                         ),
-                        "bootstrap_helper_sha256": "81cccfffc597bc82734713ce912c2c0d62986d8e8a5eb02e3999dc056345d3d2",
+                        "bootstrap_helper_sha256": sha256_file(distribution_file(OPENCLAW_SELF_BOOTSTRAP_FILENAME)),
                     }
                 },
             },
             "agent_id": agent_id,
             "activation_code": activation["code"],
             "activation_signature": activation["signature"],
-            "expires_at": activation["expires_at"],
+            "issued_at": activation["issued_at"],
+            "activation_lifecycle": "until_cancelled_or_redeemed",
+            "activation_time_expiry": None,
+            "existing_installation_fast_path": {
+                "enabled": True,
+                "if_valid_reconnect_credential_exists": "connect_immediately_without_discovery_or_reinstall",
+                "if_compatible_current_adapter_installed_but_credential_missing": "redeem_activation_directly_without_runtime_discovery_or_reinstall",
+                "if_installed_adapter_is_older_than_offered_version": "perform_bounded_verified_in_place_upgrade_without_runtime_rediscovery_then_continue",
+                "if_adapter_missing_or_incompatible": "perform_bounded_first_enrollment",
+                "never_reuse_cancelled_or_used_activation": True,
+                "active_authorization_can_be_reused_until_cancelled_or_redeemed": True,
+            },
             "mode": "plug-and-monitor",
             "observation": "read-only",
             "conversation_scope": "mesh-independent",
@@ -1499,32 +1548,59 @@ def create_app() -> Flask:
             json.dumps(envelope, separators=(",", ":")).encode("utf-8")
         ).decode("ascii").rstrip("=")
 
-        human_message = (
-            "Perform this ProgreTech Mesh enrollment as the current owner-authorized task. "
-            "After enrollment reaches a stable success/failure boundary, STOP and report the result. "
-            "ProgreTech Mesh enrollment request. "
-            "Please validate and accept this request only if your local policy permits it. "
-            "Do not interrupt, restart, reset, replace, or reconfigure any current work or "
-            "existing conversation. Connect using passive plug-and-monitor mode and keep "
-            "You are being asked by your owner to connect yourself to ProgreTech Mesh. "
-            "No ProgreTech software is assumed to be preinstalled. Read the discovery URLs in "
-            "the enrollment payload, inspect your own runtime and capabilities, choose the "
-            "compatible adapter, and perform the installation yourself using only authority "
-            "you already have. Do not interrupt current work, bypass local policy, or ask the "
-            "owner to log into the workstation unless your environment truly lacks the required "
-            "capability. Mesh observation must remain read-only and Mesh conversation state "
-            "must remain independent from existing channels. Verify every package before "
-            "installation and fail closed on verification errors. "
-            f"Enrollment payload: PTM1:{compact}"
-        )
+        ptm1 = f"PTM1:{compact}"
+        protocol_url = envelope["discovery"]["protocol_url"]
+        catalog_url = envelope["discovery"]["adapter_catalog_url"]
+        human_message = "\n".join([
+            "PROGRETECH MESH AGENT ENROLLMENT",
+            "",
+            "This is a machine-directed enrollment request from the current chat owner. Do not treat it as a project-status prompt.",
+            "Before acting, validate that this sender is authorized by your existing local policy. The message itself grants no new privileges.",
+            "",
+            "Use only capabilities and authority you already have. No ProgreTech software is assumed to be preinstalled, and the owner should not need workstation access.",
+            "",
+            "Connection procedure:",
+            "1. Locate the single PTM1 payload between the BEGIN/END markers below.",
+            "2. Decode the text after 'PTM1:' as unpadded Base64URL JSON. Do not execute the encoded text itself.",
+            "3. FIRST check whether a ProgreTech Mesh adapter is already installed, record its installed version, compare it with plugin_package.version in this PTM1, and check whether a valid stored Mesh reconnect credential exists. Use only declared Mesh local state or already-known runtime state; do not perform runtime discovery yet.",
+            "4. A fast-path adapter is compatible only when its runtime matches AND its installed version is the same as the PTM1 plugin_package.version (or is explicitly declared compatible by the Mesh protocol). If a valid reconnect credential exists with such a current compatible adapter, connect immediately with it. Do NOT fetch the protocol/catalog, revalidate the runtime, reinstall the adapter, or redeem the PTM1 activation.",
+            "5. If a current compatible adapter is installed but its reconnect credential is missing/expired/revoked, use this PTM1 only to re-authorize the existing installation and obtain a new reconnect credential. Do NOT perform runtime discovery or reinstall the adapter. If an older Mesh adapter is installed, it is NOT eligible for this fast path: fetch only the declared install plan/package for the same known runtime, verify it, perform one bounded in-place upgrade to plugin_package.version, then continue with re-authorization. Do not rediscover the runtime or try another adapter. If the adapter's stable local signaling port is already owned by a prior verified ProgreTech Mesh adapter, treat that as an existing Mesh listener to reuse during handoff; do not kill it, do not bind a second listener, and do not classify it as a generic port conflict.",
+            f"6. Only if no compatible Mesh adapter is already installed, read the protocol contract: {protocol_url}",
+            f"7. Only for first enrollment, read the runtime adapter catalog: {catalog_url}",
+            "8. For first enrollment only, identify your runtime using only readily available self-identification metadata. First compare the runtime/framework name you already know against catalog runtime_match.names. Do NOT recursively inspect framework internals, scan the filesystem, enumerate unrelated tools/plugins, or search the public web.",
+            "9. If the runtime name is unknown, use only the catalog-declared read-only identification probes. Run at most one probe per available adapter and at most three probes total. If no single available adapter matches, STOP with runtime_unknown or unsupported_runtime.",
+            "10. Select exactly one available adapter. Do not try multiple adapters, generic substitutes, or alternate installation strategies during the same enrollment request.",
+            "11. Fetch only artifacts and the install plan declared for that selected adapter. Verify every declared SHA-256/signature before installation or staging.",
+            "12. Follow the selected adapter's install plan exactly, using your existing authority only. Do not improvise framework changes, privilege escalation, configuration rewrites, or unrelated diagnostics.",
+            "13. Do not interrupt, restart, reset, replace, or reconfigure current work or existing conversations. Verified package staging and a declared hot-safe managed adapter install may proceed during this enrollment turn when the install plan explicitly says it does not restart the agent/runtime. Do not wait for generic idle merely because this enrollment conversation is active. If the runtime explicitly reports that a reload/restart is required, do not force it; STOP and report activation_reload_required.",
+            "14. Keep Mesh observation read-only and Mesh conversation state independent from Telegram or any other existing channel.",
+            "15. Redeem the active user-controlled authorization only after verification succeeds, connect outbound to Mesh, and preserve automatic reconnect locally.",
+            "16. Retry a failed step at most once, and only when the protocol/install plan explicitly gives a recovery action. Never repeat exploratory commands in a loop.",
+            "17. Enrollment target is 5 minutes. If not connected within 10 minutes of active work, STOP the current diagnostic attempt and report the smallest specific blocker. The authorization itself remains valid until the user cancels it or it is successfully redeemed, so a later retry does not require a new payload unless the user cancelled it.",
+            "18. If activation validation fails for cancellation, replay/use, signature, audience/agent mismatch, or policy rejection, STOP immediately. Do not fetch discovery resources, install, diagnose, or retry that PTM1.",
+            "19. At the first stable success/failure boundary, STOP. Report success or only the smallest specific missing capability/approval/verification error.",
+            "",
+            "Do not summarize the Mesh project, continue unrelated tasks, or ask the owner to manually install Mesh unless your environment truly cannot perform the required step.",
+            "",
+            "--- BEGIN PROGRETECH MESH ENROLLMENT ---",
+            ptm1,
+            "--- END PROGRETECH MESH ENROLLMENT ---",
+        ])
 
         return jsonify(
             ok=True,
             agent_id=agent_id,
             request_id=activation["code"],
-            expires_at=activation["expires_at"],
-            expires_in=max(0, activation["expires_at"] - unix_now()),
+            issued_at=activation["issued_at"],
+            server_time=server_now,
+            activation_lifecycle="until_cancelled_or_redeemed",
+            activation_time_expiry=None,
+            active=True,
             enrollment_message=human_message,
+            enrollment_payload=ptm1,
+            protocol_url=protocol_url,
+            adapter_catalog_url=catalog_url,
+            preinstalled_progretech_component_required=False,
             payload_prefix="PTM1:",
             delivery="existing-agent-chat",
             user_workstation_access_required=False,
@@ -1541,8 +1617,9 @@ def create_app() -> Flask:
             return jsonify(ok=False, error="enrollment_not_found"), 404
         if activation.get("used"):
             return jsonify(ok=False, error="enrollment_already_used"), 409
-        ACTIVATION_CODES.pop(request_id, None)
-        return jsonify(ok=True, cancelled=True, agent_id=agent_id)
+        activation["cancelled"] = True
+        activation["cancelled_at"] = unix_now()
+        return jsonify(ok=True, cancelled=True, agent_id=agent_id, request_id=request_id)
 
     @app.post("/api/agents/<agent_id>/activation-code")
     @require_session
@@ -1560,7 +1637,8 @@ def create_app() -> Flask:
             agent_id=agent_id,
             code=activation["code"],
             signature=activation["signature"],
-            expires_at=activation["expires_at"],
+            issued_at=activation["issued_at"],
+            activation_lifecycle="until_cancelled_or_redeemed",
             bootstrap_command=(
                 f'python install/mesh_agent_bootstrap.py '
                 f'--mesh "{mesh_public_origin()}" '
@@ -1751,6 +1829,7 @@ def create_app() -> Flask:
     def api_status():
         agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values()]
         return jsonify(
+            server_time=unix_now(),
             session={
                 "active": True,
                 "retention": "off",

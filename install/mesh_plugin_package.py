@@ -7,6 +7,8 @@ import os
 import shutil
 import tarfile
 import tempfile
+import ipaddress
+from urllib.parse import urlparse
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -37,8 +39,19 @@ def fetch_and_stage_plugin(package: dict, *, state_dir: Path) -> Path:
     url = str(package.get("url") or "").strip()
     expected_sha = str(package.get("sha256") or "").strip().lower()
 
-    if not url.startswith("https://") and os.environ.get("MESH_ALLOW_INSECURE_PACKAGE_URL") != "1":
-        raise ValueError("Mesh plugin package URL must use HTTPS")
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in {"https", "http"}:
+        raise ValueError("Mesh plugin package URL must use HTTP or HTTPS")
+    if parsed_url.scheme == "http":
+        host = (parsed_url.hostname or "").lower()
+        private_ok = host in {"localhost", "::1"}
+        if not private_ok:
+            try:
+                private_ok = ipaddress.ip_address(host).is_private or ipaddress.ip_address(host).is_loopback
+            except ValueError:
+                private_ok = False
+        if not private_ok:
+            raise ValueError("HTTP Mesh plugin package URL is allowed only for loopback/private-LAN hosts")
     if len(expected_sha) != 64 or any(c not in "0123456789abcdef" for c in expected_sha):
         raise ValueError("Mesh plugin package SHA-256 is invalid")
 

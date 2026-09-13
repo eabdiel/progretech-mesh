@@ -14,14 +14,14 @@ Pass conditions:
 - Edwin sends only that enrollment message to Rend.
 - Rend recognizes the request as an owner instruction.
 - Rend discovers the Mesh enrollment protocol from the PTM1 payload.
-- Rend inspects his own runtime.
+- Rend uses his already-known runtime identity first; if unavailable, only the catalog-declared bounded read-only probe is permitted.
 - Rend identifies OpenClaw as the compatible adapter target.
 - Rend fetches the declared Mesh OpenClaw package himself.
 - Rend uses OpenClaw's supported managed local/archive plugin installer rather than copying files into OpenClaw internals.
 - Rend verifies package integrity before staging.
 - Rend uses only his existing local permissions.
 - Rend does not interrupt a Telegram-started task.
-- Any required OpenClaw activation/restart happens only after idle.
+- The declared hot-safe managed install may occur during the enrollment turn. Mesh does not automatically restart OpenClaw; an explicit reload/restart requirement is reported as `activation_reload_required`.
 - Rend redeems the enrollment and connects outbound to Mesh.
 - Telegram continues to work.
 - Telegram-originated activity appears in Mesh.

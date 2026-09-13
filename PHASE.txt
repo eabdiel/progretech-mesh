@@ -1,1 +1,1 @@
-Direct transport priority — 4 of 4 guided training overlay correction: fixed top-layer card and non-elevated highlights
+v1 RC2 - idempotent existing-adapter handoff acceptance

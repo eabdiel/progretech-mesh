@@ -31,6 +31,7 @@
   const cancelEnrollmentButton = document.getElementById("cancelEnrollmentButton");
   const guidedTrainingButton = document.getElementById("guidedTrainingButton");
   const trainingBackdrop = document.getElementById("trainingBackdrop");
+  const trainingSpotlight = document.getElementById("trainingSpotlight");
   const trainingTitle = document.getElementById("trainingTitle");
   const trainingBody = document.getElementById("trainingBody");
   const trainingTip = document.getElementById("trainingTip");
@@ -56,12 +57,14 @@
   let currentRoutePolicy = localStorage.getItem("mesh-route-policy") || "direct_preferred";
   let currentIceServers = [];
   const LOCAL_ROUTE_KEY = "mesh-local-routes-v1";
+  const PAIRED_AGENTS_KEY = "mesh-paired-agents-v1";
+  let pairedAgents = {};
+  try { pairedAgents = JSON.parse(localStorage.getItem(PAIRED_AGENTS_KEY) || "{}"); } catch { pairedAgents = {}; }
   let localRoutes = {};
   let localSignalPollTimer = null;
   const pendingDirectMessages = new Map();
   let lastPairCommand = "";
   let activeEnrollment = null;
-  let enrollmentCountdownTimer = null;
   let enrollmentPollTimer = null;
   let trainingStepIndex = 0;
   let pendingAttachment = null;
@@ -825,26 +828,30 @@
   }
 
   function stopEnrollmentTimers() {
-    clearInterval(enrollmentCountdownTimer);
     clearInterval(enrollmentPollTimer);
-    enrollmentCountdownTimer = null;
     enrollmentPollTimer = null;
   }
 
-  function renderEnrollmentCountdown() {
+  function renderEnrollmentStatus() {
     if (!activeEnrollment) return;
-    const seconds = Math.max(0, Number(activeEnrollment.expires_at || 0) - Math.floor(Date.now() / 1000));
-    const minutes = Math.floor(seconds / 60);
-    const remainder = seconds % 60;
-    pairCountdown.textContent = seconds > 0
-      ? `Expires in ${minutes}:${String(remainder).padStart(2, "0")}`
-      : "Request expired";
-    if (seconds <= 0) {
-      pairStatus.textContent = "Expired";
-      pairStatus.className = "status-pill expired";
-      copyPairCommandButton.disabled = true;
-      stopEnrollmentTimers();
-    }
+    pairCountdown.textContent = "Active until cancelled or connected";
+  }
+
+  function persistActiveEnrollment() {
+    if (!activeEnrollment || !lastPairCommand) return;
+    const safe = {
+      agent_id: activeEnrollment.agent_id,
+      request_id: activeEnrollment.request_id,
+      issued_at: activeEnrollment.issued_at || null,
+      lifecycle: activeEnrollment.lifecycle || "until_cancelled_or_redeemed",
+      enrollment_message: lastPairCommand,
+      advertised_origin: activeEnrollment.advertised_origin || null
+    };
+    localStorage.setItem("mesh-active-enrollment-v1", JSON.stringify(safe));
+  }
+
+  function clearPersistedActiveEnrollment() {
+    localStorage.removeItem("mesh-active-enrollment-v1");
   }
 
   async function pollEnrollmentConnection() {
@@ -861,6 +868,9 @@
         copyPairCommandButton.hidden = true;
         cancelEnrollmentButton.hidden = true;
         stopEnrollmentTimers();
+        clearPersistedActiveEnrollment();
+        pairedAgents[activeEnrollment.agent_id] = {paired:true, last_connected_at:Date.now()};
+        localStorage.setItem(PAIRED_AGENTS_KEY, JSON.stringify(pairedAgents));
         showToast(`${agent.name || activeEnrollment.agent_id} connected.`);
         await refreshFleet();
       }
@@ -888,13 +898,21 @@
     }
 
     const agent = fleet.find((item) => item.id === agentId);
-    activeEnrollment = {agent_id:agentId, request_id:data.request_id, expires_at:data.expires_at};
+    activeEnrollment = {
+      agent_id:agentId,
+      request_id:data.request_id,
+      issued_at:data.issued_at,
+      lifecycle:data.activation_lifecycle || "until_cancelled_or_redeemed",
+      advertised_origin:data.advertised_origin || null
+    };
     lastPairCommand = data.enrollment_message;
     pairCommand.textContent = lastPairCommand;
     document.getElementById("pairModalTitle").textContent = `Connect ${agent?.name || agentId}`;
     document.getElementById("pairInstructions").textContent =
       `Copy this message and send it directly to ${agent?.name || "the agent"} through your existing chat. ` +
-      "The agent handles the workstation side after its local policy approves the request.";
+      (pairedAgents[agentId]?.paired
+        ? "This agent was previously paired on this PWA. Its existing reconnect credential should be used first; the active PTM1 authorization is only a re-authorization fallback if that credential is unavailable."
+        : "The agent handles the workstation side after its local policy approves the request.");
     if (advertisedAgentEndpoint) {
       advertisedAgentEndpoint.hidden = false;
       advertisedAgentEndpoint.textContent = `Agent-reachable endpoint: ${data.advertised_origin || "unavailable"}`;
@@ -909,8 +927,8 @@
     pairModal.hidden = false;
     document.body.style.overflow = "hidden";
 
-    renderEnrollmentCountdown();
-    enrollmentCountdownTimer = setInterval(renderEnrollmentCountdown, 1000);
+    renderEnrollmentStatus();
+    persistActiveEnrollment();
     enrollmentPollTimer = setInterval(pollEnrollmentConnection, 2000);
   }
 
@@ -926,9 +944,26 @@
     }
     stopEnrollmentTimers();
     activeEnrollment = null;
+    clearPersistedActiveEnrollment();
     pairModal.hidden = true;
     document.body.style.overflow = "";
     showToast("Connection request cancelled.");
+  }
+
+
+  function restorePersistedEnrollment() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mesh-active-enrollment-v1") || "null");
+      if (!saved?.agent_id || !saved?.request_id || !saved?.enrollment_message) return;
+      activeEnrollment = {
+        agent_id: saved.agent_id,
+        request_id: saved.request_id,
+        issued_at: saved.issued_at || null,
+        lifecycle: saved.lifecycle || "until_cancelled_or_redeemed",
+        advertised_origin: saved.advertised_origin || null
+      };
+      lastPairCommand = saved.enrollment_message;
+    } catch (_) { clearPersistedActiveEnrollment(); }
   }
 
 
@@ -1339,19 +1374,70 @@
   document.getElementById("closeGroupModal")?.addEventListener("click", () => closeModal(groupModal));
   document.getElementById("cancelGroupRoom")?.addEventListener("click", () => closeModal(groupModal));
 
-  copyPairCommandButton?.addEventListener("click", async () => {
+  async function copyTextCompatible(text) {
+    // The modern Clipboard API is normally restricted to secure contexts.
+    // Local Mesh acceptance intentionally supports private-LAN HTTP, so keep
+    // a bounded legacy fallback instead of silently failing on http://192.168.x.x.
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        // Fall through to the private-LAN compatible path below.
+      }
+    }
+
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.setAttribute("readonly", "");
+    helper.setAttribute("aria-hidden", "true");
+    helper.style.position = "fixed";
+    helper.style.left = "-9999px";
+    helper.style.top = "0";
+    helper.style.opacity = "0";
+    document.body.appendChild(helper);
+    helper.focus();
+    helper.select();
+    helper.setSelectionRange(0, helper.value.length);
+
+    let copied = false;
     try {
-      await navigator.clipboard.writeText(lastPairCommand);
+      copied = Boolean(document.execCommand?.("copy"));
+    } catch (_) {
+      copied = false;
+    } finally {
+      helper.remove();
+    }
+    return copied;
+  }
+
+  function selectEnrollmentMessageForManualCopy() {
+    if (!pairCommand) return;
+    try {
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(pairCommand);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      pairCommand.scrollIntoView({block:"nearest"});
+    } catch (_) {}
+  }
+
+  copyPairCommandButton?.addEventListener("click", async () => {
+    const copied = await copyTextCompatible(lastPairCommand);
+    if (copied) {
       copyPairCommandButton.textContent = "Copied ✓";
       copyPairCommandButton.classList.add("copy-success");
-      showToast("Gateway command copied to clipboard.");
+      showToast("Enrollment message copied to clipboard.");
       setTimeout(() => {
         copyPairCommandButton.textContent = "Copy enrollment message";
         copyPairCommandButton.classList.remove("copy-success");
       }, 2200);
-    } catch (_) {
-      showToast("Copy unavailable; select the command manually.");
+      return;
     }
+
+    selectEnrollmentMessageForManualCopy();
+    showToast("Clipboard access is unavailable. The enrollment message is selected — press Ctrl+C.");
   });
 
   enrollmentForm?.addEventListener("submit", async (event) => {
@@ -1500,7 +1586,7 @@
   const trainingSteps = [
     ["Welcome to ProgreTech Mesh","Mesh is a live front end for your local agents. Their runtime, memory, and active work stay on their own machine.","Cloud retention is off for live operational history.",".hero"],
     ["Your agent fleet","Each card shows identity, connection state, current activity, runtime details, and the controls available for that agent.","A verified identity is separate from whether the local gateway is currently online.","#agentGrid"],
-    ["Connect without workstation access","Choose Connect agent, copy the short-lived enrollment request, and send it through your existing direct chat with the agent. The agent handles the local setup.","You should not need SSH, RDP, a terminal, or filesystem access to the agent computer.","#agentGrid"],
+    ["Connect without workstation access","Choose Connect agent, copy the active enrollment request, and send it through your existing direct chat with the agent. The agent handles the local setup.","You should not need SSH, RDP, a terminal, or filesystem access to the agent computer.","#agentGrid"],
     ["Plug-and-monitor","Connecting Mesh does not take over a running agent. Existing Telegram work can continue while Mesh observes the same agent independently.","Refreshing or disconnecting Mesh must not stop the agent's current task.","#dashboard"],
     ["Filter activity by channel","The live stream can show all activity or narrow it to Telegram, Mesh, or system/tool activity.","A Mesh conversation remains independent from the Telegram conversation even though both can appear in the monitor.",".observability-toolbar"],
     ["Message and speak","Use the composer for a separate Mesh conversation. Where supported, the microphone can capture speech into the editable message field.","Speech recognition is a browser capability and may depend on the browser vendor.","#messageComposer"],
@@ -1511,6 +1597,34 @@
 
   function clearTrainingHighlight() {
     document.querySelectorAll(".training-highlight").forEach((el) => el.classList.remove("training-highlight"));
+  }
+
+
+  function hideTrainingSpotlight() {
+    if (!trainingSpotlight) return;
+    trainingSpotlight.hidden = true;
+    trainingSpotlight.style.removeProperty("left");
+    trainingSpotlight.style.removeProperty("top");
+    trainingSpotlight.style.removeProperty("width");
+    trainingSpotlight.style.removeProperty("height");
+  }
+
+  function positionTrainingSpotlight(target) {
+    if (!trainingSpotlight || !target) {
+      hideTrainingSpotlight();
+      return;
+    }
+    const rect = target.getBoundingClientRect();
+    const pad = 8;
+    const left = Math.max(8, rect.left - pad);
+    const top = Math.max(8, rect.top - pad);
+    const right = Math.min(window.innerWidth - 8, rect.right + pad);
+    const bottom = Math.min(window.innerHeight - 8, rect.bottom + pad);
+    trainingSpotlight.hidden = false;
+    trainingSpotlight.style.left = `${left}px`;
+    trainingSpotlight.style.top = `${top}px`;
+    trainingSpotlight.style.width = `${Math.max(24, right - left)}px`;
+    trainingSpotlight.style.height = `${Math.max(24, bottom - top)}px`;
   }
 
   function renderTrainingStep() {
@@ -1528,7 +1642,10 @@
     const target = document.querySelector(step[3]);
     if (target) {
       target.classList.add("training-highlight");
-      try { target.scrollIntoView({behavior:"smooth", block:"center"}); } catch (_) {}
+      try { target.scrollIntoView({behavior:"smooth", block:"nearest"}); } catch (_) {}
+      requestAnimationFrame(() => positionTrainingSpotlight(target));
+    } else {
+      hideTrainingSpotlight();
     }
     // Always keep the training card above the highlighted page target.
     const card = trainingBackdrop?.querySelector(".training-card");
@@ -1554,6 +1671,7 @@
 
   function closeGuidedTraining(markComplete=false) {
     clearTrainingHighlight();
+    hideTrainingSpotlight();
     if (trainingBackdrop) {
       trainingBackdrop.hidden = true;
       trainingBackdrop.setAttribute("aria-hidden", "true");
@@ -1565,6 +1683,16 @@
       showToast("Guided Training complete.");
     }
   }
+
+  function refreshTrainingSpotlight() {
+    if (!trainingBackdrop || trainingBackdrop.hidden) return;
+    const step = trainingSteps[trainingStepIndex];
+    const target = step ? document.querySelector(step[3]) : null;
+    if (target) positionTrainingSpotlight(target);
+  }
+
+  window.addEventListener("resize", refreshTrainingSpotlight);
+  window.addEventListener("scroll", refreshTrainingSpotlight, true);
 
   guidedTrainingButton?.addEventListener("click", startGuidedTraining);
   document.addEventListener("keydown", (event) => {
@@ -1593,6 +1721,11 @@
   renderNotificationControls();
   setInterval(refreshFleet, 5000);
 
+  restorePersistedEnrollment();
+  if (activeEnrollment) {
+    renderEnrollmentStatus();
+    enrollmentPollTimer = setInterval(pollEnrollmentConnection, 2000);
+  }
   loadLocalRoutes();
   window.addEventListener("offline",()=>{
     if (!selectedAgentId) return;

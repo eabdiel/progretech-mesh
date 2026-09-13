@@ -437,3 +437,33 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
     max-height: 72dvh !important;
   }
 }
+
+
+/* Guided Training true spotlight: target remains clear while surrounding UI is dimmed. */
+.training-backdrop {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.training-spotlight {
+  position: fixed !important;
+  z-index: 2147483610 !important;
+  border: 2px solid rgba(105,184,255,.98) !important;
+  border-radius: 16px !important;
+  background: transparent !important;
+  box-shadow:
+    0 0 0 9999px rgba(2,5,8,.70),
+    0 0 0 4px rgba(105,184,255,.14),
+    0 0 26px rgba(105,184,255,.34) !important;
+  pointer-events: none !important;
+  transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease;
+}
+.training-spotlight[hidden] { display: none !important; }
+.training-highlight {
+  position: relative !important;
+  z-index: auto !important;
+  box-shadow: none !important;
+  outline: none !important;
+  pointer-events: none !important;
+}
+.training-card { z-index: 2147483640 !important; }

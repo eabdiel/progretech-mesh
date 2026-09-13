@@ -252,7 +252,7 @@
       </p>
       <div class="connect-status-row">
         <span class="status-pill waiting" id="pairStatus">Waiting for agent</span>
-        <span class="countdown" id="pairCountdown">Expires soon</span>
+        <span class="countdown" id="pairCountdown">Active until cancelled or connected</span>
       </div>
       <div class="enrollment-message-box" id="pairCommand" tabindex="0">Generating secure enrollment request…</div>
       <div class="connect-assurance">
@@ -358,6 +358,7 @@
 
 
   <div class="training-backdrop" id="trainingBackdrop" hidden>
+      <div class="training-spotlight" id="trainingSpotlight" aria-hidden="true" hidden></div>
     <section class="training-card" role="dialog" aria-modal="true" aria-labelledby="trainingTitle">
       <div class="training-progress">
         <div class="training-progress-bar"><i id="trainingProgressBar"></i></div>

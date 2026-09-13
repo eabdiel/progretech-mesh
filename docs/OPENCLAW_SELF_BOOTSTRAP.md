@@ -10,18 +10,18 @@ The human owner does not install this package. An OpenClaw agent receiving PTM1 
 4. Read `/api/enrollment/adapters/openclaw/install-plan`.
 5. Download the declared Mesh plugin package.
 6. Verify SHA-256 `3e22b589fdb8409cef680e49cd2f34f4a401b9fb04a171a5c9f6f81cbd618271` for the current package.
-7. Optionally fetch the helper at `/api/enrollment/adapters/openclaw/bootstrap` and verify helper SHA-256 `3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40`.
-8. Wait until OpenClaw is idle.
+7. Optionally fetch the helper at `/api/enrollment/adapters/openclaw/bootstrap` and verify helper SHA-256 `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`.
+8. Perform the declared hot-safe managed plugin install after verification; do not wait for generic idle merely because the enrollment chat is active.
 9. Use OpenClaw's supported managed plugin installer for the verified local archive:
    `openclaw plugins install <verified-archive> --force --accept-capabilities`
 10. Inspect the plugin runtime and probe channels.
 11. Complete Mesh activation and outbound connection.
 
-## Why install waits for idle
+## Why install does not wait for generic idle
 
-OpenClaw's managed plugin installer is the supported route for local/archive plugins. Arbitrary local/archive sources require explicit provenance acknowledgement in noninteractive use, and capability consent is also explicit. Managed plugin installation can reload/restart plugin runtime, so Mesh must not invoke the install while an agent is actively working.
+OpenClaw's managed plugin installer is the supported route for local/archive plugins. Arbitrary local/archive sources require explicit provenance acknowledgement in noninteractive use, and capability consent is also explicit. For this adapter contract, the managed package install is treated as hot-safe and the helper does not invoke a Gateway/runtime restart. If OpenClaw explicitly reports that a reload/restart is required for activation, enrollment stops with `activation_reload_required` instead of forcing it.
 
-Downloading and verifying the package are read-only and may happen before the idle point.
+Downloading and verifying the package are read-only. The declared managed install may then proceed during the enrollment turn without a generic idle wait; automatic runtime restart remains prohibited.
 
 ## Owner approval
 

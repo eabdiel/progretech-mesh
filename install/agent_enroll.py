@@ -24,7 +24,7 @@ def decode_enrollment(value: str) -> dict:
     raw = base64.urlsafe_b64decode((token + padding).encode("ascii"))
     payload = json.loads(raw.decode("utf-8"))
 
-    if payload.get("type") != "PROGRETECH_MESH_ENROLL":
+    if payload.get("type") not in {"PROGRETECH_MESH_CONNECT_OR_ENROLL", "PROGRETECH_MESH_ENROLL"}:
         raise ValueError("not a ProgreTech Mesh enrollment payload")
     if payload.get("mode") != "plug-and-monitor":
         raise ValueError("enrollment is not plug-and-monitor")
@@ -169,8 +169,8 @@ def main() -> int:
     )
 
     # OpenClaw integration is provisioned by the agent itself. The bootstrap is
-    # detached so this Telegram/chat turn can finish first; it stages the plugin,
-    # waits for OpenClaw to become idle, and only then performs activation/restart.
+    # detached and may perform the declared hot-safe managed install during this
+    # enrollment turn. It never performs an automatic OpenClaw restart.
     if args.runtime_adapter == "openclaw_bridge":
         bootstrap = Path(__file__).resolve().parent / "agent_openclaw_mesh_bootstrap.sh"
         if bootstrap.exists():
@@ -184,7 +184,7 @@ def main() -> int:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            print("OpenClaw Mesh bootstrap scheduled after current work becomes idle.")
+            print("OpenClaw Mesh bootstrap scheduled with hot-safe install policy; no automatic runtime restart.")
 
     return 0
 

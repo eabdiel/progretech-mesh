@@ -8,7 +8,7 @@ restart only the Mesh gateway. Rend's task and Telegram session must continue.
 
 ## Connect Agent
 Use Connect agent, copy the request into the existing agent chat, and verify the agent
-connects without workstation access. Test expiry, replay rejection, and cancellation.
+connects without workstation access. Test replay rejection, cancellation, signature failure, and agent mismatch.
 
 ## Channel isolation
 Generate Telegram, Mesh, and system/tool activity. Verify All / Telegram / Mesh /

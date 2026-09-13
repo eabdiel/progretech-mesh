@@ -10,11 +10,11 @@ The live Rend acceptance is successful only if all of the following are true:
 - The baseline recognizer accepts only an owner-authorized direct message.
 - Rend downloads the exact package named in PTM1.
 - A bad hash is rejected before activation.
-- Expired/replayed/cancelled activation is rejected by Mesh.
-- If Rend is busy, plugin staging may occur but Gateway activation/restart waits.
+- Replayed/used/cancelled or invalid activation is rejected by Mesh.
+- Verified staging and the declared hot-safe managed plugin install may occur during the enrollment turn; the enrollment chat itself must not create an idle deadlock.
 - Telegram work is not cancelled, reset or replaced.
-- The Gateway restarts only after OpenClaw is observed idle.
-- Telegram reconnects after restart.
+- Mesh enrollment never automatically restarts the OpenClaw Gateway/runtime. If a reload/restart is explicitly required, the attempt stops with `activation_reload_required`.
+- Telegram remains healthy throughout installation/activation; no enrollment-triggered restart is expected.
 - Mesh connects outbound using the stored local credential.
 - Telegram activity appears in Mesh observation.
 - Mesh conversation uses its own Mesh session and does not alter Telegram context.

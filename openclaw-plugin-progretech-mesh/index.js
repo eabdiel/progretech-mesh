@@ -27,6 +27,13 @@ let meshReconnectTimer = null;
 let meshIdentity = null;
 let meshReconnectAttempt = 0;
 let meshReconnectDisabled = false;
+let meshConnectWatchdog = null;
+
+const RECONNECT_BACKOFF_MS = [2000, 5000, 10000, 20000, 30000];
+const RECONNECT_CONNECT_TIMEOUT_MS = Number.parseInt(
+  process.env.PROGRETECH_MESH_RECONNECT_CONNECT_TIMEOUT_MS || "10000",
+  10,
+);
 
 let directRtcModule = null;
 const directPeers = new Map();
@@ -96,10 +103,35 @@ async function readLocalJson(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
+function probeExistingMeshLocalServer(credential) {
+  return new Promise((resolve) => {
+    const req=http.request({
+      host:"127.0.0.1",
+      port:LOCAL_SIGNAL_PORT,
+      path:"/mesh-local/status",
+      method:"GET",
+      headers:{"X-Mesh-Local-Token":credential.token},
+      timeout:1500,
+    },(res)=>{
+      const chunks=[];
+      res.on("data",(chunk)=>chunks.push(chunk));
+      res.on("end",()=>{
+        try {
+          const body=JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+          resolve(Boolean(res.statusCode === 200 && body?.ok === true && body?.direct_webrtc === true));
+        } catch { resolve(false); }
+      });
+    });
+    req.on("timeout",()=>{ req.destroy(); resolve(false); });
+    req.on("error",()=>resolve(false));
+    req.end();
+  });
+}
+
 function startLocalSignalServer(api) {
   if (localSignalServer) return;
   const credential=ensureLocalAccessCredential();
-  localSignalServer=http.createServer((req,res)=>{
+  const candidate=http.createServer((req,res)=>{
     void (async()=>{
       const origin=String(req.headers.origin || "");
       corsLocal(res, origin);
@@ -133,7 +165,40 @@ function startLocalSignalServer(api) {
       res.end(JSON.stringify({ok:false,error:trimText(error instanceof Error ? error.message : String(error),500)}));
     });
   });
-  localSignalServer.listen(LOCAL_SIGNAL_PORT,"0.0.0.0");
+  candidate.once("error",(error)=>{
+    if (error?.code !== "EADDRINUSE") {
+      writeLifecycleState({local_signal_state:"error",local_signal_error:trimText(error?.message || String(error),500)});
+      return;
+    }
+    void probeExistingMeshLocalServer(credential).then((owned)=>{
+      if (owned) {
+        // A previously loaded Mesh adapter already owns the stable local signaling
+        // route. Treat it as a compatible handoff target instead of trying to
+        // kill/rebind the listener. The newly loaded adapter can still perform
+        // activation redemption and outbound Mesh connection independently.
+        writeLifecycleState({
+          local_signal_state:"reused_existing_mesh_listener",
+          local_signal_port:LOCAL_SIGNAL_PORT,
+          local_signal_owner_verified:true,
+        });
+        return;
+      }
+      writeLifecycleState({
+        local_signal_state:"port_conflict",
+        local_signal_port:LOCAL_SIGNAL_PORT,
+        local_signal_owner_verified:false,
+      });
+    });
+  });
+  candidate.once("listening",()=>{
+    localSignalServer=candidate;
+    writeLifecycleState({
+      local_signal_state:"listening",
+      local_signal_port:LOCAL_SIGNAL_PORT,
+      local_signal_owner_verified:true,
+    });
+  });
+  candidate.listen(LOCAL_SIGNAL_PORT,"0.0.0.0");
 }
 
 function stopLocalSignalServer() {
@@ -211,10 +276,21 @@ function writeConnectionStatus(state, detail = "", extra = {}) {
   });
 }
 
+function isPrivateLanHostname(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  if (host === "localhost" || host === "::1") return true;
+  const parts = host.split(".").map((p) => Number.parseInt(p, 10));
+  if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) return false;
+  if (parts[0] === 127 || parts[0] === 10) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  return false;
+}
+
 function parseMeshOrigin(value) {
   const url = new URL(String(value || ""));
   if (!["https:", "http:"].includes(url.protocol)) throw new Error("invalid_mesh_origin");
-  if (url.protocol !== "https:" && process.env.MESH_ALLOW_INSECURE_PACKAGE_URL !== "1") {
+  if (url.protocol === "http:" && !isPrivateLanHostname(url.hostname)) {
     throw new Error("mesh_https_required");
   }
   return url.origin;
@@ -259,7 +335,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.0",
+    adapter_version: "0.7.5",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -310,15 +386,70 @@ function heartbeatPayload() {
   };
 }
 
-function scheduleReconnect(api, explicitDelayMs = null) {
+function reconnectDelayMs(attemptNumber) {
+  const index = Math.max(0, Math.min(RECONNECT_BACKOFF_MS.length - 1, Number(attemptNumber || 1) - 1));
+  return RECONNECT_BACKOFF_MS[index];
+}
+
+function clearMeshConnectWatchdog() {
+  if (!meshConnectWatchdog) return;
+  clearTimeout(meshConnectWatchdog);
+  meshConnectWatchdog = null;
+}
+
+function scheduleReconnect(api, reason = "connection_closed", explicitDelayMs = null) {
   if (meshReconnectDisabled || meshReconnectTimer) return;
-  const delayMs = explicitDelayMs ?? Math.min(60000, 2000 * (2 ** Math.min(meshReconnectAttempt, 5)));
-  meshReconnectAttempt += 1;
-  meshReconnectTimer = setTimeout(() => {
+
+  const nextAttempt = meshReconnectAttempt + 1;
+  const delayMs = explicitDelayMs ?? reconnectDelayMs(nextAttempt);
+  const nextAttemptAt = new Date(Date.now() + delayMs).toISOString();
+
+  writeConnectionStatus("reconnecting", "Mesh reconnect scheduled", {
+    agent_id: meshIdentity?.agent_id || null,
+    device_id: meshIdentity?.device_id || null,
+    reconnect_attempt: meshReconnectAttempt,
+    next_reconnect_attempt: nextAttempt,
+    next_reconnect_attempt_at: nextAttemptAt,
+    last_reconnect_error: reason,
+  });
+  writeLifecycleState({
+    reconnect_enabled: true,
+    reconnect_state: "scheduled",
+    reconnect_attempt: meshReconnectAttempt,
+    next_reconnect_attempt: nextAttempt,
+    next_reconnect_attempt_at: nextAttemptAt,
+    last_reconnect_error: reason,
+  });
+
+  meshReconnectTimer = setTimeout(async () => {
     meshReconnectTimer = null;
-    void ensureMeshConnection(api, false);
+    if (meshReconnectDisabled) return;
+
+    meshReconnectAttempt = nextAttempt;
+    const startedAt = new Date().toISOString();
+    writeConnectionStatus("reconnecting", "Mesh reconnect attempt started", {
+      agent_id: meshIdentity?.agent_id || null,
+      device_id: meshIdentity?.device_id || null,
+      reconnect_attempt: meshReconnectAttempt,
+      last_reconnect_attempt_at: startedAt,
+      next_reconnect_attempt_at: null,
+      last_reconnect_error: reason,
+    });
+    writeLifecycleState({
+      reconnect_state: "attempting",
+      reconnect_attempt: meshReconnectAttempt,
+      last_reconnect_attempt_at: startedAt,
+      next_reconnect_attempt_at: null,
+    });
+
+    try {
+      await ensureMeshConnection(api, false);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (meshSocket && meshSocket.readyState !== WebSocket.OPEN) meshSocket = null;
+      scheduleReconnect(api, `reconnect_exception:${detail}`);
+    }
   }, delayMs);
-  meshReconnectTimer.unref?.();
 }
 
 async function ensureMeshConnection(api, preferInitialPairing = true) {
@@ -368,16 +499,69 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   writeConnectionStatus("connecting", "Connecting outbound to Mesh", {
     agent_id: record.agent_id,
     device_id: record.device_id,
+    reconnect_attempt: meshReconnectAttempt,
+    last_reconnect_attempt_at: meshReconnectAttempt > 0 ? new Date().toISOString() : null,
   });
 
-  const socket = new WebSocket(url);
+  let socket;
+  try {
+    socket = new WebSocket(url);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    meshSocket = null;
+    writeConnectionStatus("reconnecting", "Mesh WebSocket creation failed; reconnect scheduled", {
+      agent_id: record.agent_id,
+      device_id: record.device_id,
+      reconnect_attempt: meshReconnectAttempt,
+      last_reconnect_error: `websocket_construct:${detail}`,
+    });
+    scheduleReconnect(api, `websocket_construct:${detail}`);
+    return;
+  }
+
   meshSocket = socket;
+  let opened = false;
+  let retryQueued = false;
+
+  const queueRetry = (reason) => {
+    if (retryQueued || meshReconnectDisabled) return;
+    retryQueued = true;
+    clearMeshConnectWatchdog();
+    if (meshSocket === socket) meshSocket = null;
+    writeConnectionStatus("reconnecting", "Mesh connection unavailable; reconnect scheduled", {
+      agent_id: record.agent_id,
+      device_id: record.device_id,
+      reconnect_attempt: meshReconnectAttempt,
+      last_reconnect_error: reason,
+    });
+    scheduleReconnect(api, reason);
+  };
+
+  clearMeshConnectWatchdog();
+  meshConnectWatchdog = setTimeout(() => {
+    if (opened || socket.readyState === WebSocket.OPEN) return;
+    try { socket.close(); } catch {}
+    queueRetry("connect_timeout");
+  }, RECONNECT_CONNECT_TIMEOUT_MS);
 
   socket.addEventListener("open", () => {
+    opened = true;
+    retryQueued = false;
+    clearMeshConnectWatchdog();
     meshReconnectAttempt = 0;
     writeConnectionStatus("connected", "Passive monitoring connected", {
       agent_id: record.agent_id,
       device_id: record.device_id,
+      reconnect_attempt: 0,
+      last_reconnect_error: null,
+      next_reconnect_attempt_at: null,
+    });
+    writeLifecycleState({
+      reconnect_enabled: true,
+      reconnect_state: "connected",
+      reconnect_attempt: 0,
+      last_reconnect_error: null,
+      next_reconnect_attempt_at: null,
     });
     sendMeshGatewayMessage(heartbeatPayload());
     sendMeshGatewayMessage(localRouteMessage());
@@ -415,6 +599,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   });
 
   socket.addEventListener("close", (event) => {
+    clearMeshConnectWatchdog();
     if (meshSocket === socket) meshSocket = null;
 
     if ([4001, 4003, 4401, 4403].includes(Number(event?.code))) {
@@ -426,16 +611,17 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       return;
     }
 
-    writeConnectionStatus("reconnecting", "Mesh connection closed; reconnect scheduled", {
-      agent_id: record.agent_id,
-      device_id: record.device_id,
-      reconnect_attempt: meshReconnectAttempt + 1,
-    });
-    scheduleReconnect(api);
+    const reasonText = event?.reason ? String(event.reason) : "";
+    queueRetry(`websocket_close:${event?.code || 0}${reasonText ? `:${reasonText}` : ""}`);
   });
 
   socket.addEventListener("error", () => {
-    // Close event owns retry scheduling.
+    // Some WebSocket implementations do not reliably emit close after a failed connect.
+    // Queue a bounded retry immediately; the close handler is idempotent via retryQueued.
+    if (!opened) {
+      try { socket.close(); } catch {}
+      queueRetry("websocket_error_before_open");
+    }
   });
 }
 
@@ -819,7 +1005,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.0",
+      adapter_version: "0.7.5",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",
@@ -839,6 +1025,7 @@ export default definePluginEntry({
         clearTimeout(meshReconnectTimer);
         meshReconnectTimer = null;
       }
+      clearMeshConnectWatchdog();
       if (meshSocket) {
         try { meshSocket.close(); } catch {}
         meshSocket = null;

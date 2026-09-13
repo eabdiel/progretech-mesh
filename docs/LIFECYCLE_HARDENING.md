@@ -27,7 +27,7 @@ and resumes Mesh connectivity.
 ## Adapter versions
 
 - Same version: idempotent; skip reinstall.
-- Newer version: verify package, wait for idle when managed OpenClaw installation is required.
+- Newer offered version than installed: the old adapter is not fast-path compatible; verify the declared package, perform one bounded in-place upgrade for the already-known runtime, and then continue reconnect/re-authorization. No runtime rediscovery is required.
 - Older version: rejected by default.
 - Failed managed install: do not manipulate OpenClaw internals and do not remove the existing
   agent runtime. The verified candidate archive remains local for diagnostics/retry.

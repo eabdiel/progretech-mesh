@@ -11,10 +11,10 @@ The application frontend contains no internal development phase/revision termino
 ## Completed customer-facing work
 
 ### Connect Agent
-The normal UI no longer shows a workstation command. It generates a short-lived
+The normal UI no longer shows a workstation command. It generates a user-controlled
 agent-led enrollment message for the user to send through the agent's existing chat.
 
-The modal includes copy confirmation, expiry countdown, cancel, waiting, automatic
+The modal includes copy confirmation, explicit cancel, active/waiting state, automatic
 connection polling, connected state, and plug-and-monitor assurance.
 
 ### Channel activity
@@ -101,6 +101,10 @@ See:
 - `docs/ADR_UNIVERSAL_AGENT_ONBOARDING.md`
 
 
+## Universal website-prompt enrollment
+
+The website-generated enrollment message is the only required bootstrap input. No ProgreTech software, PTM1 recognizer, or Mesh plugin is assumed to be preinstalled. The agent decodes PTM1, reads the Mesh-hosted protocol/catalog, matches its known runtime identity against Mesh's bounded adapter catalog and self-installs the single compatible adapter using authority it already has. Human workstation access is a failure path, not normal onboarding.
+
 ## OpenClaw self-bootstrap path
 
 The universal enrollment catalog now exposes an executable OpenClaw installation plan plus an optional agent-run helper. No preinstalled Mesh bootstrap is assumed.
@@ -111,7 +115,7 @@ The supported managed install operation is:
 
 The helper downloads/verifies while work may still be active, but refuses to invoke managed installation until OpenClaw has been idle across multiple checks.
 
-Helper SHA-256: `3e991a4846ea397d413277b26a2d1cdf3de2e5ac379eaf3c5fcf736839862f40`
+Helper SHA-256: `e6b1d9b657d692329b256ba154f39dd38aef0ee88beca5fe9e86eb10c59b669f`
 
 See `docs/OPENCLAW_SELF_BOOTSTRAP.md`.
 
@@ -234,7 +238,7 @@ routes for future guided training.
 The transport track is implementation-complete but still requires live acceptance with Rend before it can
 be considered production-proven.
 
-Adapter: 0.7.0
+Adapter: 0.7.5
 Adapter SHA-256: `8edc0e81bc09600c17bbb9b77db642d158d0223440973cd736b8913432dde435`
 Bootstrap SHA-256: `f7f8438916e679db9410fae3e5591386c93d274666c40a25afc9eb069f6e9267`
 
@@ -250,3 +254,21 @@ Bootstrap SHA-256: `f7f8438916e679db9410fae3e5591386c93d274666c40a25afc9eb069f6e
 
 ## Guided Training overlay correction
 The highlighted page target no longer receives an elevated stacking layer or full-screen shadow. The training card is mounted directly under `body`, uses the browser's highest practical z-index, docks to the lower-right on desktop, and keeps its navigation actions sticky and visible.
+
+
+## Guided Training spotlight correction
+The backdrop itself is now transparent. A separate fixed spotlight layer creates the dimmed surround and leaves the active target visible inside a blue cutout, while the training card stays above it.
+
+
+### Enrollment/reconnect timing
+- Website enrollment activations are single-use and remain active until the user cancels the request or the agent successfully redeems it.
+- Enrollment has no normal countdown. The PWA shows an active request until cancellation or successful connection; reconnect credentials handle future sessions.
+- Existing compatible installations reconnect with their durable agent-local credential and skip discovery/reinstallation.
+- If only the reconnect credential is unavailable, the active PTM1 authorization re-authorizes the existing installation without repeating adapter discovery/install.
+
+
+## RC2 hot-safe enrollment upgrade
+
+The OpenClaw adapter install plan no longer waits for generic runtime idle merely because the enrollment conversation itself is active. After package verification, the declared managed install may run during the enrollment turn and must not automatically restart OpenClaw. If the runtime explicitly requires a reload/restart before activation, enrollment stops with `activation_reload_required` and preserves current work.
+
+Bootstrap SHA-256: `8da4e01c369983ce3dd1c0d05bbb884ad320e3c5d5b63b3703d464c7b5433b42`

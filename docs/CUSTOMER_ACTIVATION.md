@@ -23,7 +23,7 @@ Mesh
   ↓
 Connect Agent
   ↓
-short-lived signed enrollment message
+signed user-controlled enrollment message
   ↓
 user sends it to agent through existing chat
   ↓

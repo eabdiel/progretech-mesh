@@ -4,7 +4,7 @@ The OpenClaw adapter now completes enrollment after managed installation without
 
 Flow:
 
-`PTM1 → package verification → pending handoff → wait for idle → managed OpenClaw install → plugin startup → activation redeem → signed device credential → outbound Mesh WebSocket → passive activity forwarding`
+`PTM1 → package verification → pending handoff → hot-safe managed OpenClaw install → plugin startup → activation redeem → signed device credential → outbound Mesh WebSocket → passive activity forwarding`
 
 Local state:
 
@@ -15,3 +15,6 @@ Local state:
 On later OpenClaw starts, the adapter reconnects with the saved device credential and does not require re-enrollment.
 
 The adapter forwards passive observation events only. It does not seize Telegram or reuse Telegram conversation context. Mesh conversation remains isolated on the Mesh session path.
+
+## Stable local signaling ownership during upgrades
+The local signaling port is a stable Mesh-owned route. During an in-place upgrade, `EADDRINUSE` is not automatically a failure. The candidate adapter must authenticate a read-only `/mesh-local/status` request using the existing local Mesh access credential. If that succeeds, the port is treated as owned by the previously loaded Mesh adapter and is reused during hot handoff; the upgrader must not kill the old listener or bind a second listener. If authenticated ownership cannot be proven, stop with `port_conflict`.
