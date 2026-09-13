@@ -1,4 +1,5 @@
 # ProgreTech Mesh v1 — RC1 Integration candidate 1
+<img width="1761" height="900" alt="firefox_ybIdXT0Xw0" src="https://github.com/user-attachments/assets/de674b43-4bbb-487e-85bb-ea7617f955c1" />
 
 ## Target
 
