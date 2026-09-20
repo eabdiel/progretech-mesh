@@ -44,6 +44,24 @@
   const speakRepliesToggle = document.getElementById("speakRepliesToggle");
   const streamPanel = document.getElementById("streamPanel");
   const telemetryPanel = document.getElementById("telemetryPanel");
+  const buddySlot = document.getElementById("buddySlot");
+  const buddyTile = document.getElementById("buddyTile");
+  const buddyStage = document.getElementById("buddyStage");
+  const buddySprite = document.getElementById("buddySprite");
+  const buddyAgentLabel = document.getElementById("buddyAgentLabel");
+  const buddyStateLabel = document.getElementById("buddyStateLabel");
+  const buddyEnabledToggle = document.getElementById("buddyEnabledToggle");
+  const buddySettingsButton = document.getElementById("buddySettingsButton");
+  const buddyPopButton = document.getElementById("buddyPopButton");
+  const buddyReturnButton = document.getElementById("buddyReturnButton");
+  const buddyAnchorHome = document.getElementById("buddyAnchorHome");
+  const buddyComposer = document.getElementById("buddyComposer");
+  const buddyMessageInput = document.getElementById("buddyMessageInput");
+  const buddySettingsModal = document.getElementById("buddySettingsModal");
+  const buddyAgentSelect = document.getElementById("buddyAgentSelect");
+  const buddyBackgroundColor = document.getElementById("buddyBackgroundColor");
+  const buddySpriteGrid = document.getElementById("buddySpriteGrid");
+  const buddySpeakingIndicator = document.getElementById("buddySpeakingIndicator");
 
   let installPrompt = null;
   let fleet = [];
@@ -73,6 +91,205 @@
   let isListening = false;
   let speechSupported = false;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  const BUDDY_SETTINGS_KEY = "mesh-buddy-settings-v1";
+  const BUDDY_MAX_SPRITES = 10;
+  const buddySpriteStates = [
+    "Idle", "Idle 2", "Eyes open", "Eyes closed", "Mouth open",
+    "Mouth closed", "Happy", "Thinking", "Listening", "Custom"
+  ];
+  const buddyDefaults = {
+    enabled: false,
+    floating: false,
+    agentId: "",
+    background: "#ffffff",
+    sprites: {
+      "Idle": "/static/buddy/default-progre/idle.png",
+      "Idle 2": "/static/buddy/default-progre/mouth-closed.png",
+      "Eyes open": "/static/buddy/default-progre/idle.png",
+      "Eyes closed": "/static/buddy/default-progre/eyes-closed.png",
+      "Mouth open": "/static/buddy/default-progre/mouth-open.png",
+      "Mouth closed": "/static/buddy/default-progre/mouth-closed.png"
+    }
+  };
+  let buddySettings = loadBuddySettings();
+  let buddyAnimationTimer = null;
+  let buddyBlinkTimer = null;
+  let buddyTalkingTimer = null;
+  let buddyState = "Idle";
+
+  function loadBuddySettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(BUDDY_SETTINGS_KEY) || "{}");
+      return {
+        ...buddyDefaults,
+        ...saved,
+        sprites: {...buddyDefaults.sprites, ...(saved.sprites || {})}
+      };
+    } catch (_) {
+      return {...buddyDefaults, sprites:{...buddyDefaults.sprites}};
+    }
+  }
+
+  function saveBuddySettings() {
+    try { localStorage.setItem(BUDDY_SETTINGS_KEY, JSON.stringify(buddySettings)); } catch (_) {}
+  }
+
+  function buddyAgent() {
+    return fleet.find((agent) => agent.id === buddySettings.agentId) || null;
+  }
+
+  function buddySpriteFor(state) {
+    return buddySettings.sprites[state] || buddySettings.sprites["Idle"] || buddyDefaults.sprites["Idle"];
+  }
+
+  function setBuddyState(state) {
+    buddyState = state;
+    if (buddySprite) buddySprite.src = buddySpriteFor(state);
+    if (buddyStateLabel) buddyStateLabel.textContent = state;
+  }
+
+  function scheduleBuddyBlink() {
+    clearTimeout(buddyBlinkTimer);
+    if (!buddySettings.enabled) return;
+    const delay = 3200 + Math.floor(Math.random() * 4200);
+    buddyBlinkTimer = setTimeout(() => {
+      const previous = buddyState;
+      setBuddyState("Eyes closed");
+      setTimeout(() => setBuddyState(previous === "Eyes closed" ? "Idle" : previous), 170);
+      scheduleBuddyBlink();
+    }, delay);
+  }
+
+  function scheduleBuddyIdle() {
+    clearTimeout(buddyAnimationTimer);
+    if (!buddySettings.enabled) return;
+    const delay = 2200 + Math.floor(Math.random() * 2800);
+    buddyAnimationTimer = setTimeout(() => {
+      if (!buddyTile?.classList.contains("speaking")) {
+        const next = buddySettings.sprites["Idle 2"] && Math.random() > .45 ? "Idle 2" : "Idle";
+        setBuddyState(next);
+        setTimeout(() => setBuddyState("Idle"), 420 + Math.floor(Math.random() * 450));
+      }
+      scheduleBuddyIdle();
+    }, delay);
+  }
+
+  function startBuddyMotion() {
+    clearTimeout(buddyAnimationTimer);
+    clearTimeout(buddyBlinkTimer);
+    if (!buddySettings.enabled) return;
+    setBuddyState("Idle");
+    scheduleBuddyIdle();
+    scheduleBuddyBlink();
+  }
+
+  function stopBuddyMotion() {
+    clearTimeout(buddyAnimationTimer);
+    clearTimeout(buddyBlinkTimer);
+    clearInterval(buddyTalkingTimer);
+    buddyTile?.classList.remove("speaking");
+    setBuddyState("Idle");
+  }
+
+  function updateBuddyUi() {
+    if (!buddyTile) return;
+    const agent = buddyAgent();
+    buddyEnabledToggle.checked = Boolean(buddySettings.enabled);
+    buddyTile.classList.toggle("is-off", !buddySettings.enabled);
+    buddyTile.classList.toggle("is-floating", Boolean(buddySettings.floating));
+    buddySlot?.classList.toggle("buddy-popped", Boolean(buddySettings.floating));
+    if (buddyAnchorHome) buddyAnchorHome.hidden = !buddySettings.floating;
+    buddyStage?.style.setProperty("--buddy-bg", buddySettings.background || "#ffffff");
+    buddyAgentLabel.textContent = agent ? `${agent.name} · ${agent.transport === "connected" ? "connected" : "offline"}` : "Progre · not assigned";
+    const usable = Boolean(buddySettings.enabled && agent && agent.transport === "connected");
+    buddyMessageInput.disabled = !usable;
+    buddyComposer?.querySelector("button")?.toggleAttribute("disabled", !usable);
+    buddyMessageInput.placeholder = agent ? (usable ? `Message ${agent.name}…` : `${agent.name} is offline`) : "Assign an agent in settings…";
+    buddyPopButton.textContent = buddySettings.floating ? "↙" : "↗";
+    buddyPopButton.title = buddySettings.floating ? "Anchor buddy" : "Pop out buddy";
+    if (!buddySettings.enabled) stopBuddyMotion();
+    else startBuddyMotion();
+  }
+
+  function renderBuddyAgentOptions() {
+    if (!buddyAgentSelect) return;
+    buddyAgentSelect.innerHTML = '<option value="">Not assigned</option>' + fleet.map((agent) =>
+      `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}${agent.transport === "connected" ? " · connected" : " · offline"}</option>`
+    ).join("");
+    buddyAgentSelect.value = buddySettings.agentId || "";
+  }
+
+  function renderBuddySpriteSettings() {
+    if (!buddySpriteGrid) return;
+    buddySpriteGrid.innerHTML = buddySpriteStates.map((state, index) => `
+      <div class="buddy-sprite-row">
+        <label for="buddySprite${index}">${escapeHtml(state)}</label>
+        <input id="buddySprite${index}" data-buddy-sprite="${escapeHtml(state)}" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+        <img class="buddy-sprite-preview" data-buddy-preview="${escapeHtml(state)}" src="${escapeHtml(buddySpriteFor(state))}" alt="${escapeHtml(state)} preview" />
+      </div>`).join("");
+    buddySpriteGrid.querySelectorAll("[data-buddy-sprite]").forEach((input) => {
+      input.addEventListener("change", async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (!/^image\/(png|jpeg|webp|gif)$/i.test(file.type || "")) { showToast("Use PNG, JPG, WebP, or GIF sprites."); input.value=""; return; }
+        try {
+          const dataUrl = await resizeBuddySprite(file);
+          buddySettings.sprites[input.dataset.buddySprite] = dataUrl;
+          const preview = buddySpriteGrid.querySelector(`[data-buddy-preview="${CSS.escape(input.dataset.buddySprite)}"]`);
+          if (preview) preview.src = dataUrl;
+        } catch (error) {
+          showToast(`Sprite could not be loaded: ${error?.message || error}`);
+        }
+      });
+    });
+  }
+
+  async function resizeBuddySprite(file) {
+    const dataUrl = await fileToDataUrl(file);
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error("invalid image")); img.src = dataUrl;
+    });
+    const canvas = document.createElement("canvas"); canvas.width = 126; canvas.height = 126;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,126,126);
+    const scale = Math.min(126 / image.width, 126 / image.height);
+    const w = Math.max(1, Math.round(image.width * scale));
+    const h = Math.max(1, Math.round(image.height * scale));
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(image, Math.round((126-w)/2), Math.round((126-h)/2), w, h);
+    return canvas.toDataURL("image/png");
+  }
+
+  function openBuddySettings() {
+    renderBuddyAgentOptions();
+    buddyBackgroundColor.value = buddySettings.background || "#ffffff";
+    renderBuddySpriteSettings();
+    buddySettingsModal.hidden = false;
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeBuddySettings() {
+    buddySettingsModal.hidden = true;
+    document.body.style.overflow = "";
+  }
+
+  function setBuddyFloating(floating) {
+    buddySettings.floating = Boolean(floating);
+    saveBuddySettings();
+    updateBuddyUi();
+  }
+
+  function animateBuddySpeaking(text) {
+    if (!buddySettings.enabled || !buddyAgent()) return;
+    buddyTile?.classList.add("speaking");
+    clearInterval(buddyTalkingTimer);
+    let open = false;
+    setBuddyState("Mouth open");
+    buddyTalkingTimer = setInterval(() => { open = !open; setBuddyState(open ? "Mouth open" : "Mouth closed"); }, 170);
+    const duration = Math.max(900, Math.min(6500, String(text || "").length * 45));
+    setTimeout(() => { clearInterval(buddyTalkingTimer); buddyTile?.classList.remove("speaking"); setBuddyState("Idle"); }, duration);
+  }
 
   function configureVoice() {
     if (!SpeechRecognition) {
@@ -162,11 +379,19 @@
   }
 
   function speakAgentReply(text) {
+    const activeBuddy = buddyAgent();
+    if (buddySettings.enabled && activeBuddy && activeBuddy.id === selectedAgentId) animateBuddySpeaking(text);
     if (!speakRepliesToggle?.checked || !("speechSynthesis" in window) || !text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = navigator.language || "en-US";
     utterance.rate = 1.0;
+    utterance.addEventListener("start", () => {
+      if (buddySettings.enabled && activeBuddy && activeBuddy.id === selectedAgentId) buddyTile?.classList.add("speaking");
+    });
+    utterance.addEventListener("end", () => {
+      if (buddySettings.enabled) { clearInterval(buddyTalkingTimer); buddyTile?.classList.remove("speaking"); setBuddyState("Idle"); }
+    });
     window.speechSynthesis.speak(utterance);
   }
 
@@ -821,6 +1046,8 @@
       String(fleet.filter((a) => a.transport === "connected").length);
 
     renderFleet();
+    renderBuddyAgentOptions();
+    updateBuddyUi();
 
     if (selectedAgentId) {
       const current = fleet.find((a) => a.id === selectedAgentId);
@@ -1534,7 +1761,7 @@
   document.getElementById("manageAgentsButton")?.addEventListener("click", () => showToast("Lifecycle management is not available in this build."));
   document.querySelectorAll("[data-later]").forEach((b) => b.addEventListener("click", () => showToast("This capability is not currently available.")));
 
-  [agentModal,pairModal,identityModal,groupModal].forEach((modal) => modal?.addEventListener("click", (event) => {
+  [agentModal,pairModal,identityModal,groupModal,buddySettingsModal].forEach((modal) => modal?.addEventListener("click", (event) => {
     if (event.target === modal) closeModal(modal);
   }));
 
@@ -1753,6 +1980,50 @@
   });
 
 
+  buddyEnabledToggle?.addEventListener("change", () => {
+    buddySettings.enabled = buddyEnabledToggle.checked;
+    saveBuddySettings();
+    updateBuddyUi();
+  });
+  buddySettingsButton?.addEventListener("click", openBuddySettings);
+  document.getElementById("closeBuddySettings")?.addEventListener("click", closeBuddySettings);
+  buddyPopButton?.addEventListener("click", () => setBuddyFloating(!buddySettings.floating));
+  buddyReturnButton?.addEventListener("click", () => setBuddyFloating(false));
+  buddyAnchorHome?.addEventListener("click", () => setBuddyFloating(false));
+  buddySlot?.addEventListener("click", (event) => {
+    if (buddySettings.floating && event.target === buddySlot) setBuddyFloating(false);
+  });
+  document.getElementById("buddySaveSettings")?.addEventListener("click", () => {
+    buddySettings.agentId = buddyAgentSelect.value || "";
+    buddySettings.background = buddyBackgroundColor.value || "#ffffff";
+    saveBuddySettings();
+    closeBuddySettings();
+    updateBuddyUi();
+    showToast("Buddy settings saved.");
+  });
+  document.getElementById("buddyResetDefaults")?.addEventListener("click", () => {
+    buddySettings = {...buddyDefaults, enabled:buddySettings.enabled, floating:buddySettings.floating, agentId:buddySettings.agentId, sprites:{...buddyDefaults.sprites}};
+    saveBuddySettings();
+    renderBuddySpriteSettings();
+    buddyBackgroundColor.value = buddySettings.background;
+    updateBuddyUi();
+    showToast("Buddy sprites reset to Progre.");
+  });
+  buddyComposer?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = buddyMessageInput.value.trim();
+    const agent = buddyAgent();
+    if (!buddySettings.enabled) { showToast("Turn Buddy mode on first."); return; }
+    if (!agent) { showToast("Assign Buddy mode to an agent first."); return; }
+    if (agent.transport !== "connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
+    if (!text) return;
+    if (selectedAgentId !== agent.id) monitorAgent(agent.id);
+    buddyMessageInput.value = "";
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await sendDirectMessage(text);
+  });
+
+  updateBuddyUi();
   configureVoice();
   if (window.innerWidth <= 760) setMobileView("stream");
   refreshFleet();

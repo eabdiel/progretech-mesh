@@ -102,6 +102,52 @@
 
       <section class="agent-grid" id="agentGrid" aria-live="polite"></section>
 
+
+      <div class="section-head" id="buddySectionHead">
+        <div>
+          <h2>Buddy mode</h2>
+          <p>Give one connected agent a lightweight animated companion. One buddy can be active at a time.</p>
+        </div>
+      </div>
+
+      <section class="buddy-slot" id="buddySlot" aria-live="polite">
+        <button class="buddy-anchor-home" id="buddyAnchorHome" type="button" hidden>Buddy is floating · anchor here</button>
+        <div class="buddy-tile" id="buddyTile">
+          <div class="buddy-tile-head">
+            <div>
+              <strong>Buddy mode</strong>
+              <span id="buddyAgentLabel">Progre · not assigned</span>
+            </div>
+            <div class="buddy-head-actions">
+              <button class="icon-btn buddy-icon-btn" id="buddySettingsButton" type="button" aria-label="Buddy settings" title="Buddy settings">⚙</button>
+              <button class="icon-btn buddy-icon-btn" id="buddyPopButton" type="button" aria-label="Pop out buddy" title="Pop out buddy">↗</button>
+            </div>
+          </div>
+
+          <div class="buddy-stage-wrap">
+            <div class="buddy-stage" id="buddyStage" style="--buddy-bg:#ffffff">
+              <img id="buddySprite" src="{{ url_for('static', filename='buddy/default-progre/idle.png') }}" alt="Buddy sprite" width="126" height="126" />
+              <span class="buddy-speaking-indicator" id="buddySpeakingIndicator" aria-hidden="true"></span>
+            </div>
+          </div>
+
+          <div class="buddy-status-row">
+            <label class="buddy-power">
+              <input id="buddyEnabledToggle" type="checkbox" />
+              <span>Buddy on</span>
+            </label>
+            <span id="buddyStateLabel">Idle</span>
+          </div>
+
+          <form class="buddy-composer" id="buddyComposer">
+            <input id="buddyMessageInput" type="text" autocomplete="off" placeholder="Type to your buddy…" />
+            <button type="submit">Send</button>
+          </form>
+
+          <button class="buddy-return-placeholder" id="buddyReturnButton" type="button" hidden>Return buddy here</button>
+        </div>
+      </section>
+
       <div class="mobile-monitor-bar" id="mobileMonitorBar">
         <button class="active" data-mobile-view="stream">Conversation</button>
         <button data-mobile-view="telemetry">Telemetry</button>
@@ -311,6 +357,37 @@
           <button type="submit" class="primary-btn">Send to selected agents</button>
         </div>
       </form>
+    </section>
+  </div>
+
+
+  <div class="modal-backdrop" id="buddySettingsModal" hidden>
+    <section class="modal-card buddy-settings-card" role="dialog" aria-modal="true" aria-labelledby="buddySettingsTitle">
+      <div class="modal-head">
+        <div>
+          <div class="eyebrow"><span class="dot"></span> Buddy mode</div>
+          <h2 id="buddySettingsTitle">Buddy settings</h2>
+        </div>
+        <button class="icon-btn" id="closeBuddySettings" aria-label="Close">×</button>
+      </div>
+
+      <div class="buddy-settings-grid">
+        <label>Assigned agent
+          <select id="buddyAgentSelect"><option value="">Not assigned</option></select>
+        </label>
+        <label>Background color
+          <input id="buddyBackgroundColor" type="color" value="#ffffff" />
+        </label>
+      </div>
+
+      <div class="buddy-settings-note">Upload up to 10 PNG, JPG, WebP, or GIF sprites. Images are resized into a 126×126 frame in the browser and stored only in this browser profile.</div>
+
+      <div class="buddy-sprite-grid" id="buddySpriteGrid"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" id="buddyResetDefaults">Reset to Progre</button>
+        <button type="button" class="primary-btn" id="buddySaveSettings">Save</button>
+      </div>
     </section>
   </div>
 
