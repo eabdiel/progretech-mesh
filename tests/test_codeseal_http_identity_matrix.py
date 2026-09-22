@@ -173,5 +173,64 @@ class TestCodeSealHttpIdentityMatrix(unittest.TestCase):
         self.assertEqual(second.get_json()["error"], "identity_challenge_not_found")
 
 
+    def test_invalid_device_credential_is_rejected(self):
+        with patch(
+            "main.validate_device_credential",
+            return_value=(False, "device_credential_signature_invalid", None),
+        ):
+            response = self.client.post(
+                "/api/agents/rend/identity/challenge",
+                json={"device_credential": "bad-device-token"},
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "device_credential_signature_invalid")
+
+    def test_expired_device_credential_is_rejected(self):
+        with patch(
+            "main.validate_device_credential",
+            return_value=(False, "device_credential_expired", None),
+        ):
+            response = self.client.post(
+                "/api/agents/rend/identity/challenge",
+                json={"device_credential": "expired-device-token"},
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "device_credential_expired")
+
+    def test_revoked_device_credential_is_rejected(self):
+        with patch(
+            "main.validate_device_credential",
+            return_value=(False, "device_credential_revoked", None),
+        ):
+            response = self.client.post(
+                "/api/agents/rend/identity/challenge",
+                json={"device_credential": "revoked-device-token"},
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "device_credential_revoked")
+
+    def test_evidence_mismatch_is_rejected(self):
+        challenge = self.challenge()
+        payload = self.signed_payload(challenge)
+        rejected = self.rejected_result()
+        rejected["reason"] = "registry_verification_failed"
+        rejected["metadata"]["reason"] = "registry_verification_failed"
+        with patch("main.verify_runtime_agent_identity", return_value=rejected):
+            response = self.client.post("/api/agents/rend/identity/assert", json=payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "agent_identity_rejected")
+
+    def test_revoked_codeseal_event_is_rejected(self):
+        challenge = self.challenge()
+        payload = self.signed_payload(challenge)
+        rejected = self.rejected_result()
+        rejected["reason"] = "registry_event_revoked"
+        rejected["metadata"]["reason"] = "registry_event_revoked"
+        with patch("main.verify_runtime_agent_identity", return_value=rejected):
+            response = self.client.post("/api/agents/rend/identity/assert", json=payload)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "agent_identity_rejected")
+
+
 if __name__ == "__main__":
     unittest.main()
