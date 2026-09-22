@@ -1038,7 +1038,14 @@ def ide_bearer_token() -> str:
 
 
 def ide_models(agent_id: str) -> list[str]:
-    return [agent_id, f"{agent_id}-code", f"{agent_id}-fast"]
+    models = [agent_id, f"{agent_id}-code", f"{agent_id}-fast"]
+    if agent_id == "rend":
+        models.extend([
+            "rend-llama-review",
+            "rend-architect",
+            "rend-research",
+        ])
+    return models
 
 
 def resolve_ide_pending(agent_id: str, message: dict[str, Any]) -> bool:
