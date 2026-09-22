@@ -13,6 +13,18 @@ MESH_ROOT = HOME / "PycharmProjects" / "progretech-mesh"
 STATE_ROOT = HOME / ".progretech-mesh"
 
 RUNTIME_DESCRIPTORS: dict[str, dict[str, Any]] = {
+    "webhooks": {
+        "label": "ProgreTech Webhook Inbox",
+        "agents": ["Rend", "Mak", "Lyra"],
+        "mode": "bounded_local_state",
+        "entrypoint": str(MESH_ROOT / "scripts" / "webhooks.py"),
+        "interpreter": str(MESH_ROOT / ".venv" / "bin" / "python"),
+        "network": "none",
+        "egress": "none",
+        "arguments": ["command", "args"],
+        "timeout_seconds": 10,
+        "notes": "Local HMAC verification and event spool only. No public listener is activated.",
+    },
     "workboard": {
         "label": "ProgreTech Workboard",
         "agents": ["Rend", "Mak", "Lyra"],

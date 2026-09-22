@@ -24,6 +24,17 @@ ALLOWED_TRANSITIONS = {
 REGISTRY_LOCK = threading.RLock()
 
 BATCH_A_PINS = {
+    "webhooks": {
+        "source": "ProgreTech native",
+        "version": "0.1.0",
+        "commit": "native:PT-2026-050",
+        "license": "ProgreTech internal source",
+        "pin_verified_at": "2026-09-22",
+        "intake_lane": "native integrated subsystem",
+        "network_policy": "no public listener; local signed inbox only",
+        "egress_policy": "none",
+        "notes": "HMAC-verified local event intake/spool. External/public ingress requires a separate bounded adapter.",
+    },
     "workboard": {
         "source": "ProgreTech native",
         "version": "0.1.0",

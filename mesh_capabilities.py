@@ -52,6 +52,26 @@ class Capability:
 
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
+        id="webhooks",
+        name="ProgreTech Webhook Inbox",
+        classification="native integrated subsystem candidate",
+        state="CANDIDATE",
+        source="ProgreTech native",
+        intended_use="Signed local event intake and durable event spool for future external connectors.",
+        supported_agents=("Rend", "Mak", "Lyra"),
+        authority_boundary="Accepts and records verified events only; cannot execute actions, grant authority, or bypass owner/STOP policy.",
+        network="No public listener; local invocation only",
+        data_egress="None",
+        filesystem="~/.progretech-mesh/webhooks with 0700 root and 0600 secret/inbox",
+        subprocess="Bounded local CLI through capability runtime",
+        compute="Low",
+        credentials="Locally generated HMAC secret only; no external credential required",
+        version="0.1.0",
+        license="ProgreTech internal source",
+        rollback="Deactivate runtime and remove local webhook state after evidence export if needed.",
+        notes="Public HTTP ingress remains a separate future adapter/gate.",
+    ),
+    Capability(
         id="workboard",
         name="ProgreTech Workboard",
         classification="native integrated subsystem candidate",

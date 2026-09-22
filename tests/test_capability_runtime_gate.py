@@ -46,7 +46,7 @@ class TestCapabilityRuntimeGate(unittest.TestCase):
 
     def test_expected_batch_a_runtime_descriptors_exist(self):
         ids = {x["id"] for x in runtime.all_descriptors()}
-        self.assertEqual(ids, {"firecrawl-anydoc","mattpocock-skills","archify","workboard"})
+        self.assertEqual(ids, {"firecrawl-anydoc","mattpocock-skills","archify","workboard","webhooks"})
 
 
 if __name__ == "__main__":
