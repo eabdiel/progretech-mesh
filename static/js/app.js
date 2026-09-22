@@ -68,6 +68,8 @@
   let selectedAgentId = null;
   let monitorSocket = null;
   let monitorReconnectTimer = null;
+  let monitorReconnectAttempt = 0;
+  let monitorManualStop = false;
   let directPeer = null;
   let directChannel = null;
   let directPeerId = null;
@@ -1021,7 +1023,7 @@
           <button data-monitor="${agent.id}" class="monitor">Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.owner_bound ? `<div class="agent-actions"><button data-ide-access="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Copy IDE relay setup</button></div>` : ""}
+        ${agent.owner_bound ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
     `).join("");
 
@@ -1057,12 +1059,12 @@
       `Models: ${(data.models || []).join(", ")}`,
       `Expires: ${new Date(Number(data.expires_at || 0) * 1000).toLocaleString()}`,
     ].join("\n");
-    try {
-      await navigator.clipboard.writeText(setup);
+    const copied = await copyTextCompatible(setup);
+    if (copied) {
       showToast("IDE relay setup copied. Paste the Base URL and API key into PyCharm.");
-    } catch (_) {
-      window.prompt("Copy this IDE relay setup:", setup);
+      return;
     }
+    window.prompt("Clipboard access is unavailable. Copy this IDE relay setup manually:", setup);
   }
 
   async function claimLegacyAgentOwnership(agentId) {
@@ -1428,34 +1430,56 @@
     }
   }
 
-  function monitorAgent(agentId) {
+  function monitorReconnectDelay(attempt) {
+    const steps = [2500, 5000, 10000, 20000, 30000];
+    return steps[Math.min(Math.max(0, attempt - 1), steps.length - 1)];
+  }
+
+  function monitorAgent(agentId, options={}) {
+    const reconnecting = Boolean(options.reconnecting);
     selectedAgentId = agentId;
+    monitorManualStop = false;
     clearTimeout(monitorReconnectTimer);
 
     if (monitorSocket) {
-      try { monitorSocket.close(); } catch (_) {}
+      try {
+        monitorSocket.__meshIntentionalClose = true;
+        monitorSocket.close();
+      } catch (_) {}
     }
 
-    renderFleet();
     const agent = fleet.find((a) => a.id === agentId);
-    document.getElementById("selectedMonitor").textContent = agent?.name || agentId;
-    document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · connecting`;
-    document.getElementById("telemetryLabel").textContent = agent?.name || agentId;
-    messageInput.placeholder = `Message ${agent?.name || agentId}…`;
-    refreshApprovals();
-    refreshFileOffers();
+    if (!reconnecting) {
+      monitorReconnectAttempt = 0;
+      renderFleet();
+      document.getElementById("selectedMonitor").textContent = agent?.name || agentId;
+      document.getElementById("telemetryLabel").textContent = agent?.name || agentId;
+      messageInput.placeholder = `Message ${agent?.name || agentId}…`;
+      refreshApprovals();
+      refreshFileOffers();
+      eventList.innerHTML = '<div class="empty-stream">Connecting to live conversation/event stream…</div>';
+    }
 
-    eventList.innerHTML = '<div class="empty-stream">Connecting to live conversation/event stream…</div>';
+    document.getElementById("eventStreamLabel").textContent =
+      `${agent?.name || agentId} · ${reconnecting ? "reconnecting" : "connecting"}`;
 
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    monitorSocket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
+    const socket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
+    monitorSocket = socket;
 
-    monitorSocket.addEventListener("open", () => {
+    socket.addEventListener("open", () => {
+      if (monitorSocket !== socket) return;
+      monitorReconnectAttempt = 0;
       document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · signaling`;
-      void startDirectTransport(agentId).catch((error) => { directRouteState="error"; showToast(`Direct transport unavailable: ${error?.message || error}`); });
+      void startDirectTransport(agentId).catch((error) => {
+        directRouteState="error";
+        setRouteStatus("Gateway connected · direct path unavailable");
+        console.warn("Direct transport unavailable:", error);
+      });
     });
 
-    monitorSocket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (monitorSocket !== socket) return;
       const data = JSON.parse(event.data);
       maybeNotifyFromLiveEvent(data);
 
@@ -1468,7 +1492,13 @@
       }
 
       if (data.type === "gateway_message") {
-        if (data.message?.type === "mesh_direct_signal") { void handleDirectSignalFromAgent(agentId,data.message.signal).catch((error)=>{ directRouteState="error"; showToast(`Direct signaling error: ${error?.message || error}`); }); return; }
+        if (data.message?.type === "mesh_direct_signal") {
+          void handleDirectSignalFromAgent(agentId,data.message.signal).catch((error)=>{
+            directRouteState="error";
+            console.warn("Direct signaling error:", error);
+          });
+          return;
+        }
         if (data.message?.type === "mesh_local_route") { saveLocalRouteMessage(data.message); return; }
         fleet = fleet.map((item) => item.id === agentId ? data.agent : item);
         renderFleet();
@@ -1517,12 +1547,31 @@
       }
     });
 
-    monitorSocket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
+      if (monitorSocket !== socket) return;
       closeDirectTransport("signaling_closed");
-      document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · reconnecting`;
+
+      const reason = String(event.reason || "");
+      const terminalReason = ["authentication_required","agent_not_found"].includes(reason);
+      if (socket.__meshIntentionalClose || monitorManualStop) return;
+
+      if (terminalReason) {
+        document.getElementById("eventStreamLabel").textContent =
+          `${agent?.name || agentId} · monitor unavailable`;
+        showToast(`Live monitor unavailable: ${reason}`);
+        return;
+      }
+
+      monitorReconnectAttempt += 1;
+      const delay = monitorReconnectDelay(monitorReconnectAttempt);
+      document.getElementById("eventStreamLabel").textContent =
+        `${agent?.name || agentId} · reconnecting in ${Math.round(delay/1000)}s`;
+
       monitorReconnectTimer = setTimeout(() => {
-        if (selectedAgentId === agentId) monitorAgent(agentId);
-      }, 2500);
+        if (selectedAgentId === agentId && !monitorManualStop) {
+          monitorAgent(agentId,{reconnecting:true});
+        }
+      }, delay);
     });
   }
 
