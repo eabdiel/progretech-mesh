@@ -1,0 +1,17 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - progretech-mesh
+      - --source=.
+      - --region=us-east1
+      - --project=$PROJECT_ID
+      - --service-account=progretech-mesh-runner@$PROJECT_ID.iam.gserviceaccount.com
+      - --quiet
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

@@ -34,6 +34,17 @@ from flask_sock import Sock
 from werkzeug.middleware.proxy_fix import ProxyFix
 from urllib.parse import urlparse
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from mesh_firebase_auth import register_firebase_auth_routes, firebase_client_ready, firebase_admin_ready
+from mesh_cloud_health import register_cloud_health_routes
+
+from mesh_capabilities import register_capability_routes
+from mesh_capability_routes import register_capability_registry_routes
+from mesh_capability_runtime_routes import register_capability_runtime_routes
+from gateway.identity.codeseal import CodeSealIdentityVerifier
+
 
 BUILD_ID = "v1-rc2-private-lan-acceptance-20260913"
 
@@ -155,8 +166,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.7"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.7.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.8"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.8.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -194,6 +205,11 @@ SESSION_FILE_TOTALS: dict[str, int] = {}
 ACTIVATION_CODES: dict[str, dict[str, Any]] = {}
 LIVE_LOCK = threading.RLock()
 
+# PT044_IDENTITY_POP_NONCE_V1
+IDENTITY_CHALLENGE_TTL_SECONDS = int(os.environ.get("MESH_IDENTITY_CHALLENGE_TTL_SECONDS", "60"))
+IDENTITY_CHALLENGES: dict[str, dict[str, Any]] = {}
+
+
 # Direct-transport signaling state is ephemeral and exists only to introduce peers.
 DIRECT_SIGNAL_SESSIONS: dict[str, dict[str, Any]] = {}
 DIRECT_SIGNAL_TTL_SECONDS = int(os.environ.get("MESH_DIRECT_SIGNAL_TTL_SECONDS", "120"))
@@ -206,6 +222,25 @@ def utcnow() -> str:
 
 def unix_now() -> int:
     return int(time.time())
+
+
+def verify_runtime_agent_identity(payload: dict[str, Any], name: str, public_key: str, codeseal_key: str = "") -> dict[str, Any]:
+    identity_mode = os.environ.get("MESH_AGENT_IDENTITY_MODE", "development").strip().lower()
+    if identity_mode == "codeseal":
+        result = CodeSealIdentityVerifier().verify({
+            "agent_id": str(payload.get("agent_id") or "").strip(),
+            "agent_name": name,
+            "public_key": public_key,
+            "codeseal_evidence": payload.get("codeseal_evidence"),
+        })
+        return {
+            "state": "verified" if result.ok else "invalid",
+            "valid": bool(result.ok),
+            "reason": "codeseal_registry_verified" if result.ok else (result.error or "codeseal_verification_failed"),
+            "provider": result.provider,
+            "metadata": result.metadata,
+        }
+    return verify_codeseal(name, public_key, codeseal_key)
 
 
 def fingerprint_for(agent_name: str, public_key: str, codeseal_key: str) -> str:
@@ -287,6 +322,81 @@ def seed_development_registry() -> None:
         }
 
 
+def _identity_signing_payload(agent_id: str, device_id: str, challenge_id: str,
+                              nonce: str, expires_at: int) -> str:
+    return (
+        "progretech-mesh-identity-v1"
+        f"|{agent_id}|{device_id}|{challenge_id}|{nonce}|{expires_at}"
+    )
+
+
+def _expire_identity_challenges() -> None:
+    now = unix_now()
+    with LIVE_LOCK:
+        expired = [
+            cid for cid, item in IDENTITY_CHALLENGES.items()
+            if item.get("expires_at", 0) < now or item.get("used")
+        ]
+        for cid in expired:
+            IDENTITY_CHALLENGES.pop(cid, None)
+
+
+def issue_identity_challenge(agent_id: str, device_id: str) -> dict[str, Any]:
+    _expire_identity_challenges()
+    challenge_id = secrets.token_urlsafe(18)
+    nonce = secrets.token_urlsafe(32)
+    expires_at = unix_now() + IDENTITY_CHALLENGE_TTL_SECONDS
+    item = {
+        "challenge_id": challenge_id,
+        "agent_id": agent_id,
+        "device_id": device_id,
+        "nonce": nonce,
+        "expires_at": expires_at,
+        "used": False,
+    }
+    item["signing_payload"] = _identity_signing_payload(
+        agent_id, device_id, challenge_id, nonce, expires_at
+    )
+    with LIVE_LOCK:
+        IDENTITY_CHALLENGES[challenge_id] = item
+    return dict(item)
+
+
+def consume_identity_challenge(agent_id: str, device_id: str, challenge_id: str) -> tuple[bool, str, dict[str, Any] | None]:
+    now = unix_now()
+    with LIVE_LOCK:
+        item = IDENTITY_CHALLENGES.get(challenge_id)
+        if not item:
+            return False, "identity_challenge_not_found", None
+        if item.get("used"):
+            return False, "identity_challenge_replayed", None
+        if item.get("expires_at", 0) < now:
+            IDENTITY_CHALLENGES.pop(challenge_id, None)
+            return False, "identity_challenge_expired", None
+        if item.get("agent_id") != agent_id:
+            return False, "identity_challenge_agent_mismatch", None
+        if item.get("device_id") != device_id:
+            return False, "identity_challenge_device_mismatch", None
+        item["used"] = True
+        consumed = dict(item)
+        IDENTITY_CHALLENGES.pop(challenge_id, None)
+        return True, "ok", consumed
+
+
+def verify_identity_proof(public_key_pem: str, signing_payload: str, signature_b64: str) -> tuple[bool, str]:
+    try:
+        key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
+        if not isinstance(key, Ed25519PublicKey):
+            return False, "identity_public_key_not_ed25519"
+        signature = base64.b64decode(signature_b64, validate=True)
+        key.verify(signature, signing_payload.encode("utf-8"))
+        return True, "ok"
+    except InvalidSignature:
+        return False, "identity_signature_invalid"
+    except (ValueError, TypeError, binascii.Error):
+        return False, "identity_signature_malformed"
+
+
 def append_event(agent_id: str, event: dict[str, Any]) -> None:
     event = {
         "timestamp": event.get("timestamp") or utcnow(),
@@ -338,6 +448,7 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
             transport="connected",
             last_heartbeat=now,
             telemetry=payload.get("telemetry", {}),
+            capability_provider=payload.get("capability_provider"),
         )
         append_event(agent_id, {
             "type": "heartbeat",
@@ -974,14 +1085,16 @@ def production_configuration_status() -> dict[str, Any]:
         "DEV_AUTH_ENABLED must be 0 outside development.")
     add("development_agents_disabled", os.environ.get("DEV_SEED_AGENTS", "1") == "0",
         "DEV_SEED_AGENTS must be 0 outside development.")
-    add("oidc_selected", auth_mode == "oidc",
-        "Production user authentication must use the configured OIDC provider.")
+    add("firebase_email_link_selected", auth_mode == "firebase-email-link",
+        "Production user authentication must use Firebase passwordless email-link sign-in.")
+    add("firebase_client_configured", firebase_client_ready(),
+        "Firebase public web configuration must be supplied for passwordless sign-in.")
+    add("firebase_admin_ready", firebase_admin_ready(),
+        "Set MESH_FIREBASE_AUTH_READY=1 only after Firebase Admin verification and a real email-link sign-in are tested.")
     add("codeseal_selected", identity_mode == "codeseal",
         "Production agent identity must use CodeSeal mode.")
     add("codeseal_verifier_configured", codeseal_mode == "configured",
         "Real cryptographic CodeSeal verification must be configured.")
-    add("oidc_provider_ready", os.environ.get("MESH_OIDC_READY", "0") == "1",
-        "Set MESH_OIDC_READY=1 only after the real provider login/callback is tested.")
     add("codeseal_adapter_ready", os.environ.get("MESH_CODESEAL_READY", "0") == "1",
         "Set MESH_CODESEAL_READY=1 only after real signature verification is tested.")
 
@@ -1103,11 +1216,18 @@ def create_app() -> Flask:
         SESSION_COOKIE_SECURE=environment == "production",
     )
 
+    register_capability_routes(app)
+    register_capability_registry_routes(app)
+    register_capability_runtime_routes(app)
+
     if app.config["DEV_SEED_AGENTS"]:
         seed_development_registry()
 
     if os.environ.get("TRUST_PROXY_HEADERS", "1") == "1":
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+    register_firebase_auth_routes(app)
+    register_cloud_health_routes(app)
 
     @app.after_request
     def add_security_headers(response):
@@ -1121,11 +1241,11 @@ def create_app() -> Flask:
         response.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self'; "
+            "script-src 'self' https://www.gstatic.com; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self'; "
-            "connect-src 'self' http: https: ws: wss:; "
+            "connect-src 'self' http: https: ws: wss: https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; "
             "media-src 'self' blob:; "
             "object-src 'none'; "
             "base-uri 'self'; "
@@ -1163,10 +1283,10 @@ def create_app() -> Flask:
             "Content-Security-Policy",
             "default-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
-            "script-src 'self'; "
+            "script-src 'self' https://www.gstatic.com; "
             "img-src 'self' data:; "
             "font-src 'self'; "
-            "connect-src 'self' http: https: ws: wss:; "
+            "connect-src 'self' http: https: ws: wss: https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "frame-ancestors 'none';",
@@ -1666,6 +1786,137 @@ def create_app() -> Flask:
             ),
         )
 
+    @app.post("/api/agents/<agent_id>/identity/challenge")
+    def create_agent_identity_challenge(agent_id: str):
+        payload = request.get_json(silent=True) or {}
+        credential = str(payload.get("device_credential", "")).strip()
+
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        if not credential:
+            return jsonify(ok=False, error="device_credential_required"), 401
+
+        valid_device, reason, device_payload = validate_device_credential(agent_id, credential)
+        if not valid_device:
+            return jsonify(ok=False, error=reason), 401
+
+        device_id = str((device_payload or {}).get("device_id", "")).strip()
+        if not device_id:
+            return jsonify(ok=False, error="device_id_missing"), 401
+
+        challenge = issue_identity_challenge(agent_id, device_id)
+        return jsonify(
+            ok=True,
+            challenge_id=challenge["challenge_id"],
+            signing_payload=challenge["signing_payload"],
+            expires_at=challenge["expires_at"],
+            algorithm="Ed25519",
+        )
+
+
+    @app.post("/api/agents/<agent_id>/identity/assert")
+    def assert_agent_identity(agent_id: str):
+        payload = request.get_json(silent=True) or {}
+        credential = str(payload.get("device_credential", "")).strip()
+        public_key = str(payload.get("public_key", "")).strip()
+        codeseal_evidence = payload.get("codeseal_evidence")
+        challenge_id = str(payload.get("challenge_id", "")).strip()
+        signature = str(payload.get("signature", "")).strip()
+
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        if not credential:
+            return jsonify(ok=False, error="device_credential_required"), 401
+
+        valid_device, reason, device_payload = validate_device_credential(agent_id, credential)
+        if not valid_device:
+            return jsonify(ok=False, error=reason), 401
+
+        device_id = str((device_payload or {}).get("device_id", "")).strip()
+        if not public_key or not codeseal_evidence:
+            return jsonify(ok=False, error="codeseal_identity_required"), 400
+        if not challenge_id or not signature:
+            return jsonify(ok=False, error="identity_proof_required"), 400
+
+        challenge_ok, challenge_reason, challenge = consume_identity_challenge(
+            agent_id, device_id, challenge_id
+        )
+        if not challenge_ok:
+            return jsonify(ok=False, error=challenge_reason), 409
+
+        proof_ok, proof_reason = verify_identity_proof(
+            public_key,
+            challenge["signing_payload"],
+            signature,
+        )
+        if not proof_ok:
+            append_event(agent_id, {
+                "type": "identity_proof_rejected",
+                "message": "Ed25519 identity proof rejected",
+                "payload": {
+                    "reason": proof_reason,
+                    "severity": "warn",
+                    "event_class": "identity",
+                    "device_id": device_id,
+                },
+            })
+            return jsonify(ok=False, error=proof_reason), 403
+
+        verification = verify_runtime_agent_identity(
+            {"agent_id": agent_id, "codeseal_evidence": codeseal_evidence},
+            record["name"],
+            public_key,
+            "",
+        )
+        if verification["state"] in {"invalid", "revoked"} or not verification["valid"]:
+            append_event(agent_id, {
+                "type": "identity_assertion_rejected",
+                "message": "CodeSeal identity assertion rejected",
+                "payload": {
+                    "reason": verification["reason"],
+                    "severity": "warn",
+                    "event_class": "identity",
+                    "device_id": device_id,
+                },
+            })
+            return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 403
+
+        record.update(
+            public_key=public_key,
+            codeseal_key="",
+            codeseal_evidence=codeseal_evidence,
+            trust_state=verification["state"],
+            trust_valid=verification["valid"],
+            trust_reason=verification["reason"],
+            verified_at=utcnow(),
+            identity_proof="ed25519-challenge",
+            identity_device_id=device_id,
+        )
+        append_event(agent_id, {
+            "type": "identity_assertion_verified",
+            "message": "CodeSeal identity + Ed25519 proof verified",
+            "payload": {
+                "provider": verification.get("provider", "codeseal"),
+                "proof": "ed25519-challenge",
+                "severity": "info",
+                "event_class": "identity",
+                "device_id": device_id,
+            },
+        })
+        return jsonify(
+            ok=True,
+            agent_id=agent_id,
+            trust_state=record["trust_state"],
+            trust_valid=record["trust_valid"],
+            trust_reason=record["trust_reason"],
+            provider=verification.get("provider", "codeseal"),
+            identity_proof="ed25519-challenge",
+            device_id=device_id,
+        )
+
+
     @app.post("/api/activation/redeem")
     def redeem_activation_code():
         payload = request.get_json(silent=True) or {}
@@ -1876,11 +2127,12 @@ def create_app() -> Flask:
         role = str(payload.get("role", "ProgreTech Agent")).strip() or "ProgreTech Agent"
         public_key = str(payload.get("public_key", "")).strip()
         codeseal_key = str(payload.get("codeseal_key", "")).strip()
+        codeseal_evidence = payload.get("codeseal_evidence")
 
         if not name or not public_key:
             return jsonify(ok=False, error="name_and_public_key_required"), 400
 
-        verification = verify_codeseal(name, public_key, codeseal_key)
+        verification = verify_runtime_agent_identity(payload, name, public_key, codeseal_key)
         if verification["state"] in {"invalid", "revoked"}:
             return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 400
 
@@ -1891,6 +2143,7 @@ def create_app() -> Flask:
             "role": role,
             "public_key": public_key,
             "codeseal_key": codeseal_key,
+            "codeseal_evidence": codeseal_evidence,
             "fingerprint": fingerprint_for(name, public_key, codeseal_key),
             "trust_state": verification["state"],
             "trust_valid": verification["valid"],
@@ -1953,6 +2206,28 @@ def create_app() -> Flask:
         with LIVE_LOCK:
             events = list(EVENT_BUFFERS.get(agent_id, []))
         return jsonify(ok=True, events=events)
+
+    @app.get("/api/agents/<agent_id>/capability-provider")
+    @require_session
+    def agent_capability_provider(agent_id: str):
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        provider = record.get("capability_provider")
+        if not provider:
+            return jsonify(
+                ok=False,
+                error="capability_provider_not_reported",
+                agent_id=agent_id,
+                connected=record.get("transport") == "connected",
+            ), 404
+        return jsonify(
+            ok=True,
+            agent_id=agent_id,
+            agent_name=record.get("name"),
+            connected=record.get("transport") == "connected",
+            capability_provider=provider,
+        )
 
     @app.post("/api/agents/<agent_id>/heartbeat-request")
     @require_session
@@ -2397,7 +2672,11 @@ def create_app() -> Flask:
         if not record:
             return jsonify(ok=False, error="agent_not_found"), 404
 
-        verification = verify_codeseal(
+        verification = verify_runtime_agent_identity(
+            {
+                "agent_id": agent_id,
+                "codeseal_evidence": record.get("codeseal_evidence"),
+            },
             record["name"],
             record["public_key"],
             record.get("codeseal_key", ""),

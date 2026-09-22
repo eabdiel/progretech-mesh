@@ -25,6 +25,15 @@ const MESH_FILE_CHUNK_BYTES = 64 * 1024;
 const inboundMeshTransfers = new Map();
 const LOCAL_SIGNAL_PORT = Number.parseInt(process.env.PROGRETECH_MESH_LOCAL_PORT || "18791", 10);
 
+const CONTROL_CENTER_ORIGIN = process.env.PROGRETECH_MESH_CONTROL_CENTER_ORIGIN?.trim()
+  || "http://127.0.0.1:8787";
+const CONTROL_CENTER_TIMEOUT_MS = Number.parseInt(
+  process.env.PROGRETECH_MESH_CONTROL_CENTER_TIMEOUT_MS || "1500",
+  10,
+);
+let capabilityProviderSnapshot = null;
+
+
 
 let meshSocket = null;
 let meshReconnectTimer = null;
@@ -339,7 +348,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.7",
+    adapter_version: "0.7.8",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -499,7 +508,7 @@ function readOnlyTerminalSnapshot() {
     `host=${os.hostname()}`,
     `platform=${os.platform()} ${os.release()}`,
     `node=${process.version}`,
-    `adapter=@progretech/openclaw-mesh 0.7.7`,
+    `adapter=@progretech/openclaw-mesh 0.7.8`,
     "mode=read-only-snapshot",
     "shell=disabled",
   ];
@@ -544,6 +553,7 @@ async function handleApprovedAction(api, msg) {
   }
 
   if (actionType === "request_status") {
+    await refreshCapabilityProviderSnapshot();
     sendMeshGatewayMessage(heartbeatPayload());
     sendMeshGatewayMessage({
       type: "action_result",
@@ -578,7 +588,7 @@ async function handleGatewayCommand(api, msg) {
     const status = [
       "ProgreTech Mesh agent file exchange",
       `agent=${meshIdentity?.agent_id || "unknown"}`,
-      `adapter=@progretech/openclaw-mesh 0.7.7`,
+      `adapter=@progretech/openclaw-mesh 0.7.8`,
       `generated_at=${new Date().toISOString()}`,
       "purpose=RC2 file exchange acceptance artifact",
     ].join("\n") + "\n";
@@ -632,6 +642,58 @@ async function handleGatewayCommand(api, msg) {
   return false;
 }
 
+async function fetchLocalJson(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CONTROL_CENTER_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {"accept": "application/json"},
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`http_${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function refreshCapabilityProviderSnapshot() {
+  try {
+    const [manifest, health] = await Promise.all([
+      fetchLocalJson(`${CONTROL_CENTER_ORIGIN}/api/mesh/provider`),
+      fetchLocalJson(`${CONTROL_CENTER_ORIGIN}/api/mesh/provider/health`),
+    ]);
+    capabilityProviderSnapshot = {
+      provider_id: manifest.provider_id || "rend-host-control",
+      provider_version: manifest.provider_version || null,
+      name: manifest.name || "Rend Host Control Provider",
+      scope: manifest.scope || "agent-local",
+      authority: manifest.authority || {},
+      transport: manifest.transport || {},
+      capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [],
+      health: {
+        healthy: Boolean(health.healthy),
+        capabilities: Array.isArray(health.capabilities) ? health.capabilities : [],
+      },
+      reported_at: new Date().toISOString(),
+      source: "rend-control-center-local",
+    };
+  } catch (error) {
+    capabilityProviderSnapshot = {
+      provider_id: "rend-host-control",
+      name: "Rend Host Control Provider",
+      scope: "agent-local",
+      available: false,
+      error: trimText(error instanceof Error ? error.message : String(error), 240),
+      reported_at: new Date().toISOString(),
+      source: "rend-control-center-local",
+    };
+  }
+  return capabilityProviderSnapshot;
+}
+
+
 function heartbeatPayload() {
   return {
     type: "heartbeat",
@@ -648,6 +710,7 @@ function heartbeatPayload() {
       runtime_adapter: "openclaw-plugin",
       observation_adapter: "openclaw-hooks",
       identity_mode: "enrolled-device",
+      capability_provider: capabilityProviderSnapshot,
     },
   };
 }
@@ -829,7 +892,9 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       last_reconnect_error: null,
       next_reconnect_attempt_at: null,
     });
-    sendMeshGatewayMessage(heartbeatPayload());
+    void refreshCapabilityProviderSnapshot().finally(() => {
+      sendMeshGatewayMessage(heartbeatPayload());
+    });
     sendMeshGatewayMessage(localRouteMessage());
     appendEvent({
       event_type: "gateway",
@@ -848,6 +913,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
         if (await handleGatewayCommand(api, msg)) return;
         if (msg?.type === "heartbeat_request") {
           sendCommandAck("heartbeat_request", {});
+          await refreshCapabilityProviderSnapshot();
           sendMeshGatewayMessage(heartbeatPayload());
           return;
         }
@@ -1280,14 +1346,16 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.7",
+      adapter_version: "0.7.8",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",
     });
 
     queueMicrotask(() => {
-      void ensureMeshConnection(api, true);
+      void refreshCapabilityProviderSnapshot().finally(() => {
+        void ensureMeshConnection(api, true);
+      });
     });
 
     api.on("gateway_start", () => {

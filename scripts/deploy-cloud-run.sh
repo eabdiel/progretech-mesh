@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_ID="${PROJECT_ID:-}"
+PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 REGION="${REGION:-us-east1}"
 SERVICE="${SERVICE:-progretech-mesh}"
 SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"
@@ -10,29 +10,67 @@ DEPLOYMENT_TIER="${MESH_DEPLOYMENT_TIER:-staging}"
 SESSION_SECRET_NAME="${SESSION_SECRET_NAME:-progretech-mesh-session-key}"
 ACTIVATION_SECRET_NAME="${ACTIVATION_SECRET_NAME:-progretech-mesh-activation-secret}"
 DEVICE_SECRET_NAME="${DEVICE_SECRET_NAME:-progretech-mesh-device-secret}"
-SECRET_VERSION="${SECRET_VERSION:-1}"
+SECRET_VERSION="${SECRET_VERSION:-latest}"
+
+FIREBASE_API_KEY="${MESH_FIREBASE_API_KEY:-}"
+FIREBASE_AUTH_DOMAIN="${MESH_FIREBASE_AUTH_DOMAIN:-}"
+FIREBASE_PROJECT_ID="${MESH_FIREBASE_PROJECT_ID:-${PROJECT_ID}}"
+FIREBASE_APP_ID="${MESH_FIREBASE_APP_ID:-}"
+FIREBASE_AUTH_READY="${MESH_FIREBASE_AUTH_READY:-0}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
-  echo "PROJECT_ID is required."
+  echo "PROJECT_ID is required (or set a gcloud default project)."
   exit 1
 fi
 
+if [[ -z "${FIREBASE_API_KEY}" || -z "${FIREBASE_AUTH_DOMAIN}" || -z "${FIREBASE_PROJECT_ID}" || -z "${FIREBASE_APP_ID}" ]]; then
+  echo "Firebase web configuration is incomplete."
+  echo "Required:"
+  echo "  MESH_FIREBASE_API_KEY"
+  echo "  MESH_FIREBASE_AUTH_DOMAIN"
+  echo "  MESH_FIREBASE_PROJECT_ID"
+  echo "  MESH_FIREBASE_APP_ID"
+  exit 3
+fi
+
 if [[ "${DEPLOYMENT_TIER}" == "production" ]]; then
-  if [[ "${MESH_OIDC_READY:-0}" != "1" || "${MESH_CODESEAL_READY:-0}" != "1" ]]; then
+  if [[ "${FIREBASE_AUTH_READY}" != "1" || "${MESH_CODESEAL_READY:-0}" != "1" ]]; then
     echo "Refusing production deployment."
-    echo "Set MESH_OIDC_READY=1 and MESH_CODESEAL_READY=1 only after the real"
-    echo "OIDC and CodeSeal integrations have been configured and tested."
+    echo "Production requires:"
+    echo "  MESH_FIREBASE_AUTH_READY=1"
+    echo "  MESH_CODESEAL_READY=1"
+    echo "Set these only after live acceptance."
     exit 2
   fi
 fi
 
-gcloud config set project "${PROJECT_ID}"
+gcloud config set project "${PROJECT_ID}" >/dev/null
+
+ENV_VARS="APP_ENV=production"
+ENV_VARS+=",MESH_DEPLOYMENT_TIER=${DEPLOYMENT_TIER}"
+ENV_VARS+=",MESH_VERSION=1.8.10-v1-rc2-terminal-file-exchange"
+ENV_VARS+=",BUILD_ID=v1-rc2-private-lan-acceptance-20260913"
+ENV_VARS+=",FLASK_DEBUG=0"
+ENV_VARS+=",TRUST_PROXY_HEADERS=1"
+ENV_VARS+=",DEV_AUTH_ENABLED=0"
+ENV_VARS+=",DEV_SEED_AGENTS=0"
+ENV_VARS+=",MESH_AUTH_MODE=firebase-email-link"
+ENV_VARS+=",MESH_AGENT_IDENTITY_MODE=codeseal"
+ENV_VARS+=",CODESEAL_VERIFIER_MODE=${CODESEAL_VERIFIER_MODE:-unconfigured}"
+ENV_VARS+=",MESH_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
+ENV_VARS+=",MESH_FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
+ENV_VARS+=",MESH_FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
+ENV_VARS+=",MESH_FIREBASE_APP_ID=${FIREBASE_APP_ID}"
+ENV_VARS+=",MESH_FIREBASE_AUTH_READY=${FIREBASE_AUTH_READY}"
+ENV_VARS+=",MESH_CODESEAL_READY=${MESH_CODESEAL_READY:-0}"
+ENV_VARS+=",MESH_PUBLIC_ORIGIN=${MESH_PUBLIC_ORIGIN:-https://mesh.progretech.com}"
 
 ARGS=(
   run deploy "${SERVICE}"
   --source .
   --region "${REGION}"
   --execution-environment gen2
+  --allow-unauthenticated
   --port 8080
   --timeout 3600
   --min-instances 0
@@ -42,7 +80,7 @@ ARGS=(
   --memory 512Mi
   --startup-probe "httpGet.path=/startupz,httpGet.port=8080,initialDelaySeconds=0,failureThreshold=12,timeoutSeconds=2,periodSeconds=5"
   --liveness-probe "httpGet.path=/healthz,httpGet.port=8080,initialDelaySeconds=10,failureThreshold=3,timeoutSeconds=2,periodSeconds=30"
-  --set-env-vars "APP_ENV=production,MESH_DEPLOYMENT_TIER=${DEPLOYMENT_TIER},MESH_VERSION=1.7.0-v1-rc1,BUILD_ID=v1-phase-7-of-7-rc1-20260912,FLASK_DEBUG=0,TRUST_PROXY_HEADERS=1,DEV_AUTH_ENABLED=0,DEV_SEED_AGENTS=0,MESH_AUTH_MODE=oidc,MESH_AGENT_IDENTITY_MODE=codeseal,CODESEAL_VERIFIER_MODE=${CODESEAL_VERIFIER_MODE:-unconfigured},MESH_OIDC_READY=${MESH_OIDC_READY:-0},MESH_CODESEAL_READY=${MESH_CODESEAL_READY:-0}"
+  --set-env-vars "${ENV_VARS}"
   --set-secrets "SECRET_KEY=${SESSION_SECRET_NAME}:${SECRET_VERSION},MESH_ACTIVATION_SECRET=${ACTIVATION_SECRET_NAME}:${SECRET_VERSION},MESH_DEVICE_CREDENTIAL_SECRET=${DEVICE_SECRET_NAME}:${SECRET_VERSION}"
 )
 
@@ -58,4 +96,5 @@ URL="$(gcloud run services describe "${SERVICE}" --region "${REGION}" --format='
 echo
 echo "Deployment submitted."
 echo "Service URL: ${URL}"
+echo "Custom origin target: ${MESH_PUBLIC_ORIGIN:-https://mesh.progretech.com}"
 echo "Run: SERVICE_URL='${URL}' ./scripts/verify-cloud-run.sh"

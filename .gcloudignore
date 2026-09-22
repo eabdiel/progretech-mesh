@@ -10,3 +10,5 @@ venv
 *.log
 *.zip
 .DS_Store
+
+.idea/

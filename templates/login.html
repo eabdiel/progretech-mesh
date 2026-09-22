@@ -40,16 +40,17 @@
         to enroll or communicate with signed agents.
       </p>
 
-      {% if auth_mode == "oidc" and not dev_auth_enabled %}
-        <div class="login-note">
-          Production OIDC mode is selected. Configure the production identity provider
-          through <code>MESH_OIDC_ISSUER</code> and the provider-specific adapter before
-          enabling public access.
+      {% if auth_mode == "firebase-email-link" and not dev_auth_enabled %}
+        <div class="login-note">Passwordless cloud authentication is enabled. Enter your email and Mesh will send a one-time sign-in link.</div>
+        <div data-firebase-email-link>
+          <form data-email-form>
+            <label for="mesh-email" style="display:block;margin-bottom:8px;font-size:12px;color:#9ba6b3">Email</label>
+            <input id="mesh-email" data-email type="email" autocomplete="email" required style="box-sizing:border-box;width:100%;margin-bottom:12px;padding:12px 14px;border-radius:12px;border:1px solid #303944;background:#0c1116;color:#f4f7fb">
+            <button class="login-button" data-email-submit type="submit">Email me a sign-in link</button>
+          </form>
+          <div class="login-note" data-auth-status aria-live="polite">No password required.</div>
         </div>
-        <div class="locked">
-          Production OIDC adapter boundary is active, but no provider-specific login
-          redirect is implemented in this baseline build.
-        </div>
+        <script type="module" src="{{ url_for('static', filename='js/firebase-email-link.js', v=build_id) }}"></script>
       {% elif dev_auth_enabled %}
         <div class="login-note">
           Local development authentication is enabled. This is intentionally a

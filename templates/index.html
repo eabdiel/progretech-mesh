@@ -15,6 +15,7 @@
   <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=build_id) }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/buddy.css', v=build_id) }}" />
 </head>
 <body>
   <div class="app">
@@ -30,6 +31,7 @@
       <div class="top-actions">
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
+        <a href="/capabilities" class="ghost-btn how-link">Capabilities</a>
         <a href="/how-it-works" class="ghost-btn how-link">How it works</a>
         <button class="icon-btn" aria-label="Notifications">◌</button>
         <div class="user-chip" title="Authenticated local session">
@@ -393,6 +395,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='js/app.js', v=build_id) }}" defer></script>
+  <script src="{{ url_for('static', filename='js/buddy.js', v=build_id) }}" defer></script>
 
   <dialog id="notificationSettingsDialog" class="mesh-dialog notification-dialog">
     <form method="dialog" class="dialog-card">

@@ -44,8 +44,8 @@
     "An in-place upgrade reuses an authenticated existing Mesh local signaling listener instead of failing EADDRINUSE or terminating the prior listener."
   ],
   "artifact_pins": {
-    "openclaw_adapter_version": "0.7.7",
-    "openclaw_adapter_sha256": "ffcde913f823ea5986c23a2e445e6cfe4ccb262ae38169ece782db321c7675c3",
+    "openclaw_adapter_version": "0.7.8",
+    "openclaw_adapter_sha256": "364897fabd3d8a15bb63d16ee348bf4700b699feb0ceeb9f8cecce47bfb6df65",
     "bootstrap_helper_sha256": "7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6"
   },
   "claims_not_yet_proven_until_live_test": [

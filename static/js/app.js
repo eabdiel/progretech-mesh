@@ -379,6 +379,7 @@
   }
 
   function speakAgentReply(text) {
+    window.ProgreBuddy?.animateSpeakingForAgent?.(selectedAgentId, text);
     const activeBuddy = buddyAgent();
     if (buddySettings.enabled && activeBuddy && activeBuddy.id === selectedAgentId) animateBuddySpeaking(text);
     if (!speakRepliesToggle?.checked || !("speechSynthesis" in window) || !text) return;
@@ -2024,7 +2025,16 @@
   });
 
   updateBuddyUi();
-  configureVoice();
+    window.MeshBuddyBridge = {
+    getFleet: () => Array.isArray(fleet) ? fleet : [],
+    getSelectedAgentId: () => selectedAgentId,
+    monitorAgent: (agentId) => monitorAgent(agentId),
+    sendDirectMessage: (text) => sendDirectMessage(text),
+    showToast: (text) => showToast(text)
+  };
+  window.dispatchEvent(new CustomEvent("mesh-buddy-bridge-ready"));
+
+configureVoice();
   if (window.innerWidth <= 760) setMobileView("stream");
   refreshFleet();
   refreshApprovals();
