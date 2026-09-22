@@ -1021,10 +1021,12 @@
           <button data-monitor="${agent.id}" class="monitor">Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
+        ${agent.owner_bound ? `<div class="agent-actions"><button data-ide-access="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Copy IDE relay setup</button></div>` : ""}
       </article>
     `).join("");
 
     document.querySelectorAll("[data-claim-owner]").forEach((b) => b.addEventListener("click", () => claimLegacyAgentOwnership(b.dataset.claimOwner)));
+    document.querySelectorAll("[data-ide-access]").forEach((b) => b.addEventListener("click", () => copyIdeRelaySetup(b.dataset.ideAccess)));
     document.querySelectorAll("[data-pair]").forEach((b) => b.addEventListener("click", () => pairGateway(b.dataset.pair)));
     document.querySelectorAll("[data-monitor]").forEach((b) => b.addEventListener("click", () => monitorAgent(b.dataset.monitor)));
     document.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
@@ -1034,6 +1036,33 @@
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
     renderNotificationControls();
+  }
+
+  async function copyIdeRelaySetup(agentId) {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/ide/token`, {
+      method:"POST",
+      headers:{"Accept":"application/json","Content-Type":"application/json"},
+      body:"{}"
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showToast(`IDE relay setup failed: ${data.error || response.status}`);
+      return;
+    }
+    const setup = [
+      "ProgreTech Mesh IDE Relay",
+      `Base URL: ${data.base_url}`,
+      `API key: ${data.api_key}`,
+      `Recommended model: ${data.recommended_model}`,
+      `Models: ${(data.models || []).join(", ")}`,
+      `Expires: ${new Date(Number(data.expires_at || 0) * 1000).toLocaleString()}`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(setup);
+      showToast("IDE relay setup copied. Paste the Base URL and API key into PyCharm.");
+    } catch (_) {
+      window.prompt("Copy this IDE relay setup:", setup);
+    }
   }
 
   async function claimLegacyAgentOwnership(agentId) {

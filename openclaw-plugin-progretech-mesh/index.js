@@ -438,7 +438,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.10",
+    adapter_version: "0.7.11",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -598,7 +598,7 @@ function readOnlyTerminalSnapshot() {
     `host=${os.hostname()}`,
     `platform=${os.platform()} ${os.release()}`,
     `node=${process.version}`,
-    `adapter=@progretech/openclaw-mesh 0.7.10`,
+    `adapter=@progretech/openclaw-mesh 0.7.11`,
     "mode=read-only-snapshot",
     "shell=disabled",
   ];
@@ -662,6 +662,46 @@ async function handleApprovedAction(api, msg) {
   });
 }
 
+const IDE_GATEWAY_ORIGIN = process.env.PROGRETECH_MESH_IDE_GATEWAY_ORIGIN?.trim()
+  || "http://127.0.0.1:8766";
+const IDE_GATEWAY_TOKEN_PATH = process.env.PROGRETECH_MESH_IDE_GATEWAY_TOKEN_PATH?.trim()
+  || path.join(os.homedir(), ".config", "rend", "ide-gateway-token");
+const IDE_GATEWAY_TIMEOUT_MS = Number.parseInt(
+  process.env.PROGRETECH_MESH_IDE_GATEWAY_TIMEOUT_MS || "145000",
+  10,
+);
+
+function readIdeGatewayToken() {
+  const value = fs.readFileSync(IDE_GATEWAY_TOKEN_PATH, "utf8").trim();
+  if (!value) throw new Error("ide_gateway_token_missing");
+  return value;
+}
+
+async function forwardIdeChat(body) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IDE_GATEWAY_TIMEOUT_MS);
+  try {
+    const token = readIdeGatewayToken();
+    const response = await fetch(`${IDE_GATEWAY_ORIGIN}/v1/chat/completions`, {
+      method:"POST",
+      headers:{
+        "authorization":`Bearer ${token}`,
+        "content-type":"application/json",
+        "accept":"application/json",
+      },
+      body:JSON.stringify({...body, stream:false}),
+      signal:controller.signal,
+    });
+    const payload = await response.json().catch(()=>({}));
+    if (!response.ok) {
+      throw new Error(`ide_gateway_http_${response.status}:${payload?.error?.message || payload?.error || "request_failed"}`);
+    }
+    return payload;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function handleGatewayCommand(api, msg) {
   if (["file_transfer_start","file_transfer_chunk","file_transfer_end","file_transfer_cancel"].includes(msg?.type)) {
     try { handleInboundFileTransfer(msg); }
@@ -674,11 +714,43 @@ async function handleGatewayCommand(api, msg) {
     return true;
   }
 
+  if (msg?.type === "ide_chat_request") {
+    const requestId = trimText(msg.request_id || msg?.payload?.request_id || crypto.randomUUID(), 160);
+    try {
+      const completion = await forwardIdeChat(msg?.payload?.openai || {});
+      sendMeshGatewayMessage({
+        type:"ide_chat_response",
+        request_id:requestId,
+        timestamp:new Date().toISOString(),
+        payload:{request_id:requestId,ok:true,completion},
+      });
+      appendEvent({
+        event_type:"ide_relay",channel:"mesh",state:"completed",direction:null,
+        summary:"IDE relay completion returned",
+        payload:{request_id:requestId,model:completion?.model || null},
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      sendMeshGatewayMessage({
+        type:"ide_chat_response",
+        request_id:requestId,
+        timestamp:new Date().toISOString(),
+        payload:{request_id:requestId,ok:false,error:trimText(detail,500)},
+      });
+      appendEvent({
+        event_type:"ide_relay",channel:"mesh",state:"error",direction:null,
+        summary:"IDE relay request failed",
+        payload:{request_id:requestId,error:trimText(detail,500)},
+      });
+    }
+    return true;
+  }
+
   if (msg?.type === "demo_file_offer_request") {
     const status = [
       "ProgreTech Mesh agent file exchange",
       `agent=${meshIdentity?.agent_id || "unknown"}`,
-      `adapter=@progretech/openclaw-mesh 0.7.10`,
+      `adapter=@progretech/openclaw-mesh 0.7.11`,
       `generated_at=${new Date().toISOString()}`,
       "purpose=RC2 file exchange acceptance artifact",
     ].join("\n") + "\n";
@@ -1255,7 +1327,7 @@ async function redeemOwnershipClaim(api, claimCode) {
     ownership_bound:true,
     device_id:rotated.device_id,
     credential_expires_at:rotated.device_credential_expires_at || null,
-    adapter_version:"0.7.10",
+    adapter_version:"0.7.11",
   });
   writeConnectionStatus("ownership_bound","Mesh ownership bound; reconnecting with rotated credential",{
     agent_id:rotated.agent_id,
@@ -1538,7 +1610,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.10",
+      adapter_version: "0.7.11",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",

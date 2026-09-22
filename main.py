@@ -20,6 +20,7 @@ from typing import Any
 
 from flask import (
     Flask,
+    Response,
     abort,
     jsonify,
     redirect,
@@ -174,8 +175,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.10"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.10.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.11"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.11.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -211,6 +212,9 @@ ACTIVE_UPLOAD_TRANSFERS: dict[str, dict[str, Any]] = {}
 ACTION_REQUESTS: dict[str, dict[str, Any]] = {}
 SESSION_FILE_TOTALS: dict[str, int] = {}
 ACTIVATION_CODES: dict[str, dict[str, Any]] = {}
+IDE_PENDING: dict[str, dict[str, Any]] = {}
+IDE_TOKEN_TTL_SECONDS = int(os.environ.get("MESH_IDE_TOKEN_TTL_SECONDS", "604800"))
+IDE_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("MESH_IDE_REQUEST_TIMEOUT_SECONDS", "150"))
 LIVE_LOCK = threading.RLock()
 
 # PT044_IDENTITY_POP_NONCE_V1
@@ -689,6 +693,18 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
                 "message": f"Agent cancelled file transfer: {meta['filename']}",
                 "payload": {"severity": "warn"},
             })
+    elif msg_type == "ide_chat_response":
+        resolve_ide_pending(agent_id, message)
+        append_event(agent_id, {
+            "type": "ide_relay",
+            "message": "IDE relay response completed",
+            "payload": {
+                "severity": "info",
+                "request_id": message.get("request_id"),
+                "ok": bool((message.get("payload") or {}).get("ok", True)),
+            },
+        })
+        return
     elif msg_type in {"mesh_direct_signal", "mesh_local_route"}:
         # Ephemeral connection metadata only. Never persist SDP/ICE or local access credentials.
         broadcast_to_clients(agent_id, {"type":"gateway_message","agent_id":agent_id,"message":message,"agent":public_agent(record)})
@@ -946,6 +962,147 @@ def _b64url_encode(raw: bytes) -> str:
 def _b64url_decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def ide_token_secret() -> bytes:
+    value = os.environ.get("MESH_IDE_TOKEN_SECRET") or os.environ.get(
+        "MESH_DEVICE_CREDENTIAL_SECRET"
+    ) or app_secret_key()
+    return str(value).encode("utf-8")
+
+
+def issue_ide_token(owner_id: str, agent_id: str) -> dict[str, Any]:
+    issued_at = unix_now()
+    expires_at = issued_at + IDE_TOKEN_TTL_SECONDS
+    payload = {
+        "v": 1,
+        "owner_id": str(owner_id or "").strip(),
+        "agent_id": str(agent_id or "").strip(),
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+        "scope": "mesh-ide",
+        "jti": secrets.token_urlsafe(16),
+    }
+    encoded = _b64url_encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signature = hmac.new(
+        ide_token_secret(), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return {
+        "token": f"PTMIDE1.{encoded}.{signature}",
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+        "agent_id": payload["agent_id"],
+    }
+
+
+def validate_ide_token(token: str) -> tuple[bool, str, dict[str, Any] | None]:
+    value = str(token or "").strip()
+    parts = value.split(".")
+    if len(parts) != 3 or parts[0] != "PTMIDE1":
+        return False, "ide_token_invalid", None
+    encoded, supplied = parts[1], parts[2]
+    expected = hmac.new(
+        ide_token_secret(), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, supplied):
+        return False, "ide_token_signature_invalid", None
+    try:
+        payload = json.loads(_b64url_decode(encoded).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False, "ide_token_payload_invalid", None
+    if payload.get("scope") != "mesh-ide":
+        return False, "ide_token_scope_invalid", None
+    if int(payload.get("expires_at") or 0) < unix_now():
+        return False, "ide_token_expired", None
+    agent_id = str(payload.get("agent_id") or "").strip()
+    owner_id = str(payload.get("owner_id") or "").strip()
+    if not agent_id or not owner_id:
+        return False, "ide_token_binding_invalid", None
+    record = DEV_AGENT_REGISTRY.get(agent_id)
+    if not record:
+        return False, "agent_not_found", None
+    if str(record.get("owner_id") or "").strip() != owner_id:
+        return False, "ide_owner_mismatch", None
+    if record.get("trust_state") != "verified":
+        return False, "verified_agent_required", None
+    return True, "ok", payload
+
+
+def ide_bearer_token() -> str:
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return ""
+    return header[7:].strip()
+
+
+def ide_models(agent_id: str) -> list[str]:
+    return [agent_id, f"{agent_id}-code", f"{agent_id}-fast"]
+
+
+def resolve_ide_pending(agent_id: str, message: dict[str, Any]) -> bool:
+    request_id = str(message.get("request_id") or (message.get("payload") or {}).get("request_id") or "").strip()
+    if not request_id:
+        return False
+    with LIVE_LOCK:
+        pending = IDE_PENDING.get(request_id)
+        if not pending or pending.get("agent_id") != agent_id:
+            return False
+        pending["response"] = message
+        pending["completed_at"] = utcnow()
+        event = pending.get("event")
+    if event:
+        event.set()
+    return True
+
+
+def dispatch_ide_chat(agent_id: str, body: dict[str, Any]) -> tuple[bool, str, dict[str, Any] | None]:
+    request_id = secrets.token_urlsafe(18)
+    event = threading.Event()
+    pending = {
+        "request_id": request_id,
+        "agent_id": agent_id,
+        "event": event,
+        "response": None,
+        "created_at": utcnow(),
+        "created_epoch": time.time(),
+    }
+    with LIVE_LOCK:
+        IDE_PENDING[request_id] = pending
+
+    ok, error = send_gateway_message(agent_id, {
+        "type": "ide_chat_request",
+        "request_id": request_id,
+        "timestamp": utcnow(),
+        "payload": {
+            "request_id": request_id,
+            "openai": body,
+        },
+    })
+    if not ok:
+        with LIVE_LOCK:
+            IDE_PENDING.pop(request_id, None)
+        return False, error or "gateway_send_failed", None
+
+    completed = event.wait(timeout=IDE_REQUEST_TIMEOUT_SECONDS)
+    with LIVE_LOCK:
+        final = IDE_PENDING.pop(request_id, None) or pending
+    if not completed:
+        return False, "ide_request_timeout", None
+    response = final.get("response")
+    if not isinstance(response, dict):
+        return False, "ide_response_missing", None
+    return True, "ok", response
+
+
+def openai_error(message: str, status: int = 400, error_type: str = "invalid_request_error"):
+    return jsonify(error={
+        "message": message,
+        "type": error_type,
+        "param": None,
+        "code": message,
+    }), status
 
 
 def issue_device_credential(agent_id: str, owner_id: str | None = None) -> dict[str, Any]:
@@ -1645,6 +1802,128 @@ def create_app() -> Flask:
             device_credential_expires_at=rotated["expires_at"],
             reconnect_mode="signed-device-credential",
         )
+
+    @app.get("/api/ide/contract")
+    @require_session
+    def ide_contract():
+        return jsonify(
+            ok=True,
+            protocol="openai-compatible",
+            base_url=f"{mesh_public_origin()}/v1",
+            bearer_scheme="PTMIDE1",
+            token_ttl_seconds=IDE_TOKEN_TTL_SECONDS,
+            request_timeout_seconds=IDE_REQUEST_TIMEOUT_SECONDS,
+            streaming="single-completion SSE compatibility",
+            transport="HTTPS -> owner-scoped Mesh gateway -> agent-local IDE gateway",
+        )
+
+    @app.post("/api/agents/<agent_id>/ide/token")
+    @require_session
+    def create_ide_token(agent_id: str):
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+        if not allowed or str(record.get("owner_id") or "").strip() != current_mesh_user_id():
+            return jsonify(ok=False, error="agent_not_found"), 404
+        if record.get("trust_state") != "verified":
+            return jsonify(ok=False, error="verified_agent_required"), 403
+        issued = issue_ide_token(current_mesh_user_id(), agent_id)
+        return jsonify(
+            ok=True,
+            agent_id=agent_id,
+            api_key=issued["token"],
+            base_url=f"{mesh_public_origin()}/v1",
+            expires_at=issued["expires_at"],
+            models=ide_models(agent_id),
+            recommended_model=f"{agent_id}-code",
+        ), 201
+
+    @app.get("/v1/models")
+    def openai_models():
+        valid, reason, payload = validate_ide_token(ide_bearer_token())
+        if not valid:
+            return openai_error(reason, 401, "authentication_error")
+        agent_id = str((payload or {}).get("agent_id") or "")
+        now = unix_now()
+        return jsonify(
+            object="list",
+            data=[
+                {"id": model, "object": "model", "created": now, "owned_by": f"mesh:{agent_id}"}
+                for model in ide_models(agent_id)
+            ],
+        )
+
+    @app.post("/v1/chat/completions")
+    def openai_chat_completions():
+        valid, reason, payload = validate_ide_token(ide_bearer_token())
+        if not valid:
+            return openai_error(reason, 401, "authentication_error")
+        agent_id = str((payload or {}).get("agent_id") or "")
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record or record.get("transport") != "connected":
+            return openai_error("gateway_not_connected", 503, "service_unavailable")
+
+        body = request.get_json(silent=True) or {}
+        model = str(body.get("model") or "").strip()
+        if model not in ide_models(agent_id):
+            return openai_error("model_not_allowed", 400)
+        messages = body.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return openai_error("messages_required", 400)
+
+        requested_stream = bool(body.get("stream"))
+        relay_body = dict(body)
+        relay_body["stream"] = False
+
+        ok, error, response = dispatch_ide_chat(agent_id, relay_body)
+        if not ok:
+            status = 504 if error == "ide_request_timeout" else 502
+            return openai_error(error, status, "upstream_error")
+
+        response_payload = (response or {}).get("payload") or {}
+        if not response_payload.get("ok", True):
+            return openai_error(str(response_payload.get("error") or "agent_ide_relay_failed"), 502, "upstream_error")
+        completion = response_payload.get("completion")
+        if not isinstance(completion, dict):
+            return openai_error("invalid_agent_completion", 502, "upstream_error")
+
+        if not requested_stream:
+            return jsonify(completion)
+
+        try:
+            choice = (completion.get("choices") or [])[0]
+            text = str(((choice.get("message") or {}).get("content")) or "")
+            finish_reason = str(choice.get("finish_reason") or "stop")
+        except (IndexError, TypeError, AttributeError):
+            return openai_error("invalid_agent_completion", 502, "upstream_error")
+
+        chunk_id = str(completion.get("id") or f"chatcmpl-{secrets.token_urlsafe(12)}")
+        created = int(completion.get("created") or unix_now())
+        chunk_model = str(completion.get("model") or model)
+        first = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": chunk_model,
+            "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
+        }
+        last = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": chunk_model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+        }
+        data = (
+            f"data: {json.dumps(first, separators=(',', ':'))}\n\n"
+            f"data: {json.dumps(last, separators=(',', ':'))}\n\n"
+            "data: [DONE]\n\n"
+        )
+        return Response(data, status=200, mimetype="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        })
 
     @app.get("/api/enrollment/protocol")
     def universal_agent_enrollment_protocol():
