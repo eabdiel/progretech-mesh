@@ -52,6 +52,26 @@ class Capability:
 
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
+        id="workboard",
+        name="ProgreTech Workboard",
+        classification="native integrated subsystem candidate",
+        state="CANDIDATE",
+        source="ProgreTech native",
+        intended_use="Shared bounded task-state ledger for Rend now and future Rend/Mak/Lyra handoffs.",
+        supported_agents=("Rend", "Mak", "Lyra"),
+        authority_boundary="Records task state only; cannot execute work, grant authority, alter routing or override STOP/owner policy.",
+        network="None",
+        data_egress="None",
+        filesystem="~/.progretech-mesh/workboard.json after owner-approved activation",
+        subprocess="Bounded local CLI through capability runtime",
+        compute="Low",
+        credentials="None",
+        version="0.1.0",
+        license="ProgreTech internal source",
+        rollback="Remove runtime adapter and retain/export state evidence as needed.",
+        notes="Qualification does not imply activation.",
+    ),
+    Capability(
         id="rend-host-control",
         name="Rend Host Control Provider",
         classification="integrated subsystem",

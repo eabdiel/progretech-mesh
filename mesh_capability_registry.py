@@ -24,6 +24,17 @@ ALLOWED_TRANSITIONS = {
 REGISTRY_LOCK = threading.RLock()
 
 BATCH_A_PINS = {
+    "workboard": {
+        "source": "ProgreTech native",
+        "version": "0.1.0",
+        "commit": "native:PT-2026-050",
+        "license": "ProgreTech internal source",
+        "pin_verified_at": "2026-09-22",
+        "intake_lane": "native integrated subsystem",
+        "network_policy": "none",
+        "egress_policy": "none",
+        "notes": "Local task-state ledger only; records work but grants no execution authority.",
+    },
     "mattpocock-skills": {
         "source": "https://github.com/mattpocock/skills",
         "version": "1.2.3",
@@ -100,7 +111,17 @@ def ensure_registry() -> dict[str, Any]:
     path=registry_path()
     with REGISTRY_LOCK:
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            data=json.loads(path.read_text(encoding="utf-8"))
+            defaults=default_registry()
+            changed=False
+            for cid,record in defaults["items"].items():
+                if cid not in data.setdefault("items",{}):
+                    data["items"][cid]=record
+                    changed=True
+            if changed:
+                data["updated_at"]=utcnow()
+                _write_registry(data)
+            return data
         data=default_registry()
         _write_registry(data)
         return data
