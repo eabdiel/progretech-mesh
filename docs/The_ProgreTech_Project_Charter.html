@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>The ProgreTech Project Charter v5.18</title>
+<title>The ProgreTech Project Charter v5.19</title>
 <style>
 :root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
 </head>
 <body><div class="page">
 <header>
-<div class="eyebrow">ProgreTech · Project Charter · v5.18 · September 22, 2026</div>
+<div class="eyebrow">ProgreTech · Project Charter · v5.19 · September 22, 2026</div>
 <h1>One factory. One learning loop. One path forward.</h1>
 <p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
 </header>
@@ -419,6 +419,23 @@ produce deterministic evidence, and return reviewable artifacts without requirin
 <p>The office layer remains an observable coordination substrate. It does not replace factory, routing, memory, credential, protected-access, or release authority. Automatic production release remains disabled; autonomous sudo/root/protected actions remain prohibited; PT-2026-042 remains paused; Lyra/Mak commissioning remains separate.</p>
 <p>Operator reference: <code>docs/operators/REND_PROGRETECH_OPERATOR_GUIDE.md</code></p>
 </section>
+
+<!-- REND_IDE_PYCHARM_QUALIFICATION_V1:START -->
+<section id="rend-ide-pycharm-qualified">
+<span class="tag green">Pre-arrival gate qualified</span>
+<h2>Rend IDE / PyCharm Integration — QUALIFIED / CLOSED</h2>
+<p>Rend is now available to trusted PyCharm installations through a dedicated OpenAI-compatible IDE Gateway on the MS-S1 MAX. PyCharm talks to Rend, while Rend routes through stable capability aliases to qualified local models and preserves MemPalace/context/governance behavior.</p>
+<table><thead><tr><th>Contract</th><th>Qualified state</th></tr></thead><tbody>
+<tr><td><strong>Gateway</strong></td><td><code>GET /health</code>, <code>GET /v1/models</code>, and <code>POST /v1/chat/completions</code> on the private Rend IDE Gateway.</td></tr>
+<tr><td><strong>Aliases</strong></td><td><code>rend</code> → <code>qwen3.8:27b</code>; <code>rend-code</code> → <code>qwen3-coder:30b</code>; <code>rend-fast</code> → <code>qwen3:1.7b</code>.</td></tr>
+<tr><td><strong>Security</strong></td><td>Bearer-token authentication; private LAN/Tailscale source boundary; Ollama remains loopback-only; no public internet exposure; no unrestricted tool/shell endpoint.</td></tr>
+<tr><td><strong>Multi-device evidence</strong></td><td>Local/LAN/Tailscale API smoke PASS; ZenBook second-computer completion PASS; owner-witnessed PyCharm responses PASS on ZenBook and MS-S1 MAX.</td></tr>
+</tbody></table>
+<div class="callout green"><strong>Exit gate PASSED:</strong> Rend is not tied to one PyCharm installation. Any trusted PyCharm client that can reach the private gateway and holds the bearer token can use the same Rend identity and stable model aliases. Tool calling remains separately gated and was intentionally OFF for this qualification.</div>
+<p><strong>Next transition:</strong> this pre-arrival dependency is satisfied. Lyra/Mak commissioning remains hardware + owner-start gated; no new PT number is created by this closeout.</p>
+</section>
+<!-- REND_IDE_PYCHARM_QUALIFICATION_V1:END -->
+
 </main>
 <footer>
 <div><strong>The ProgreTech Project Charter v5.17</strong></div>
