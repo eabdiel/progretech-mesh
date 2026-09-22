@@ -241,6 +241,96 @@ function readJsonIfPresent(target) {
   }
 }
 
+
+function identityMaterialPaths(agentId) {
+  const configured = process.env.PROGRETECH_MESH_IDENTITY_DIR?.trim();
+  const base = configured
+    ? path.resolve(configured.replace(/^~(?=\/|$)/, os.homedir()))
+    : path.join(os.homedir(), ".config", "progretech", "mesh", "identity");
+  const safeAgent = String(agentId || "").trim().replace(/[^A-Za-z0-9._-]/g, "_");
+  return {
+    evidence: path.join(base, `${safeAgent}_codeseal_evidence.json`),
+    privateKey: path.join(base, `${safeAgent}_identity_private.pem`),
+    publicKey: path.join(base, `${safeAgent}_identity_public.pem`),
+  };
+}
+
+function codeSealAssertionRequired(record) {
+  const configured = String(
+    process.env.PROGRETECH_MESH_REQUIRE_CODESEAL_ASSERTION || ""
+  ).trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(configured)) return false;
+  if (["1", "true", "yes", "on"].includes(configured)) return true;
+
+  const paths = identityMaterialPaths(record?.agent_id);
+  if (fs.existsSync(paths.evidence) || fs.existsSync(paths.privateKey) || fs.existsSync(paths.publicKey)) {
+    return true;
+  }
+
+  try {
+    return new URL(record?.mesh || "").hostname === "mesh.progretech.com";
+  } catch {
+    return false;
+  }
+}
+
+async function postMeshJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {"content-type":"application/json", "accept":"application/json"},
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => ({}));
+  return {response, body};
+}
+
+async function assertCodeSealIdentity(record) {
+  if (!codeSealAssertionRequired(record)) return {required:false, verified:false};
+
+  const paths = identityMaterialPaths(record.agent_id);
+  for (const [kind, target] of Object.entries(paths)) {
+    if (!fs.existsSync(target)) throw new Error(`codeseal_identity_material_missing:${kind}`);
+  }
+
+  const evidence = JSON.parse(fs.readFileSync(paths.evidence, "utf8"));
+  const privateKey = fs.readFileSync(paths.privateKey);
+  const publicKey = fs.readFileSync(paths.publicKey, "utf8");
+
+  const challenge = await postMeshJson(
+    `${record.mesh}/api/agents/${encodeURIComponent(record.agent_id)}/identity/challenge`,
+    {device_credential:record.device_credential},
+  );
+  if (!challenge.response.ok || !challenge.body?.ok) {
+    throw new Error(`identity_challenge_rejected:${challenge.body?.error || challenge.response.status}`);
+  }
+
+  const signingPayload = String(challenge.body.signing_payload || "");
+  if (!signingPayload) throw new Error("identity_challenge_payload_missing");
+
+  const signature = crypto.sign(null, Buffer.from(signingPayload, "utf8"), privateKey).toString("base64");
+  const assertion = await postMeshJson(
+    `${record.mesh}/api/agents/${encodeURIComponent(record.agent_id)}/identity/assert`,
+    {
+      device_credential:record.device_credential,
+      public_key:publicKey,
+      codeseal_evidence:evidence,
+      challenge_id:challenge.body.challenge_id,
+      signature,
+    },
+  );
+  if (!assertion.response.ok || !assertion.body?.ok || assertion.body?.trust_valid !== true) {
+    throw new Error(`identity_assertion_rejected:${assertion.body?.error || assertion.response.status}`);
+  }
+
+  writeLifecycleState({
+    identity_assertion_state:"verified",
+    identity_assertion_provider:assertion.body?.provider || "codeseal",
+    identity_assertion_proof:assertion.body?.identity_proof || "ed25519-challenge",
+    identity_asserted_at:new Date().toISOString(),
+  });
+  return {required:true, verified:true};
+}
+
 function readLifecycleState() {
   return readJsonIfPresent(LIFECYCLE_STATE_PATH) || {};
 }
@@ -348,7 +438,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.8",
+    adapter_version: "0.7.9",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -508,7 +598,7 @@ function readOnlyTerminalSnapshot() {
     `host=${os.hostname()}`,
     `platform=${os.platform()} ${os.release()}`,
     `node=${process.version}`,
-    `adapter=@progretech/openclaw-mesh 0.7.8`,
+    `adapter=@progretech/openclaw-mesh 0.7.9`,
     "mode=read-only-snapshot",
     "shell=disabled",
   ];
@@ -588,7 +678,7 @@ async function handleGatewayCommand(api, msg) {
     const status = [
       "ProgreTech Mesh agent file exchange",
       `agent=${meshIdentity?.agent_id || "unknown"}`,
-      `adapter=@progretech/openclaw-mesh 0.7.8`,
+      `adapter=@progretech/openclaw-mesh 0.7.9`,
       `generated_at=${new Date().toISOString()}`,
       "purpose=RC2 file exchange acceptance artifact",
     ].join("\n") + "\n";
@@ -823,6 +913,26 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   }
 
   meshIdentity = record;
+
+  try {
+    const identity = await assertCodeSealIdentity(record);
+    if (identity.required) {
+      writeConnectionStatus("identity_verified", "CodeSeal identity + Ed25519 proof verified before reconnect", {
+        agent_id:record.agent_id,
+        device_id:record.device_id,
+      });
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    writeConnectionStatus("reconnecting", "Mesh identity assertion failed; reconnect scheduled", {
+      agent_id:record.agent_id,
+      device_id:record.device_id,
+      last_reconnect_error:`identity_assertion:${detail}`,
+    });
+    scheduleReconnect(api, `identity_assertion:${detail}`);
+    return;
+  }
+
   const url = credentialWebSocketUrl(record, preferInitialPairing && justRedeemed);
 
   writeConnectionStatus("connecting", "Connecting outbound to Mesh", {
@@ -1346,7 +1456,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.8",
+      adapter_version: "0.7.9",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",

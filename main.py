@@ -166,8 +166,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.8"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.8.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.9"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.9.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -1808,9 +1808,6 @@ def create_app() -> Flask:
         payload = request.get_json(silent=True) or {}
         credential = str(payload.get("device_credential", "")).strip()
 
-        record = DEV_AGENT_REGISTRY.get(agent_id)
-        if not record:
-            return jsonify(ok=False, error="agent_not_found"), 404
         if not credential:
             return jsonify(ok=False, error="device_credential_required"), 401
 
@@ -1841,9 +1838,6 @@ def create_app() -> Flask:
         challenge_id = str(payload.get("challenge_id", "")).strip()
         signature = str(payload.get("signature", "")).strip()
 
-        record = DEV_AGENT_REGISTRY.get(agent_id)
-        if not record:
-            return jsonify(ok=False, error="agent_not_found"), 404
         if not credential:
             return jsonify(ok=False, error="device_credential_required"), 401
 
@@ -1856,6 +1850,19 @@ def create_app() -> Flask:
             return jsonify(ok=False, error="codeseal_identity_required"), 400
         if not challenge_id or not signature:
             return jsonify(ok=False, error="identity_proof_required"), 400
+
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        identity_binding = (
+            ((codeseal_evidence or {}).get("manifest") or {}).get("mesh_identity")
+            if isinstance(codeseal_evidence, dict) else None
+        )
+        identity_binding = identity_binding if isinstance(identity_binding, dict) else {}
+        asserted_name = str(
+            identity_binding.get("agent_name")
+            or identity_binding.get("name")
+            or agent_id
+        ).strip()
+        agent_name = str((record or {}).get("name") or asserted_name or agent_id).strip()
 
         challenge_ok, challenge_reason, challenge = consume_identity_challenge(
             agent_id, device_id, challenge_id
@@ -1883,7 +1890,7 @@ def create_app() -> Flask:
 
         verification = verify_runtime_agent_identity(
             {"agent_id": agent_id, "codeseal_evidence": codeseal_evidence},
-            record["name"],
+            agent_name,
             public_key,
             "",
         )
@@ -1899,6 +1906,26 @@ def create_app() -> Flask:
                 },
             })
             return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 403
+
+        if record is None:
+            record = {
+                "id": agent_id,
+                "name": agent_name,
+                "role": "ProgreTech Agent",
+                "state": "offline",
+                "task": "Awaiting gateway",
+                "phase": "Identity rehydrated; awaiting live transport",
+                "progress": 0,
+                "model": "Unknown",
+                "runtime": "—",
+                "transport": "not-connected",
+                "last_heartbeat": None,
+                "telemetry": {},
+                "enrolled_at": utcnow(),
+                "fingerprint": fingerprint_for(agent_name, public_key, ""),
+            }
+            with LIVE_LOCK:
+                DEV_AGENT_REGISTRY[agent_id] = record
 
         record.update(
             public_key=public_key,
