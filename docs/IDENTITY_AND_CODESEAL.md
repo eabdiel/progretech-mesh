@@ -94,3 +94,27 @@ The production adapter now targets the actual CodeSeal Registry API contract:
 - any network, malformed-response, mismatch, expiry, revocation, unknown-key, or non-matching-record condition fails closed
 
 Installing this adapter does not by itself set `MESH_CODESEAL_READY=1`. A real agent identity evidence record must be issued through CodeSeal and pass live verification before readiness promotion.
+
+## PT-2026-044 production identity replay contract
+
+The current Cloud Run deployment intentionally uses a bounded process-local
+identity challenge store. This is qualified only while **both** deployment
+invariants remain true:
+
+- Cloud Run `maxScale = 1`
+- Gunicorn `--workers 1`
+
+The single process may serve concurrent threads; `LIVE_LOCK` serializes challenge
+state mutation. The challenge TTL remains short (60 seconds by default), and
+consumed challenges are removed immediately.
+
+This is a bounded design, not a general horizontally scalable replay solution.
+Increasing Cloud Run above one instance or Gunicorn above one worker invalidates
+this qualification and requires a shared atomic replay-state backend before
+CodeSeal readiness may remain enabled.
+
+`MESH_IDENTITY_REPLAY_MODE=single-process-bounded` records this operational
+contract. `MESH_CODESEAL_READY=1` must not be set until the live production
+acceptance suite confirms the verifier, HTTP identity path, CodeSeal evidence,
+and these deployment invariants together.
+

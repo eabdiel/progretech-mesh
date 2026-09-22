@@ -50,6 +50,25 @@ class TestCodeSealProductionVerifier(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(result.metadata["fail_closed"])
 
+    def test_missing_explicit_evidence_rejected(self):
+        a = {
+            "agent_id": "rend",
+            "agent_name": "Rend",
+            "public_key": "mesh-rend-prod-public-key",
+            "manifest": assertion()["codeseal_evidence"]["manifest"],
+            "registry_signature": "signature",
+            "registry_public_key": "registry-key",
+        }
+        with patch.dict(os.environ, {"CODESEAL_VERIFIER_MODE": "configured"}, clear=False):
+            with patch("gateway.identity.codeseal.urlopen") as u:
+                result = self.v.verify(a)
+        self.assertFalse(result.ok)
+        self.assertEqual(
+            result.metadata["reason"],
+            "missing_manifest_signature_or_registry_key",
+        )
+        u.assert_not_called()
+
     def test_missing_mesh_binding_rejected(self):
         a = assertion()
         del a["codeseal_evidence"]["manifest"]["mesh_identity"]

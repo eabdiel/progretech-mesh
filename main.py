@@ -1414,6 +1414,11 @@ def create_app() -> Flask:
             os.environ.get("CODESEAL_VERIFIER_MODE", "unconfigured").strip().lower()
             == "configured"
         )
+        codeseal_ready = os.environ.get("MESH_CODESEAL_READY", "0").strip() == "1"
+        replay_mode = os.environ.get(
+            "MESH_IDENTITY_REPLAY_MODE", "unconfigured"
+        ).strip().lower()
+        replay_qualified = replay_mode == "single-process-bounded"
 
         return jsonify(
             ok=True,
@@ -1425,12 +1430,24 @@ def create_app() -> Flask:
             agent_identity={
                 "mode": agent_identity_mode,
                 "production_ready": (
-                    agent_identity_mode == "codeseal" and codeseal_configured
+                    agent_identity_mode == "codeseal"
+                    and codeseal_configured
+                    and codeseal_ready
+                    and replay_qualified
                 ),
                 "cryptographic_verification": (
                     agent_identity_mode == "codeseal" and codeseal_configured
                 ),
                 "fail_closed": agent_identity_mode == "codeseal",
+                "codeseal_ready": codeseal_ready,
+                "replay_protection": {
+                    "mode": replay_mode,
+                    "qualified": replay_qualified,
+                    "challenge_ttl_seconds": IDENTITY_CHALLENGE_TTL_SECONDS,
+                    "storage": "process-local",
+                    "required_cloud_run_max_instances": 1,
+                    "required_gunicorn_workers": 1,
+                },
             },
             trust_rule=(
                 "Development identity must never be represented as production "
