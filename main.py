@@ -174,8 +174,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.9"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.9.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.10"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.10.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -741,11 +741,14 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
 
 
 def public_agent(record: dict[str, Any]) -> dict[str, Any]:
-    return {
+    public = {
         key: value
         for key, value in record.items()
-        if key != "codeseal_key"
+        if key not in {"codeseal_key", "owner_id"}
     }
+    public["owner_bound"] = bool(str(record.get("owner_id") or "").strip())
+    public["ownership_state"] = "owned" if public["owner_bound"] else "legacy-unowned"
+    return public
 
 
 
@@ -1571,6 +1574,8 @@ def create_app() -> Flask:
                 current_owner = str(record.get("owner_id") or "").strip()
                 if current_owner and current_owner != current_mesh_user_id():
                     return jsonify(ok=False, error="agent_not_found"), 404
+                if current_owner == current_mesh_user_id():
+                    return jsonify(ok=False, error="ownership_already_bound"), 409
         claim = issue_ownership_claim(current_mesh_user_id(), agent_id or None)
         payload = f"PTMOWN1:{claim['code']}"
         return jsonify(
@@ -1611,9 +1616,15 @@ def create_app() -> Flask:
         if existing_owner and existing_owner != new_owner:
             return jsonify(ok=False, error="ownership_already_bound"), 409
 
+        if existing_owner:
+            return jsonify(ok=False, error="ownership_already_bound"), 409
+
+        old_device_id = str((device_payload or {}).get("device_id") or "").strip()
         record["owner_id"] = new_owner
         rotated = issue_device_credential(agent_id, owner_id=new_owner)
         record["identity_device_id"] = rotated["device_id"]
+        if old_device_id:
+            REVOKED_DEVICE_IDS.add(old_device_id)
 
         append_event(agent_id, {
             "type": "ownership_bound",
@@ -2921,6 +2932,11 @@ def create_app() -> Flask:
                 if not valid_device:
                     ws.close(reason=reason)
                     return
+                record_owner = str(record.get("owner_id") or "").strip()
+                credential_owner = str((device_payload or {}).get("owner_id") or "").strip()
+                if record_owner and credential_owner != record_owner:
+                    ws.close(reason="agent_owner_mismatch")
+                    return
                 auth_mode = "device_credential"
             else:
                 token_record = PAIRING_TOKENS.get(token)
@@ -2994,6 +3010,10 @@ def create_app() -> Flask:
 
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
+            ws.close(reason="agent_not_found")
+            return
+        allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+        if not allowed:
             ws.close(reason="agent_not_found")
             return
 

@@ -438,7 +438,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.9",
+    adapter_version: "0.7.10",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -598,7 +598,7 @@ function readOnlyTerminalSnapshot() {
     `host=${os.hostname()}`,
     `platform=${os.platform()} ${os.release()}`,
     `node=${process.version}`,
-    `adapter=@progretech/openclaw-mesh 0.7.9`,
+    `adapter=@progretech/openclaw-mesh 0.7.10`,
     "mode=read-only-snapshot",
     "shell=disabled",
   ];
@@ -678,7 +678,7 @@ async function handleGatewayCommand(api, msg) {
     const status = [
       "ProgreTech Mesh agent file exchange",
       `agent=${meshIdentity?.agent_id || "unknown"}`,
-      `adapter=@progretech/openclaw-mesh 0.7.9`,
+      `adapter=@progretech/openclaw-mesh 0.7.10`,
       `generated_at=${new Date().toISOString()}`,
       "purpose=RC2 file exchange acceptance artifact",
     ].join("\n") + "\n";
@@ -1207,8 +1207,90 @@ function stableConversationId({ agentId, room, sender }) {
   return `mesh-${agentId}-${digest}`;
 }
 
+function extractOwnershipClaim(value) {
+  const text = String(value || "");
+  const match = text.match(/\bPTMOWN1:([A-Za-z0-9_-]{20,200})\b/);
+  return match ? match[1] : null;
+}
+
+async function redeemOwnershipClaim(api, claimCode) {
+  const record = readJsonIfPresent(DEVICE_CREDENTIAL_PATH);
+  if (!record?.mesh || !record?.agent_id || !record?.device_credential) {
+    throw new Error("ownership_migration_credential_missing");
+  }
+
+  writeLifecycleState({
+    ownership_state:"redeeming",
+    ownership_claim_received_at:new Date().toISOString(),
+  });
+
+  const response = await fetch(`${record.mesh}/api/ownership/redeem`, {
+    method:"POST",
+    headers:{"content-type":"application/json","accept":"application/json"},
+    body:JSON.stringify({
+      agent_id:record.agent_id,
+      device_credential:record.device_credential,
+      claim_code:claimCode,
+    }),
+  });
+  const body = await response.json().catch(()=>({}));
+  if (!response.ok || !body?.ok) {
+    throw new Error(`ownership_redeem_rejected:${body?.error || response.status}`);
+  }
+
+  const rotated = {
+    ...record,
+    device_credential:body.device_credential,
+    device_id:body.device_id,
+    device_credential_expires_at:body.device_credential_expires_at,
+    reconnect_mode:body.reconnect_mode || "signed-device-credential",
+    owner_bound:true,
+    owner_bound_at:new Date().toISOString(),
+  };
+  atomicWriteJson(DEVICE_CREDENTIAL_PATH, rotated);
+  meshIdentity = rotated;
+  clearRevokedMarker();
+  writeLifecycleState({
+    ownership_state:"bound",
+    ownership_bound:true,
+    device_id:rotated.device_id,
+    credential_expires_at:rotated.device_credential_expires_at || null,
+    adapter_version:"0.7.10",
+  });
+  writeConnectionStatus("ownership_bound","Mesh ownership bound; reconnecting with rotated credential",{
+    agent_id:rotated.agent_id,
+    device_id:rotated.device_id,
+  });
+
+  if (meshSocket) {
+    try { meshSocket.close(); } catch {}
+    meshSocket = null;
+  }
+  meshReconnectAttempt = 0;
+  scheduleReconnect(api,"ownership_credential_rotated",250);
+  return true;
+}
+
 function registerObservationHooks(api) {
   api.on("message_received", (event, ctx) => {
+    const ownershipClaim = extractOwnershipClaim(event?.content || event?.text || "");
+    if (ownershipClaim) {
+      void redeemOwnershipClaim(api, ownershipClaim).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        writeLifecycleState({
+          ownership_state:"error",
+          ownership_error:trimText(detail,500),
+        });
+        appendEvent({
+          event_type:"identity",
+          channel:channelFromContext(ctx,event?.channel || "unknown"),
+          state:"error",
+          direction:"input",
+          summary:"Mesh ownership claim failed",
+          payload:{error:trimText(detail,500)},
+        });
+      });
+    }
     appendEvent({
       event_type: "message",
       channel: channelFromContext(ctx, event?.channel || "unknown"),
@@ -1456,7 +1538,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.9",
+      adapter_version: "0.7.10",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",

@@ -1016,13 +1016,14 @@
         </div>
 
         <div class="agent-actions three">
-          <button data-pair="${agent.id}" ${agent.trust_state !== "verified" ? "disabled" : ""}>Connect agent</button>
+          ${agent.owner_bound === false ? `<button data-claim-owner="${agent.id}">Claim ownership</button>` : `<button data-pair="${agent.id}" ${agent.trust_state !== "verified" ? "disabled" : ""}>Connect agent</button>`}
           <button data-monitor="${agent.id}" class="monitor">Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
       </article>
     `).join("");
 
+    document.querySelectorAll("[data-claim-owner]").forEach((b) => b.addEventListener("click", () => claimLegacyAgentOwnership(b.dataset.claimOwner)));
     document.querySelectorAll("[data-pair]").forEach((b) => b.addEventListener("click", () => pairGateway(b.dataset.pair)));
     document.querySelectorAll("[data-monitor]").forEach((b) => b.addEventListener("click", () => monitorAgent(b.dataset.monitor)));
     document.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
@@ -1032,6 +1033,27 @@
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
     renderNotificationControls();
+  }
+
+  async function claimLegacyAgentOwnership(agentId) {
+    const response = await fetch("/api/ownership/claims", {
+      method:"POST",
+      headers:{"Accept":"application/json","Content-Type":"application/json"},
+      body:JSON.stringify({agent_id:agentId})
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showToast(`Ownership request failed: ${data.error || response.status}`);
+      return;
+    }
+
+    const payload = data.claim_payload || "";
+    try {
+      await navigator.clipboard.writeText(payload);
+      showToast("Ownership payload copied. Send it to the agent through your existing chat.");
+    } catch (_) {
+      window.prompt("Copy this ownership payload and send it to the agent through your existing chat:", payload);
+    }
   }
 
   async function refreshFleet() {
