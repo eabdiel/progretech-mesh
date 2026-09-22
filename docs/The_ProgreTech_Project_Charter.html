@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>The ProgreTech Project Charter v5.17</title>
+<title>The ProgreTech Project Charter v5.18</title>
 <style>
 :root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
 </head>
 <body><div class="page">
 <header>
-<div class="eyebrow">ProgreTech · Project Charter · v5.17 · September 21, 2026</div>
+<div class="eyebrow">ProgreTech · Project Charter · v5.18 · September 22, 2026</div>
 <h1>One factory. One learning loop. One path forward.</h1>
 <p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
 </header>
@@ -609,7 +609,7 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <!-- PT044_MESH_RELEASE_AUTOMATION_V1 -->
 <div class="tag green">PT-2026-044 · Maintenance evidence</div>
 <h2>PT-2026-044 — Mesh Command Center Production Release Automation</h2>
-<p><strong>Status:</strong> RELEASE AUTOMATION QUALIFIED / CLOSED · SECURITY CLOSEOUT REMAINS ACTIVE</p>
+<p><strong>Status:</strong> PT-2026-044 QUALIFIED / CLOSED</p>
 <p>The Mesh command-center maintenance stream established GitHub <code>main</code> as the authoritative production release source and qualified a real push-driven production path through Google Cloud Build, Artifact Registry, Cloud Run and <code>mesh.progretech.com</code>. The accepted closeout commit is <code>73f183459ca7bd5305fe3820ac82c7cd18474ae2</code>.</p>
 <h3>Qualified production path</h3>
 <ul>
@@ -634,15 +634,9 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <div class="callout green"><strong>Release governance:</strong> normal Mesh production deployment now flows <code>GitHub main → Cloud Build → Docker → Artifact Registry → Cloud Run</code>. Ad-hoc local source deploys are reserved for explicitly approved recovery or bounded qualification work.</div>
 <h3>CodeSeal production identity evidence</h3>
 <p>Rend's existing CodeSeal event <code>PTCS-EVT-AF56CED8087E6350EC75</code> was qualified in production for current-state enforcement. The exact event was temporarily revoked, production verification changed to invalid with <code>registry_event_revoked</code>, Mesh rejected the identity, the original database state was restored, verification returned active/valid, and Rend reconnected. The original event was reused; no replacement identity was issued.</p>
-<h3>Remaining PT-2026-044 security closeout</h3>
-<p>The release-automation gate is closed, but this maintenance stream must not claim full cloud identity readiness until the remaining cloud-runtime identity controls are qualified. The required remaining items are:</p>
-<ul>
-<li>Make missing CodeSeal evidence fail closed in the agent adapter rather than allowing an optional skip path.</li>
-<li>Add full HTTP-level negative/positive tests for missing/invalid/revoked device credentials, missing proof, wrong signature, replay, expiry, evidence mismatch, revoked CodeSeal state and successful trust update.</li>
-<li>Resolve the process-local proof-of-possession challenge/replay cache for Cloud Run multi-instance behavior using an accepted shared-state design or an explicitly qualified bounded single-instance design.</li>
-<li>Only after those controls pass may cloud <code>MESH_CODESEAL_READY=1</code> be promoted as a production-readiness claim.</li>
-</ul>
-<div class="callout amber"><strong>Boundary:</strong> release automation being QUALIFIED does not by itself promote cloud CodeSeal/PoP readiness. Local Rend identity readiness and the production CodeSeal revocation path are qualified; cloud replay/fail-closed semantics remain a separate acceptance gate.</div>
+<h3>PT-2026-044 cloud identity security closeout</h3>
+<p>The remaining cloud CodeSeal/PoP gate is qualified. Missing evidence fails closed; the HTTP matrix covers invalid, expired and revoked device credentials, missing proof, wrong signature, replay, evidence mismatch, revoked CodeSeal state and successful trust update; replay is bounded to Cloud Run <code>maxScale=1</code> and Gunicorn <code>workers=1</code>; restart-safe identity rehydration reconstructs ephemeral state only after credential, Ed25519 proof and CodeSeal verification succeed; and Rend now uses a production reconnect credential signed by the current cloud device secret and targeting <code>https://mesh.progretech.com</code>.</p>
+<div class="callout green"><strong>PT-2026-044 closed:</strong> release automation and cloud identity security are both qualified. The next required pre-arrival gate is Rend IDE / PyCharm integration before Lyra/Mak commissioning.</div>
 </section><!-- REND_IDE_PYCHARM_INTEGRATION_V1 -->
 <section id="rend-ide-pycharm-integration">
 <div class="tag purple">Required pre-arrival activity · Rend IDE integration</div>
