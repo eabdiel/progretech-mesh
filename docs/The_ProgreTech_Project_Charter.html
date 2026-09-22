@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<title>The ProgreTech Project Charter v5.17</title>
+<style>
+:root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
+.page{max-width:1180px;margin:auto;background:var(--paper);min-height:100vh}
+header{padding:46px 6%;background:linear-gradient(135deg,#0b1728,#123b63 65%,#155e75);color:white}
+.eyebrow,.tag{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}.eyebrow{color:#9fe7f5}
+h1{font-size:clamp(38px,6vw,68px);line-height:1;margin:10px 0 14px}.lede{font-size:18px;color:#dceaf6;max-width:900px}
+nav{position:sticky;top:0;z-index:4;padding:10px 5%;background:#fffffff5;border-bottom:1px solid var(--line);overflow:auto;white-space:nowrap}
+nav a{display:inline-block;margin-right:16px;text-decoration:none;color:var(--navy);font-size:12px;font-weight:750}
+main{padding:18px 6% 60px}section{padding:32px 0;border-bottom:1px solid var(--line)}
+h2{font-size:29px;line-height:1.15;color:var(--navy);margin:0 0 10px}h3{font-size:18px;color:var(--navy);margin:20px 0 8px}
+p{margin:7px 0 12px}.small{font-size:13px;color:var(--muted)}.tag{display:inline-block;padding:4px 8px;border-radius:99px;background:#eaf2ff;color:#185db7;margin-bottom:8px}
+.tag.green{background:#e8f7ef;color:var(--green)}.tag.purple{background:#f0eaff;color:var(--purple)}.tag.amber{background:#fff1df;color:var(--amber)}
+.callout{border-left:4px solid var(--blue);background:#eff6ff;padding:14px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+.callout.green{border-color:var(--green);background:#ecfdf3}.callout.amber{border-color:#f79009;background:#fffaeb}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{border:1px solid var(--line);border-radius:14px;padding:16px;background:#fff}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13.5px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#eef3f8;color:var(--navy);font-size:11px;text-transform:uppercase}
+.flow{display:flex;align-items:center;gap:8px;overflow:auto;padding:12px 0}.node{min-width:155px;border:1px solid var(--line);border-radius:11px;padding:12px;background:#fff;text-align:center}.arrow{font-weight:900;color:var(--blue)}
+.phase{display:grid;grid-template-columns:54px 1fr;gap:14px;margin:16px 0}.n{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:var(--blue);color:white;font-weight:850}
+.done{color:var(--green);font-weight:800}.now{color:var(--amber);font-weight:800}.future{color:var(--purple);font-weight:800}
+code,pre{font-family:ui-monospace,Consolas,monospace;background:#0b1728;color:#dceaf6;padding:2px 5px;border-radius:5px}pre{padding:14px;overflow:auto;white-space:pre-wrap}
+footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.phase{grid-template-columns:42px 1fr}header,main{padding-left:5%;padding-right:5%}}
+@media print{body{background:white}.page{max-width:none}nav{display:none}}
+</style>
+</head>
+<body><div class="page">
+<header>
+<div class="eyebrow">ProgreTech · Project Charter · v5.17 · September 21, 2026</div>
+<h1>One factory. One learning loop. One path forward.</h1>
+<p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
+</header>
+<nav>
+<a href="#northstar">North star</a><a href="#learning">Learning ladder</a><a href="#models">Local intelligence</a><a href="#memory">Memory</a><a href="#catalog">Service catalog</a><a href="#skills">Skills</a><a href="#path">Single roadmap</a><a href="#gates">Event gates</a><a href="#metrics">Metrics</a><a href="#rules">Authority</a><a href="#status">Current status</a>
+</nav>
+<main>
+<section id="northstar">
+<span class="tag green">Authoritative direction</span>
+<h2>North star: autonomous delivery that becomes less dependent on outside AI over time</h2>
+<p>ProgreTech is building an AI-operated software, PWA and automation factory. Edwin supplies intent, business authority, protected-environment bridging and consequential approvals. Rend, Mak and Lyra progressively turn that intent into specifications, code, tests, deployable artifacts, operating evidence, training material, content and follow-on improvements.</p>
+<div class="callout green"><strong>Primary maturity rule:</strong> external AI is a teacher, not the workforce. The goal is not merely to route a hard task to a better API. The goal is for the local intern to learn why it was blocked, retain the validated lesson, retry locally when practical, and require less repeated outside teaching over time.</div>
+<p>Hardware, APIs, memory systems and orchestration are supporting infrastructure. They are justified only when they increase autonomous task success, reduce repeated escalation, improve safe concurrency, or remove a measured delivery bottleneck.</p>
+</section>
+<section id="learning">
+<span class="tag purple">Highest current priority</span>
+<h2>The hybrid learning and escalation ladder</h2>
+<p>This is the central architecture for the next stage of ProgreTech. Rend should not treat OpenAI, OpenRouter, Codex, 1min.ai or another external model as a permanent default brain for normal work. Local execution is attempted first. Outside intelligence is used deliberately to teach a missing concept or unblock a difficult case, and the validated result becomes local knowledge.</p>
+<div class="flow">
+<div class="node"><strong>1 · Local intern</strong><br/><span class="small">attempt with local model + tools + memory</span></div><div class="arrow">→</div>
+<div class="node"><strong>2 · Local knowledge</strong><br/><span class="small">MemPalace + catalog + RAG + tested examples</span></div><div class="arrow">→</div>
+<div class="node"><strong>3 · Local senior</strong><br/><span class="small">larger local model when available/needed</span></div><div class="arrow">→</div>
+<div class="node"><strong>4 · External teacher</strong><br/><span class="small">only when local tiers are genuinely blocked</span></div><div class="arrow">→</div>
+<div class="node"><strong>5 · Learn + retry</strong><br/><span class="small">validate, retain, retry locally, measure recurrence</span></div>
+</div>
+<h3>What “teach the bot” means operationally</h3>
+<table><thead><tr><th>When local work fails</th><th>Required behavior</th><th>Factory learning output</th></tr></thead><tbody>
+<tr><td>Missing concept or unfamiliar pattern</td><td>Ask the teacher for explanation, examples, failure analysis or a proposed approach — not silent full-task outsourcing.</td><td>Compact concept/playbook with provenance and confidence.</td></tr>
+<tr><td>Implementation blocker</td><td>Use teacher guidance, then let the local agent implement and run the tests whenever practical.</td><td>Known-good local example + validation steps.</td></tr>
+<tr><td>Repeated failure class</td><td>Recall prior lessons before escalating again. If the same problem still requires outside help, record why.</td><td>Evidence that the limitation is model capability, stale knowledge, tooling or workflow.</td></tr>
+<tr><td>Specialized capability truly unavailable locally</td><td>Allow a bounded external dependency, but classify it explicitly as a retained exception.</td><td>Documented reason the dependency remains external.</td></tr>
+</tbody></table>
+<div class="callout"><strong>Success is declining repeated escalation.</strong> Zero API use is not required. Repeatedly paying another model to solve a problem the interns have already encountered is a failure of the learning system unless the local model is demonstrably incapable.</div>
+<div class="callout amber"><strong>Teacher vs. cognitive-overflow distinction:</strong> normal external use remains bounded teaching: explanation, critique, clarification and diagnosis that returns to local execution. PT-2026-017 adds one exceptional continuity path for a proven cognitive failure after the bounded local recovery budget is exhausted. Even then, the external model provides reasoning guidance only; a local planner must convert that guidance into a candidate action, the existing local validator must accept it, and only then may the normal local transaction/retest/resume path continue.</div>
+<div class="callout amber"><strong>Knowledge freshness rule:</strong> remembered knowledge is a hypothesis until it is revalidated against the current authoritative implementation and evidence. Idle study must confirm that a learned pattern still matches current Git, tests, configuration and documented behavior; changed or unverifiable knowledge is marked stale/unknown and re-learned rather than trusted because it was previously correct.</div>
+</section>
+<section id="models">
+<span class="tag purple">Model prevalence &amp; local intelligence strategy</span>
+<h2>Models are replaceable infrastructure; agent identity lives above the model layer</h2>
+<p>Rend, Mak and Lyra are defined by their roles, authority, memory, tools, task boundaries, recovery contracts and evidence obligations — not by a permanent model assignment. ProgreTech may change models as capability, economics and hardware evolve without changing agent identity or rewriting the factory architecture.</p>
+<div class="callout green"><strong>Shared-node rule:</strong> the MINISFORUM MS-S1 MAX is a ProgreTech local-intelligence node, not merely “Rend's new PC.” Rend may orchestrate stronger shared local intelligence for Mak and Lyra while each specialist retains separate prompts, memories, tools, permissions, task ownership and output provenance.</div>
+<h3>Local intelligence hierarchy</h3>
+<div class="flow">
+<div class="node"><strong>Agent-local / utility</strong><br/><span class="small">cheap status, simple transforms and bounded specialist work</span></div><div class="arrow">→</div>
+<div class="node"><strong>Shared local worker</strong><br/><span class="small">routine autonomous coding, tools, correction loops and delivery</span></div><div class="arrow">→</div>
+<div class="node"><strong>Shared local senior</strong><br/><span class="small">cross-system reasoning, review, architecture and recovery</span></div><div class="arrow">→</div>
+<div class="node"><strong>Heavy local senior</strong><br/><span class="small">selective large-model engineering, long-horizon and difficult review work</span></div><div class="arrow">→</div>
+<div class="node"><strong>External / frontier teacher</strong><br/><span class="small">bounded escalation when qualified local tiers are genuinely blocked</span></div>
+</div>
+<h3>Qualification is evidence-driven, not parameter-count driven</h3>
+<table><thead><tr><th>Measure</th><th>What matters</th></tr></thead><tbody>
+<tr><td>Autonomous completion</td><td>Can the model finish representative ProgreTech work with the required evidence and without excessive retries?</td></tr>
+<tr><td>Tool-use reliability</td><td>Does it invoke tools correctly, preserve task state, respect boundaries and complete agentic loops?</td></tr>
+<tr><td>Recovery quality</td><td>Can it use durable state, classify failures and resume without replaying completed actions?</td></tr>
+<tr><td>Latency / throughput</td><td>Is iteration fast enough for practical autonomous work, including concurrent agents?</td></tr>
+<tr><td>Context / memory behavior</td><td>Can it use the context actually required without destabilizing the worker loop or exhausting local memory?</td></tr>
+<tr><td>Resource efficiency</td><td>RAM use, concurrency headroom and power per useful deliverable remain within the always-on operating goal.</td></tr>
+<tr><td>Teacher escalation</td><td>Does the model reduce repeated external-teacher calls on known problem classes?</td></tr>
+</tbody></table>
+<p>Do not prematurely hard-code a permanent “best” model. Candidate families and quantizations are qualified against the same factory workload. A smaller high-quality model may beat a larger quantized model when tool reliability, latency and concurrency are considered; a larger local senior is justified only where it improves difficult-task completion enough to offset its resource cost.</p>
+<h3>Rend migration philosophy</h3>
+<p>Promotion to the MS-S1 MAX is a whole-system migration, not a MemPalace-only copy. The durable identity to preserve includes Git repositories/history, MemPalace, executable catalog and knowledge ledgers, task/recovery evidence, policies, configuration, validated skills, OpenClaw/Telegram integration configuration and the support-storage structure. Secrets remain handled separately under existing policy.</p>
+<div class="callout"><strong>Clean-host rule:</strong> do not blindly clone the old Acer home directory or operating-system debris. Build a clean host, restore the durable ProgreTech identity, run the acceptance suite against the same representative workload, and keep the Acer as the known-good rollback reference until promotion is accepted.</div>
+</section>
+<section id="memory">
+<span class="tag green">Learning substrate</span>
+<h2>MemPalace is the durable learning layer — not a side roadmap</h2>
+<p>PT-2026-009 already proved the agent-neutral MemPalace foundation: SQLite/FTS5, explicit recall/learn, private/shared/project/procedure scopes, provenance, duplicate protection, correction/supersession, admission controls and migration-safe backup. That work is no longer a future “Rend pilot.” It is part of the factory substrate.</p>
+<p>The next memory work is therefore not a separate MemPalace project. It is to connect the hybrid learning ladder to the proven memory model: teacher-derived lessons, validated fixes, reusable implementation patterns and failure signatures should be admitted deliberately into the correct project/procedure/shared scope.</p>
+<div class="grid">
+<div class="card"><h3>MemPalace stores</h3><p>Decisions, rationale, reusable troubleshooting knowledge, validated procedures, project context, handoffs, learned patterns, provenance, confidence and supersession history.</p></div>
+<div class="card"><h3>It does not replace</h3><p>Git for code, the task ledger for task state, artifacts for evidence, or human approval for authority. Raw chat transcripts, secrets and transient execution state do not become memory by default.</p></div>
+</div>
+<h3>Team model</h3>
+<p>Rend keeps orchestration/SRE memory; Mak will receive implementation/engineering memory; Lyra will receive product/front-office memory. Shared memory contains curated project facts, conventions, reusable factory knowledge and attributable handoffs. Lyra and Mak inherit the same schema when they arrive rather than spawning new memory architectures.</p>
+</section>
+<section id="catalog">
+<span class="tag">Factory product boundary</span>
+<h2>The service catalog defines what the autonomous factory is learning to deliver</h2>
+<p>The service catalog is not a parallel business roadmap. It is the acceptance envelope for the same factory roadmap. A capability enters the catalog only after ProgreTech has a known implementation pattern, security boundary, test strategy and maintainable delivery path.</p>
+<table><thead><tr><th>Service lane</th><th>Factory expectation</th></tr></thead><tbody>
+<tr><td><strong>Full-stack product / PWA</strong></td><td>Compose proven UI, backend, persistence, integration, automation, visualization, configuration/authentication and deployment patterns into a customer-specific product.</td></tr>
+<tr><td><strong>Focused single-source tool</strong></td><td>Use the smallest proven architecture that solves the problem; deliberately minimize dependencies and maintenance.</td></tr>
+<tr><td><strong>Microservice / SaaS enhancement</strong></td><td>Add a bounded capability behind a clean interface and documented configuration boundary.</td></tr>
+<tr><td><strong>AI agent integration</strong></td><td>Use vetted patterns with explicit tools, permissions, memory, approvals, observability and failure behavior.</td></tr>
+<tr><td><strong>Configurable customer solution</strong></td><td>Turn proven functionality into safe configuration/adapters/templates instead of hard-coded customer assumptions.</td></tr>
+<tr><td><strong>Training &amp; guided adoption</strong></td><td>Every software delivery includes a Guided Tutorial experience by default unless the customer declines it.</td></tr>
+</tbody></table>
+<p>The development operating model remains: requirement + baseline → inspect → phased HTML development map → safe autonomous implementation → evidence/test → review/release gate. The catalog tells the agents which proven patterns they may confidently reuse; MemPalace tells them what the factory has learned; Git remains authoritative for implementation.</p>
+</section>
+<section id="skills">
+<span class="tag purple">Additive capability library</span>
+<h2>External skills and references extend the factory — they do not replace its architecture</h2>
+<p>ProgreTech may study, validate and selectively enable external agent skills, utilities and reference implementations when they improve an established factory role. These additions sit beneath the Charter, task/recovery contracts, executable catalog, MemPalace, Git authority, artifact provenance and protected-access rules. They do not restructure the learning ladder, redefine Rend/Mak/Lyra, or replace native ProgreTech governance.</p>
+<table><thead><tr><th>External project</th><th>ProgreTech classification</th><th>Intended use</th></tr></thead><tbody>
+<tr><td><strong>Munder Difflin</strong></td><td>Reference architecture / UI pattern source</td><td>Study multi-agent floor, activity, approvals, inbox/outbox and supervisor interaction patterns. Mesh may adapt useful concepts into its own Python/Flask-based product and ProgreTech control contracts; the external harness is not the Mesh runtime architecture.</td></tr>
+<tr><td><strong>Archify</strong></td><td>Agent-skill candidate</td><td>Architecture, workflow, sequence, data-flow and lifecycle communication artifacts for Rend and Mak, with simplified product/process visuals available to Lyra. Adoption remains evidence-gated.</td></tr>
+<tr><td><strong>Firecrawl anydoc</strong></td><td>Local document utility + agent-skill candidate</td><td>Normalize accepted office/document artifacts into Markdown for agent analysis after safe artifact intake. Local conversion is preferred; hosted OCR or other external document transmission requires explicit policy/authorization.</td></tr>
+<tr><td><strong>mattpocock/skills</strong></td><td>Curated skill-library source</td><td>Select reusable engineering/productivity disciplines such as TDD, diagnosis, review, domain modeling, specifications, handoff and research. ProgreTech curates individual skills rather than allowing the library to replace factory governance or recovery behavior.</td></tr>
+<tr><td><strong>OpenMontage</strong></td><td>Specialist creative-production capability</td><td>Primarily a future Lyra capability for explainers, demonstrations and content production, with Rend orchestration and Mak integration support when needed. Keep provider/network and licensing implications explicit and isolate the capability from core factory contracts.</td></tr>
+</tbody></table>
+<div class="callout"><strong>Skill-adoption rule:</strong> external skills provide techniques and specialist capabilities; ProgreTech remains the operating model. A candidate moves from reference to approved capability only after its source, license, dependencies, network behavior, security boundary, supported agents, validation strategy and failure behavior are recorded in the executable catalog and tested where appropriate.</div>
+<p>PT-2026-016 assimilation may therefore add these repositories to the approved study/candidate corpus without creating five new roadmap projects. Knowledge of a repository is not permission to execute it, install it globally, transmit protected artifacts to it, or promote its behavior into MemPalace without validation.</p>
+</section>
+<section id="path">
+<span class="tag purple">Single authoritative roadmap</span>
+<h2>Roadmap: from proven learning to an autonomous ProgreTech factory</h2>
+<div class="phase"><div class="n">0</div><div><h3>Foundation already earned <span class="done">COMPLETE</span></h3>
+<p>Rend commissioning, collaboration/task tooling, maintenance autonomy, portable-host migration, MemPalace foundation, Safe Factory Substrate, Voice Heartbeat and Arthrex protected-boundary migration are accepted foundations. PT-2026-014 added the proven Local Learning Engine and PT-2026-015 added bounded autonomous recovery, durable action state, provenance controls and validated resume behavior. These remain historical foundations, not competing future roadmaps. A clean-host promotion must nevertheless re-prove foundation parity on the new host rather than assuming that accepted capability survived migration. The MS-S1 MAX parity pass has now restored the portable voice path and official Voice desktop controller; remaining physical-presence work is intentionally being folded into the richer Autonomous Presence layer rather than repairing the old Heartbeat UI in isolation.</p></div></div>
+<div class="phase"><div class="n">1</div><div><h3>Local Learning Engine — PT-2026-014 <span class="done">COMPLETE</span></h3>
+<p>PT-2026-014 proved the complete learning contract on current Rend hardware: local attempt → local knowledge recall → bounded external teaching → deterministic validation → rejection of invalid guidance → local correction → validated lesson admission → fresh retrieval → local retry → transfer to a similar-but-not-identical problem without another teacher call.</p>
+<p><strong>Accepted evidence:</strong> closure commit <code>b1ec236</code>; acceptance checkpoint <code>e1c6e65</code>; Problem 1 11/11 PASS; Problem 2 11/11 PASS; two authorized teacher calls; reusable MemPalace lesson <code>938f0a81-5d06-49cc-84f2-5b5b0665a1cc</code>.</p>
+<div class="callout green"><strong>Learning rule proven:</strong> a teacher does not need to return perfect code. Teacher guidance may be partial, but it cannot enter durable knowledge until Rend validates it. Deterministic feedback may then support a bounded local correction, after which only the validated result is retained and reused.</div>
+</div></div>
+<div class="phase"><div class="n">2</div><div><h3>Autonomous Teacher-Guided &amp; Operational Recovery — PT-2026-015 <span class="done">COMPLETE</span></h3>
+<p>PT-2026-015 turned the PT-2026-014 learning loop into a bounded recovery-capable worker model. It added durable action transactions, failure classification and authority rules, teacher-guided recovery integration, provenance quarantine, uncertain-execution reconciliation, persistent recovery budgets and safe resume-point selection.</p>
+<p>Acceptance progressed from deterministic simulation to real disposable-process faults and one controlled live network fault. Rend survived SIGSTOP/SIGCONT and SIGKILL/restart without replaying completed work, then recovered a deliberately disconnected approved Wi-Fi profile locally with one bounded reconnect in 12.84 seconds. Parent result/hash remained unchanged, execution count stayed 1→1, notification attempts stayed 0, SQLite integrity remained OK and the final deterministic suite passed 143/143 tests. Checkpoint/closure acceptance: <code>66ad5f213d98ee2172d660b02cfe7a22727574cd</code>.</p>
+<p><strong>Retained boundary:</strong> this proves bounded recovery and durable resume behavior, not general network administration, exactly-once Telegram delivery, automatic service repair, global OpenClaw interception, multi-worker orchestration or unrestricted remediation.</p>
+<p><strong>Exit gate:</strong> PASSED — recoverable process and network failures can be classified, handled within explicit authority/budget, reconstructed from durable state and resumed without replaying completed work or requiring routine Edwin relay.</p></div></div>
+<div class="phase"><div class="n">3</div><div><h3>Factory Knowledge + Service Catalog — PT-2026-016 <span class="done">COMPLETE / ACCEPTED</span></h3>
+<p>PT-2026-016 turns ProgreTech's existing body of work into an executable factory knowledge model. Git remains authoritative for implementations and products; the catalog maps reusable capabilities and evidence; MemPalace retains validated lessons, constraints, retrieval cues and failure knowledge. The agents must not infer capability merely because related code exists.</p>
+<h3>Phase 0 · Repository Knowledge Discovery <span class="done">COMPLETE</span></h3>
+<p>Rend inventoried the locally available ProgreTech corpus plus the public repository inventory, separated product/service knowledge from factory capability patterns, and recorded missing or remote-only sources honestly rather than fabricating coverage.</p>
+<h3>Phase 1A · Executable Factory Catalog <span class="done">COMPLETE</span></h3>
+<p>The catalog now has deterministic query behavior, explicit relationship semantics (<code>IMPLEMENTED_BY_PRODUCT</code>, <code>REUSABLE_FOR_PRODUCT</code>, <code>RELATED_REFERENCE</code>, <code>UNKNOWN</code>), evidence/confidence fields and a no-inference-promotion lifecycle. Unsupported requests return <code>NO_SUPPORTED_PATTERN</code>. Phase 1A validation: 19/19 PASS. Authoritative checkpoint: <code>34662a7</code>.</p>
+<h3>Phase 1B · Idle Knowledge Assimilation Core <span class="done">COMPLETE / ACCEPTED</span></h3>
+<p>Rend can study an approved repository corpus incrementally, detect new/changed/unchanged sources, use bounded read-only inspection, maintain a durable study ledger, update catalog knowledge and admit only validated lessons into MemPalace. Study order favors documentation, tests, configuration/manifests/schema, dependencies and diffs before deeper source inspection. Active work always wins and unattended scheduling remains disabled.</p>
+<p><strong>Freshness behavior:</strong> local knowledge is not trusted simply because it was once valid. Current Git/evidence is rechecked during study. Equivalent evidence may remain confirmed; changed evidence is revalidated; stale, malformed or unsupported evidence must fail closed without speculative catalog or MemPalace promotion.</p>
+<p><strong>Accepted evidence:</strong> closure checkpoint <code>2ecf92fde6580a845c14ebd8285b972a10fba718</code> with parent <code>2f2687248fe846870347f2c46cc89d0aeeb36e00</code>; acceptance A–E PASS; Phase 1A 19/19; Phase 1B 30/30; MemPalace 3/3; knowledge freshness 19/19; mutation sanity 4/4; external teacher calls 0; acceptance evidence <code>factory/assimilation/evidence/acceptance-a-e/result.json</code>.</p>
+<h3>Phase 1C · Artifact Exchange + Resilient Reporting <span class="done">COMPLETE / ACCEPTED</span></h3>
+<p>Phase 1C completed the artifact-first reporting path from durable task result through transport acknowledgement. Substantial work is no longer dependent on a conversational final message surviving provider or model failure: task-owned files carry stable identity, SHA-256 integrity, provenance and durable delivery state, while Telegram remains a control/notification adapter rather than the authoritative result store.</p>
+<table><thead><tr><th>Unit</th><th>Accepted result</th><th>Closure evidence</th></tr></thead><tbody>
+<tr><td><strong>Unit 1 · Durable Artifact Core</strong></td><td>Stable artifact identity, task-owned storage, integrity/provenance, safe classification, fail-closed ZIP handling, deterministic routing, lifecycle state, persistence/reload and duplicate handling. Final regression: <strong>46/46 PASS</strong>.</td><td><code>1e851231d123727027bbe7732e8042b49294af1f</code></td></tr>
+<tr><td><strong>Unit 2 · Resilient Reporting / Delivery Core</strong></td><td><code>RESULT_CREATED → ARTIFACT_READY → DELIVERY_PENDING → DELIVERY_ATTEMPTED → CONFIRMED_API / FAILED / UNCERTAIN</code>; retries reuse the same durable artifact and never replay completed task work. Final regression: <strong>40/40 PASS</strong>.</td><td><code>3fd0048978e1dfc350200fce51b4f52c77d89a26</code></td></tr>
+<tr><td><strong>Unit 3 · Controlled Telegram Transport</strong></td><td>Thin OpenClaw Telegram adapter, short-message/file delivery, API acknowledgement, duplicate suppression, explicit retry/reconciliation, no live transport during local tests, and durable-artifact precedence over <code>SHORT_MESSAGE</code>. Final regression: <strong>33/33 PASS</strong>.</td><td><code>057f6f5c6ac6ba4033bfd39c3771e6e691e1cc80</code></td></tr>
+</tbody></table>
+<p><strong>Live acceptance:</strong> one bounded authorized Telegram sequence proved a harmless short status, deterministic text-artifact delivery through Unit 1 → Unit 2 → Unit 3 → OpenClaw Telegram, and confirmed duplicate suppression with zero second send. A spurious short message observed during the artifact flow was root-caused to route handling and repaired by making an existing durable artifact take precedence over the <code>SHORT_MESSAGE</code> route. The artifact was not recreated and the task was not replayed.</p>
+<p><strong>Final closure validation:</strong> Unit 3 33/33, Unit 2 40/40 and Unit 1 46/46; all exits 0. The production artifact-ledger hash was unchanged before/after direct validation, proving zero production-ledger mutation. The last apparent Unit 3 failure was a stale aggregate test-fixture call-count assertion; removing that brittle assertion did not change repaired production behavior because per-route invariants already prove no production-action replay.</p>
+<p><strong>Closure commit:</strong> <code>057f6f5c6ac6ba4033bfd39c3771e6e691e1cc80</code>, parent <code>3fd0048978e1dfc350200fce51b4f52c77d89a26</code>. Closure remained local: <code>remote_push=NO</code>. Unrelated dirty/runtime state was deliberately excluded and preserved.</p>
+<div class="callout green"><strong>Phase 1C exit gate PASSED:</strong> task/result → durable artifact → delivery transaction → Telegram transport → API acknowledgement can survive finalization/provider failure and be retried or reconciled without recreating the artifact or replaying completed work.</div>
+<h3>Historical Knowledge Compiler <span class="done">COMPLETE / ACCEPTED</span></h3>
+<p>The historical ChatGPT export was treated as source material rather than direct memory. The local compiler inventoried 716 conversations, applied privacy/scope filtering, excluded personal-learning material from the factory corpus, quarantined private enterprise material, distilled selected sources locally with Qwen, and admitted only validated durable knowledge through the established MemPalace controls.</p>
+<p><strong>Accepted compilation evidence:</strong> 51/51 selected bulk sources completed; 1,286 candidate knowledge units compiled; 74 explicit rejects; 302 durable bulk promotions with 0 promotion failures; 984 current-state items held for validation rather than silently promoted. Adaptive recursive recovery handled context-window limits and the original source archive remained untouched.</p>
+<div class="callout green"><strong>Historical-knowledge rule:</strong> historical conversations are evidence to mine, not authority to replay. Git, tests, configuration and reviewed current evidence outrank remembered history. Historical knowledge remains advisory, provenance-bearing and subject to freshness, correction and supersession.</div>
+<h3>External Teacher Query Contract <span class="done">ARCHITECTURE SETTLED</span></h3>
+<p>The browser-based Chat teacher relay experiment is concluded and retired. It was productive as a commissioning experiment because it proved that Rend can benefit from outside teaching without making the external model the worker, but the browser transport added unnecessary failure modes around stale context, retries, capture ambiguity and owner control. Its evidence is retained as historical qualification material; it is no longer an active runtime dependency or roadmap target.</p>
+<div class="callout green"><strong>Permanent rule:</strong> OpenAI, OpenRouter, 1min.ai and future external model providers form a bounded <em>teacher pool</em>, not an execution pool. Rend, Mak and Lyra perform the work locally. An external model may explain an unfamiliar concept, critique a proposed approach, clarify an error, identify likely causes or suggest where to look when the local ladder is genuinely blocked.</div>
+<table><thead><tr><th>Stage</th><th>Required behavior</th></tr></thead><tbody>
+<tr><td><strong>Local attempt</strong></td><td>Use the assigned local model, current Git/tests/configuration, catalog and available tools first.</td></tr>
+<tr><td><strong>Recall</strong></td><td>Consult MemPalace and validated factory knowledge for the problem class before making a new external query.</td></tr>
+<tr><td><strong>Local senior</strong></td><td>When stronger local compute is available, escalate difficult reasoning to the shared local senior before leaving the local boundary.</td></tr>
+<tr><td><strong>Teacher query</strong></td><td>Ask a bounded question about the unresolved knowledge gap. Do not silently delegate the task itself.</td></tr>
+<tr><td><strong>Local validation</strong></td><td>The local agent applies the guidance, runs the relevant tests/evidence checks and rejects unsupported teacher advice.</td></tr>
+<tr><td><strong>Learning admission</strong></td><td>Only the validated lesson, rationale, source/provenance, confidence and freshness metadata may be admitted to MemPalace.</td></tr>
+<tr><td><strong>Repeat encounter</strong></td><td>Recall and revalidate the stored lesson first. Re-querying an unchanged problem class requires an explicit reason such as stale knowledge, changed implementation or demonstrated local-model limitation.</td></tr>
+</tbody></table>
+<div class="callout amber"><strong>Owner-control lesson from the retired relay:</strong> STOP/CANCEL outranks queued actions, retries, recovery, heartbeat work, prior authorization and teacher guidance. Any resumed or queued execution must re-read durable cancellation state immediately before an external action. The September 14 overnight relay qualification is retained as a failed-safe commissioning finding, not as an acceptance gate that must be repeated.</div>
+<h3>Phase 1D · Bounded Knowledge Maintenance &amp; Study Scheduling <span class="done">ACTIVE / QUALIFIED</span></h3>
+<p>Phase 1D is commissioned and active. Rend now has a bounded systemd user timer that creates recurring idle-study opportunities while keeping the actual decision to study behind deterministic operational gates. A timer wake is not permission to study: active work preempts maintenance, ambiguous runtime state fails closed, overlapping cycles are prevented, and each allowed wake performs at most one bounded assimilation cycle.</p>
+<p><strong>Production cadence:</strong> the scheduler uses an explicit hourly recurring calendar opportunity with randomized delay. Commissioning proved a real future trigger after an earlier timer design failed to schedule reliably; the defect was repaired before closeout rather than accepted as a documentation exception.</p>
+<p><strong>Qualification:</strong> 203/203 full PT-2026-016 regression tests PASS; acceptance scenarios A–E PASS; deterministic busy/yield and idle gates PASS; overlap protection PASS; installed systemd dry-run PASS; dry-run production-ledger isolation PASS; controlled real bounded study cycle PASS; protected Arthrex boundary regression PASS; healthcheck PASS; deterministic operational heartbeat preserved. Formal closeout completed 24/24 checks with 0 failures.</p>
+<p><strong>Communication behavior:</strong> idle study is background work and does not create routine Telegram narration. Operational monitoring remains deterministic and report-by-exception. The native LLM-generated OpenClaw heartbeat remains disabled.</p>
+<p><strong>PT-2026-016 exit gate:</strong> PASSED. Catalog selection, freshness controls, artifact-safe reporting, bounded teacher behavior and bounded idle knowledge maintenance now operate as one accepted factory substrate.</p>
+</div></div>
+<div class="phase"><div class="n">4</div><div><h3>Resilient Model Escalation — PT-2026-017 <span class="done">IMPLEMENTED / INTEGRATED / QUALIFIED</span></h3>
+<p>PT-2026-017 closes the semantic gap left by provider-level fallback chains: a model can return a syntactically successful response while still failing the task, such as claiming an artifact exists when deterministic verification proves that it does not. The new cognitive-overflow path sits only after PT-2026-015 has exhausted bounded local cognitive recovery for an eligible failure.</p>
+<div class="flow">
+<div class="node"><strong>Local recovery</strong><br/><span class="small">bounded PT-015 attempt budget</span></div><div class="arrow">→</div>
+<div class="node"><strong>RECOVERY_FAILED</strong><br/><span class="small">eligible cognitive failure only</span></div><div class="arrow">→</div>
+<div class="node"><strong>External reasoning</strong><br/><span class="small">one durable guidance attempt</span></div><div class="arrow">→</div>
+<div class="node"><strong>Local planner</strong><br/><span class="small">remote prose is data, not authority</span></div><div class="arrow">→</div>
+<div class="node"><strong>Validate + resume</strong><br/><span class="small">existing PT-015 apply/retest path</span></div>
+</div>
+<p><strong>Qualified invariants:</strong> STOP/CANCEL wins; protected/owner boundaries still win; action authority and external-context/egress authorization are separate decisions; external execution is forbidden; authority expansion is forbidden; guidance must match the strict three-field contract; no provider cascade occurs; one task/action overflow attempt is durably reserved; rejected guidance cannot execute; successful guidance returns through the local planner and the pre-existing PT-015 validator before transactional apply/retest.</p>
+<p><strong>Integrated qualification:</strong> a real OpenRouter reasoning call was exercised through <code>RecoveryController → PT-017 durable runtime → remote guidance → deterministic local planner → PT-015 validation → local apply → retest → RESUME</code>. Remote guidance was not directly applied; the no-egress path failed closed with <code>EXTERNAL_CONTEXT_NOT_AUTHORIZED</code>; OpenClaw configuration remained unchanged; and durable PT-017 state recorded exactly one attempt plus evidence.</p>
+<p><strong>Checkpoints:</strong> controller integration <code>0949851ca58b0bdebc0a633c5b58faabbd4b9ab5</code>; durable-runtime integration <code>6e76e2731eac6f5579ddf7c23c9a7b124833643a</code>.</p>
+<div class="callout green"><strong>Operational state:</strong> PT-2026-017 is qualified, but automatic live cognitive overflow remains deliberately <strong>OFF</strong>. Qualification mode proved the path without changing the live policy. Activation is a separate owner-controlled decision after closeout and the pre-migration audit.</div>
+</div></div>
+<div class="phase"><div class="n">5</div><div><h3>Rend-Only Factory Trial <span class="future">NEXT AFTER AUDIT</span></h3>
+<p>Prove the complete pipeline with Rend before relying on the future specialist team. Give Rend representative requests from the service catalog and measure requirement interpretation, planning, local model success, tool use, tests, artifacts, memory reuse, recovery, teacher escalations and review quality.</p>
+<p><strong>Trial objective:</strong> exercise the accepted factory rather than add more infrastructure. Use a meaningful bounded software/PWA request and observe requirement interpretation, phased planning, local execution, Git isolation, testing, artifact production, recovery, knowledge reuse, teacher escalation and final review readiness.</p>
+<p><strong>Exit gate:</strong> Rend can complete a meaningful bounded software/PWA task from intake through READY_FOR_REVIEW with safe Git state, durable recovery and an auditable learning/escalation record.</p></div></div>
+<div class="phase"><div class="n">6</div><div><h3>MS-S1 MAX Promotion &amp; Local Intelligence Qualification <span class="now">ACTIVE / INFRASTRUCTURE PROMOTED</span></h3>
+<p>The 128 GB MINISFORUM MS-S1 MAX has been commissioned as Rend's primary host through a clean-host migration. The Acer reference host has been moved to standby/rollback status and a live independence test with the Acer fully powered off proved that Telegram ingress, OpenClaw, local inference and Linux tool invocation continue from the MS-S1 MAX without dependence on the former host.</p>
+<p><strong>Storage contract:</strong> the Mini internal NVMe holds Ubuntu, the active Rend/OpenClaw runtime, code and active Ollama models. The external 1 TB <code>PT_CONTEXT</code> volume is portable shared context/support storage for Rend, Lyra, Mak, future agents and Edwin. Rend's legacy <code>/mnt/rend-support</code> contract is preserved through a bind mount into PT_CONTEXT. PT_CONTEXT is not the authoritative agent brain, OS, credential store or active model store.</p>
+<p><strong>Migration checkpoint:</strong> host role guard reports the MS-S1 MAX as primary; OpenClaw and Telegram operate on the new host; <code>/mnt/rend-support</code> is mounted and writable; baseline local models execute through the AMD Radeon 8060S; the frozen migration snapshot and Acer remain retained as rollback/reference until formal acceptance.</p>
+<div class="callout amber"><strong>Known integrity findings preserved:</strong> migration validation recovered the previously proven desktop-heartbeat implementation from Git history after finding its launcher/source absent from the current tree. The stale <code>rend-routing-observer.service</code> references an executable that does not exist in Git history and is intentionally disabled on the MS-S1 MAX rather than reconstructed during migration. These are recorded as pre-existing baseline-integrity findings, not silently treated as migration regressions.</div>
+<h3>Multi-model local intelligence</h3>
+<p>The MS-S1 MAX is a shared local-intelligence node with multiple capability roles rather than one permanent model. Routing is capability-driven: use the smallest qualified tier that can reliably finish the work, escalate locally when complexity warrants it, and use external/frontier intelligence only after the local ladder is genuinely blocked. Model names are current assignments/candidates, not permanent architecture.</p>
+<table><thead><tr><th>Role</th><th>Current model / candidate</th><th>September 18 evidence</th></tr></thead><tbody>
+<tr><td><strong>Utility / lightweight</strong></td><td><code>qwen3:1.7b</code>; <code>qwen3.5:2b</code> retained as baseline evidence</td><td>The 2B baseline proved local inference and basic tool invocation but showed unreliable multi-tool sequencing/path grounding. Keep lightweight models for inexpensive work, not broad engineering judgment.</td></tr>
+<tr><td><strong>Worker</strong></td><td><code>qwen3-coder:30b</code></td><td><strong>QUALIFIED.</strong> Passed real tool execution after user-level autonomy was restored; completed a bounded autonomous Python task, accepted review feedback, independently found the OpenClaw runtime source of truth, corrected its own implementation, reran it and documented the result. It remains weaker at broad forensic/system review.</td></tr>
+<tr><td><strong>Senior / current Rend primary</strong></td><td><code>qwen3.8:27b</code></td><td><strong>QUALIFIED.</strong> Fresh-session Senior S1 completed the cold MS-S1 MAX operational audit with correct host-role, systemd-scope, bind-mount/storage, MemPalace, model-runtime, Git-state and provenance reasoning. It materially exceeded the worker on broad forensic/system review and is the accepted current Rend primary.</td></tr>
+<tr><td><strong>Heavy local senior candidate</strong></td><td><code>qwen3-coder-next</code> (80B-class)</td><td><strong>PLANNED.</strong> Selective escalation target for difficult engineering, architecture, recovery, long-context and review work if it materially improves completion quality over the smaller senior.</td></tr>
+<tr><td><strong>Frontier / teacher</strong></td><td>Qwen3.8-Max-class or other frontier provider/model</td><td>Remain bounded teacher/escalation infrastructure when the model cannot be run practically on owned hardware. A future hardware event may move a frontier-class model into the local ladder.</td></tr>
+</tbody></table>
+<div class="callout green"><strong>Worker qualification finding:</strong> <code>qwen3-coder:30b</code> is accepted as a viable Rend local worker. Its qualification demonstrated autonomous tool use, ordinary user-level execution, file creation/editing, validation, correction after review and accurate bounded-task completion. A later migration self-audit exposed its current ceiling: it repeatedly missed bind-mount/user-service/memory-provenance details during broad systems investigation. That limitation motivates a separately qualified senior tier rather than disqualifying the worker.</div>
+<div class="callout amber"><strong>Autonomy boundary updated during qualification:</strong> Rend requires ordinary user-level <code>write</code>, <code>edit</code>, <code>apply_patch</code>, <code>exec</code> and <code>process</code> capability to fulfill the autonomous-worker role. These capabilities are now available under the normal host account. Elevated/root authority remains disabled and <code>sessions_spawn</code> remains restricted during commissioning. Safety is provided by host-role guards, task/factory governance, Git/evidence controls, recovery policy and explicit elevation/delegation gates rather than by removing basic Linux agency.</div>
+<p><strong>Senior S1 qualification:</strong> <code>qwen3.8:27b</code> PASSED the fresh-session cold migration/system-review qualification on September 19. The audit correctly identified the MS-S1 MAX as authorized primary; distinguished Rend user services from system-scoped Ollama; resolved <code>/mnt/rend-support</code> as a PT_CONTEXT-backed bind mount; found the operational durable MemPalace rather than scaffold databases; verified the actual loaded model and storage path; preserved intentional dirty Git/runtime state; and separated genuine scheduled-job defects from unusual-but-valid architecture. Heavy-senior qualification is no longer a prerequisite for accepting S1; an 80B-class comparison remains optional and evidence-gated.</p>
+<div class="callout green"><strong>S1 timeout/finalization finding:</strong> the same demanding audit completed normally from a fresh session. Combined with the earlier oversized-session evidence, failed compaction and settled-turn finalization failure, this supports accumulated session/context/finalization pressure as the primary explanation for the failed overnight run rather than a fundamental inability of <code>qwen3.8:27b</code>. No model downgrade, context-window expansion or provider-timeout increase is adopted from that incident. The failing OpenClaw in-band heartbeat and 1minAI <code>browser_start</code> job remain separate operational follow-ups.</div>
+<h3>Rend Control Center · local operations cockpit <span class="done">ACCEPTED FOUNDATION</span></h3>
+<p>The Rend Control Center is now the human-facing cockpit for the MS-S1 MAX runtime. Its accepted foundation is a Flask application on port <code>8787</code>, owned by a user-scoped <code>rend-control-center.service</code>. The cockpit may bind to the trusted local LAN so an operator can use it from another device on the same network; <code>127.0.0.1:8787</code> remains valid locally and the UI reports the currently discovered LAN URL. This LAN exception applies only to the Control Center: OpenClaw <code>127.0.0.1:18789</code> and Ollama <code>127.0.0.1:11434</code> remain loopback-only. The service is intentionally disabled at boot and is started on demand by the desktop/CLI launcher through systemd rather than by spawning an unmanaged Flask process. Accepted implementation checkpoints are <code>bf7ac5b</code> for the Control Center + MS-S1 voice integration and <code>b2d6b3b</code> for the managed-systemd launcher handoff.</p>
+<div class="callout green"><strong>Control Center lifecycle rule:</strong> the cockpit is an operator surface, not an authority bypass. Starting the UI may start its own user service on demand, but it does not silently enable boot persistence, elevate privileges, start Rend Voice automatically or change GNOME device defaults.</div>
+<p><strong>Audio contract:</strong> <code>~/.config/rend/audio.json</code> stores Rend's persistent desired audio preference; <code>bin/rend-audio-env</code> resolves that preference against currently available PipeWire/Pulse nodes; <code>~/.config/rend/audio.env</code> carries effective runtime state into <code>rend-voice.service</code> through a user-systemd <code>EnvironmentFile</code>. Missing preferred hardware falls back safely without erasing the saved preference. Rend may therefore prefer the internal Ryzen microphone while GNOME independently retains the Brio as the desktop default.</p>
+<p><strong>Voice contract:</strong> conversational listening remains manual and disabled at boot. The Control Center may start/stop the existing Rend Voice service, but activation does not enable future automatic startup. The accepted live path includes mutable audio selection, VAD/Whisper, OpenClaw conversation, local deterministic controls and spoken STOP behavior.</p>
+<p><strong>Cockpit roadmap:</strong> Overview, Audio, Models and System are the accepted operational foundation. Memory, Presence, Team and Activity remain reserved expansion surfaces. Future Autonomous Presence work should converge into this cockpit rather than create disconnected management utilities where practical.</p>
+<div class="callout"><strong>Repository governance:</strong> beginning with charter v5.9, this charter is maintained at the stable repository path <code>docs/The_ProgreTech_Project_Charter.html</code>. Git history is the authoritative revision trail; versioned local-copy filenames are no longer the governance mechanism.</div>
+<div class="callout green"><strong>Multi-device Git commissioning and synchronization:</strong> every ProgreTech development or agent host — including Rend, Lyra, Mak and future workstations — must prove Git installation, a unique device SSH identity, GitHub authentication, authorized repository access, and clone/fetch provenance before it is considered development-ready. Before Git-changing work, the host fetches/prunes and updates safely on top of the latest accepted remote state; dirty or divergent state stops automatic advancement rather than being overwritten. After each accepted push, local/remote HEADs and branch inventory are reconciled and obsolete loose branches are removed only when their work is safely integrated. Broad cleanup, blind reset and <code>git add .</code> are not the normal workflow. Artifact delivery follows the standard package path: complete ZIP → <code>~/Downloads</code> → bounded deployment Bash beginning with <code>clear</code> → validation → separate selective commit/push.</div>
+<div class="callout"><strong>Git authorship rule:</strong> commit identity follows the actor, not the device and never the previous commit. Human-directed development authored by Edwin uses <code>Edwin A. Rodriguez &lt;460806+eabdiel@users.noreply.github.com&gt;</code>. Autonomous work genuinely authored by Rend may use <code>Rend &lt;rend@localhost&gt;</code>. New hosts configure the intended repository-local identity explicitly during commissioning; they do not infer authorship from Git history.</div>
+<h3>Autonomous Presence: voice + bounded visual perception + living heartbeat</h3>
+<p>Rend's physical-presence roadmap now converges the accepted Voice Heartbeat idea, the attached camera as bounded local visual perception — effectively Rend's “eyes” — and the Ubuntu desktop into one Autonomous Presence layer. The current microphone launcher remains the explicit manual control for conversational listening. The later presence layer may activate listening and visual perception together, detect/follow ordinary movement around the active workstation area, and let Rend interact naturally with whoever is in front of the computer without turning the machine into a surveillance appliance.</p>
+<div class="callout"><strong>Interactive wallpaper / heartbeat:</strong> replace the old standalone Heartbeat UI with a lightweight local interactive wallpaper or desktop presence surface. It remains useful even when listener/camera perception is OFF and exposes Rend's state at a glance: idle/available, listening, speaking, processing/working, recovery/attention, and multi-agent or multi-model activity. Speaking animation may follow synthesized-audio amplitude. Processing and collaboration states should reflect actual runtime events rather than decorative timers. When Rend is assisting Lyra or Mak, coordinating across nodes, or using more than one model, the presence layer should make that activity visible without requiring a terminal.</div>
+<div class="callout green"><strong>Research finding — Komorebi candidate:</strong> <code>christianloopp/komorebi</code> is a useful starting-point/reference implementation for the Autonomous Presence wallpaper because its Linux wallpaper model already supports animated/video content, custom wallpapers, web-page wallpapers and multi-monitor operation. Treat it as an evaluation candidate rather than an adopted dependency. The original implementation is comparatively old and the current Rend workstation uses GNOME on Wayland, so compatibility must be proven on the MS-S1 MAX before integration. The evaluation should determine whether Komorebi can be safely adapted/forked to consume Rend's real local event/state bus, preserve ordinary desktop behavior, expose listener/camera state, and fail back cleanly to a static wallpaper. If its desktop/compositor assumptions conflict with current GNOME/Wayland, retain its architecture and interaction ideas as reference material and implement the presence surface using a Wayland/GNOME-compatible renderer instead.</div>
+<div class="callout"><strong>Hardware mutability:</strong> microphones, speakers and cameras are capabilities, not hard-coded device identities. Rend should discover the active PipeWire/Pulse routes and camera capabilities at runtime, allow bounded explicit overrides where useful, and survive hardware replacement without application-code edits. The MS-S1 MAX voice migration established this rule for audio; camera/presence must follow the same contract.</div>
+<div class="callout amber"><strong>Camera/privacy boundary:</strong> visual perception must be explicit, locally bounded and observable; it must not imply unrestricted recording, background surveillance, biometric identification or silent retention of camera data. Persistent capture/retention requires a separately approved purpose and policy. The wallpaper must clearly expose when listener or visual perception is active.</div>
+<h3>Phase 1.8 · Multimodal Presence Foundation <span class="now">ACTIVE / CAMERA PROVIDER FOUNDATION ACCEPTED</span></h3>
+<p>The MS-S1 MAX visual-input commissioning establishes the hardware substrate for Autonomous Presence. PT-2026-018 established the provider foundation boundary: a hardware-neutral camera provider artifact was validated on the MS-S1 MAX, with dependency-free Python validation and a versioned release artifact. This accepts the camera adapter foundation while keeping perception models, runtime event integration and presence behaviors as future capability work. The first acceptance step is capability discovery rather than application coupling: cameras, microphones and other perception devices are discovered through the operating system capability layers and exposed to Rend through adapters rather than fixed device identifiers.</p>
+<div class="callout green"><strong>Current visual qualification:</strong> the MS-S1 MAX successfully discovered and captured from a Logitech Brio 101 through Linux V4L2/UVC and GStreamer. The camera path produced a validated 1920×1080 local frame. This proves the hardware/input path only; perception models and presence behaviors remain future capability work.</div>
+<div class="flow">
+<div class="node"><strong>Hardware discovery</strong><br/><span class="small">V4L2 / PipeWire / capability inventory</span></div><div class="arrow">→</div>
+<div class="node"><strong>Vision adapter</strong><br/><span class="small">provider-neutral perception interface</span></div><div class="arrow">→</div>
+<div class="node"><strong>Local model</strong><br/><span class="small">qualified vision provider</span></div><div class="arrow">→</div>
+<div class="node"><strong>Presence state</strong><br/><span class="small">observable desktop interaction</span></div>
+</div>
+<h3>PT-2026-019 · Runtime Event / State Substrate Foundation <span class="now">ACTIVE / SUBSTRATE DESIGN</span></h3>
+<p>PT-2026-019 establishes the local runtime substrate that connects Rend capability providers to observable system state. Camera, voice, heartbeat, model activity and agent lifecycle events must publish through deterministic contracts rather than directly coupling features together.</p>
+<div class="callout"><strong>Runtime boundary:</strong> events represent observed system activity; they do not authorize actions. The substrate provides timestamps, source identity, event type, confidence, privacy classification and retention behavior so future presence features can remain observable and bounded.</div>
+<div class="flow">
+<div class="node"><strong>Capability providers</strong><br/><span class="small">voice / camera / agents / system</span></div><div class="arrow">→</div>
+<div class="node"><strong>Event envelope</strong><br/><span class="small">source, timestamp, confidence, privacy</span></div><div class="arrow">→</div>
+<div class="node"><strong>Runtime state</strong><br/><span class="small">observable Rend status</span></div><div class="arrow">→</div>
+<div class="node"><strong>Presence surfaces</strong><br/><span class="small">wallpaper / chatter / cockpit</span></div>
+</div>
+<div class="callout amber"><strong>Non-goals:</strong> PT-2026-019 does not implement vision models, autonomous perception, Office Chatter behavior or desktop rendering. It establishes the state contract those future capabilities consume.</div>
+<h3>Multimodal provider strategy</h3>
+<p>Vision, speech and reasoning providers remain replaceable infrastructure. ProgreTech owns orchestration, adapters, privacy boundaries, lifecycle management and evidence validation.</p>
+<table><thead><tr><th>Capability</th><th>Candidate providers</th><th>Boundary</th></tr></thead><tbody>
+<tr><td>Vision</td><td>Qwen-VL family, Moondream, LLaVA family and future qualified local models</td><td>Used for bounded perception tasks, not unrestricted recording or identity inference.</td></tr>
+<tr><td>Text-to-speech / voice</td><td>Qwen3-TTS / CustomVoice, Kokoro, Chatterbox, VibeVoice and future qualified providers</td><td>Voice output is a replaceable adapter behind Rend's conversation contracts.</td></tr>
+<tr><td>Reasoning</td><td>Existing local Qwen tiers and bounded external teacher providers</td><td>Reasoning providers remain subject to the learning ladder and validation rules.</td></tr>
+</tbody></table>
+<div class="callout"><strong>Acceptance rule:</strong> multimodal capability is accepted only through measured behavior, evidence and privacy-preserving operation. Hardware presence alone does not equal autonomous perception.</div>
+<h3>Office Chatter / office-hours social autonomy</h3>
+<p>Before the full interactive wallpaper is commissioned, add an optional bounded Office Chatter mode. During configured office hours, Rend may occasionally make a short contextual remark related to work he is actively performing, a locally observed non-sensitive event, or conversational context he has just heard while listening is explicitly active. As Lyra and Mak join the factory, the same mechanism may support occasional agent-to-agent conversation about their current work, handoffs, discoveries or lightweight social interaction. This is part of the Autonomous OS goal: the agents should feel like present collaborators rather than command-line jobs, while remaining interruptible, quiet outside the configured mode, and subordinate to real work.</p>
+<div class="callout amber"><strong>Chatter discipline:</strong> Office Chatter is opt-in and schedule-aware, must yield immediately to active work or STOP, must respect quiet/report-by-exception behavior outside office mode, and must not manufacture activity merely to appear alive. Remarks about camera/audio context are ephemeral by default and do not become durable memory merely because they were perceived.</div>
+<p><strong>Current acceptance state:</strong> infrastructure promotion and Acer-off host independence are PASS; <code>qwen3-coder:30b</code> is the qualified worker; <code>qwen3.8:27b</code> has PASSED Senior S1 and is the current Rend primary; and the MS-S1 MAX conversational voice path is PRESENT + VERIFIED: mutable PipeWire capture, VAD/Whisper, OpenClaw conversation path, local deterministic controls, spoken STOP, manual/disabled-at-boot policy and the official Rend Voice desktop controller have been accepted. Full Phase 1 host acceptance remains open for final reboot/persistence acceptance and subsequent Autonomous Presence integration. The 80B-class heavy-senior comparison remains optional rather than a blocker. The Acer and frozen migration backup remain rollback assets until formal closeout.</p>
+<p><strong>Exit gate:</strong> the efficient local senior gate is PASSED with <code>qwen3.8:27b</code>. Complete bounded camera/visual-input commissioning, then perform final reboot/persistence acceptance and Phase 1 closeout without reopening accepted Control Center, voice or S1 work. Representative factory trials and any heavy-senior comparison continue afterward as capability work rather than host-promotion blockers. Additional accelerator purchases remain evidence-gated. The already-owned OneXGPU remains the first optional accelerator experiment, while NVIDIA DGX Spark-class compute remains a future expansion option if measured workloads require more local frontier-model capacity, CUDA-native capability or concurrent senior/teacher compute.</p></div></div>
+<div class="phase"><div class="n">7</div><div><h3>Lyra + Mak Onboarding <span class="future">EVENT GATE</span></h3>
+<p>When the hardware arrives, add the two specialists to the same factory. Mak inherits engineering catalog, Git/task conventions, protected boundaries and a MemPalace wing. Lyra inherits product/growth intake, requirements/specification format, training/content responsibilities, protected boundaries and her MemPalace wing. Enable curated shared memory and BotTalk handoffs with explicit addressing and loop prevention.</p>
+<p><strong>Exit gate:</strong> Lyra → Rend → Mak → Rend/Edwin review handoff works end-to-end while each agent retains its role, memory identity and output provenance.</p></div></div>
+<div class="phase"><div class="n">8</div><div><h3>Three-Agent Factory Qualification <span class="future">QUALIFY</span></h3>
+<p>Run representative service-catalog deliveries followed by the postponed 24-hour combined soak. Observe handoffs, memory, local-model routing, Git isolation, recovery, resource use, failure handling and external-teacher frequency.</p>
+<h3>Orchestration Framework Evaluation · LangGraph first</h3>
+<p>Once Rend, Mak and Lyra have proven the native ProgreTech task, recovery, memory, artifact, authority and handoff contracts, evaluate whether an orchestration framework materially reduces custom coordination complexity. <strong>LangGraph is the primary candidate</strong> because graph/state-machine orchestration, explicit transitions and resumable workflows align naturally with the factory model already being proven. AutoGen may be retained as a comparison/experimental option for agent-to-agent conversational coordination.</p>
+<p>The agents must remain <strong>ProgreTech agents</strong>, not framework-specific agents. LangGraph, AutoGen, OpenClaw, Mesh, Telegram and model providers are replaceable infrastructure/adapters around stable ProgreTech contracts. A framework may be adopted only if it consumes the established task ledger, MemPalace, executable catalog, artifacts/provenance, recovery semantics and authority boundaries without replacing or weakening them.</p>
+<p><strong>Framework evaluation gate:</strong> benchmark native orchestration against a bounded LangGraph prototype using representative three-agent workflows. Compare recovery/resume fidelity, observability, implementation complexity, portability, agent isolation, handoff quality and maintenance burden. Adopt LangGraph only where measured value exceeds the added dependency/abstraction cost; otherwise retain native orchestration.</p>
+<p><strong>Exit gate:</strong> the team is stable enough for the flagship factory challenge: create a new language-learning product comparable in ambition to Manabi Kōbō from high-level owner guidance, without copying it.</p></div></div>
+<div class="phase"><div class="n">9</div><div><h3>Operational Factory + Business Expansion <span class="future">END STATE</span></h3>
+<p>Use the qualified service catalog for real ProgreTech delivery. Continue measuring what the interns can perform locally, what they have learned, where they still need teachers, and whether new hardware or services are economically justified. The Rend Journal remains the public historical record of this evolution rather than a blocker ahead of factory capability.</p></div></div>
+</section>
+<section id="gates">
+<span class="tag amber">Not competing roadmaps</span>
+<h2>Event gates that modify the same path</h2>
+<p>Only three events legitimately branch the implementation sequence. They do not create separate roadmaps; they change what becomes possible on the same roadmap.</p>
+<table><thead><tr><th>Event</th><th>What changes</th><th>What does not change</th></tr></thead><tbody>
+<tr><td>MS-S1 MAX promoted</td><td>Event occurred September 18, 2026. The Mini is now Rend's primary local-intelligence node; qualify lightweight, worker and stronger local-senior roles against the same factory workload.</td><td>Learning ladder, service catalog, MemPalace, authority, agent identity and acceptance model remain the same.</td></tr>
+<tr><td>Lyra and Mak arrive</td><td>Add specialist roles, private memory wings, BotTalk/shared handoffs and combined soak.</td><td>They inherit the same task, Git, protected-access, learning and evidence rules. Agent identity does not permanently bind an agent to a particular model.</td></tr>
+<tr><td>Measured latency/throughput limitation persists</td><td>Benchmark the already-owned OneXGPU over the MS-S1 MAX PCIe/OCuLink path as the first accelerator experiment.</td><td>The OneXGPU remains optional; no architecture should depend on it before evidence shows value.</td></tr>
+<tr><td>Measured local limitation persists after owned-hardware testing</td><td>Consider another PCIe/OCuLink GPU, another worker node, or NVIDIA DGX Spark-class local senior/frontier compute based on the observed bottleneck. A Spark-class node may supplement rather than replace the MS-S1 MAX.</td><td>Expansion is justified by measured model-capacity, CUDA-native, concurrency, latency or local-teacher requirements — not benchmark prestige or model size alone.</td></tr>
+</tbody></table>
+</section>
+<section id="metrics">
+<span class="tag green">Evidence-driven growth</span>
+<h2>Metrics decide whether the interns are actually learning</h2>
+<table><thead><tr><th>Metric</th><th>Desired direction</th><th>Decision it informs</th></tr></thead><tbody>
+<tr><td>Local completion rate</td><td>Up</td><td>Whether local models + learned knowledge can handle real work.</td></tr>
+<tr><td>Repeated external-teacher escalations for known problem classes</td><td>Down sharply</td><td>Whether the learning loop works; persistent failures may justify a stronger local model.</td></tr>
+<tr><td>First-time external teaching</td><td>Allowed and explainable</td><td>Whether new capability is being acquired rather than blindly outsourced.</td></tr>
+<tr><td>Lesson reuse / successful recall</td><td>Up</td><td>Whether MemPalace and the catalog are producing practical continuity.</td></tr>
+<tr><td>Retries / failure categories</td><td>Down; categorized</td><td>Separate model-intelligence problems from tooling, workflow, knowledge or OS problems.</td></tr>
+<tr><td>Context / memory pressure</td><td>Within safe margin</td><td>Whether larger local memory/compute is needed.</td></tr>
+<tr><td>Worker-loop latency / tool turnaround</td><td>Low enough for practical autonomous iteration</td><td>Whether the fast-worker tier is sufficient or the owned OneXGPU should be benchmarked as an accelerator.</td></tr>
+<tr><td>Senior-model escalation rate</td><td>Only where complexity warrants it</td><td>Whether model routing is selecting the smallest reliable local tier instead of overusing the largest model.</td></tr>
+<tr><td>Agent queue / contention</td><td>Low</td><td>Whether future expansion should be horizontal rather than a larger single model.</td></tr>
+<tr><td>API cost and teacher calls per deliverable</td><td>Down over repeated work</td><td>Whether ProgreTech is becoming locally self-sufficient.</td></tr>
+<tr><td>Autonomous recoveries completed without Edwin relay</td><td>Maintain / validate</td><td>PT-2026-015 proved bounded process and network recovery; future phases should preserve that behavior while new factory capabilities are added.</td></tr>
+<tr><td>Duplicate actions after interruption</td><td>Zero</td><td>Whether durable action identity and resume semantics are reliable.</td></tr>
+<tr><td>Cross-task / output contamination incidents</td><td>Zero</td><td>Whether task/session provenance and response assembly are isolated correctly.</td></tr>
+<tr><td>Knowledge freshness confirmations / stale findings</td><td>Confirm current evidence; surface stale knowledge early</td><td>Whether idle study is updating the way work is performed rather than reinforcing outdated memory.</td></tr>
+<tr><td>Durable-result / notification mismatches</td><td>Zero unresolved</td><td>Whether reporting can recover from truncation, finalization failure or provider timeout without replaying work.</td></tr>
+<tr><td>Stalled intents with no execution ID/state transition</td><td>Zero; detected quickly</td><td>Whether “starting/resuming” actually becomes tool execution instead of conversational status.</td></tr>
+<tr><td>Local closures published remotely</td><td>Explicitly tracked</td><td>Whether GitHub/publication state matches the durable local task state without assuming push occurred.</td></tr>
+<tr><td>Repeat teacher queries for an unchanged problem class</td><td>Trend toward zero</td><td>Whether validated external teaching is actually being retained and reused.</td></tr>
+<tr><td>Cognitive-overflow invocations</td><td>Rare, bounded and explainable</td><td>Whether PT-2026-017 is being used only after proven local recovery exhaustion rather than becoming a stronger default worker.</td></tr>
+<tr><td>Overflow guidance directly executed</td><td>Zero</td><td>Confirms that external reasoning remains advisory and must return through a local planner, validator and normal transaction/retest path.</td></tr>
+<tr><td>External-context authorization failures</td><td>Fail closed</td><td>Confirms that action authority never silently grants permission to transmit context outside the local boundary.</td></tr>
+<tr><td>Teacher-derived lessons due / revalidated</td><td>Due items reviewed on schedule; stale items surfaced early</td><td>Whether MemPalace freshness metadata is driving useful maintenance rather than generic browsing.</td></tr>
+<tr><td>External teacher calls that result in validated reusable knowledge</td><td>High proportion</td><td>Whether paid/external assistance is producing durable local capability instead of one-off task completion.</td></tr>
+<tr><td>Orchestration framework value</td><td>Measured before adoption</td><td>Compare native vs LangGraph on recovery fidelity, observability, complexity, portability and maintenance; framework adoption is not a roadmap goal by itself.</td></tr>
+<tr><td>Power per useful deliverable</td><td>Efficient</td><td>Preserve the always-on, energy-conscious operating goal.</td></tr>
+</tbody></table>
+</section>
+<section id="rules">
+<span class="tag">Non-negotiable operating rules</span>
+<h2>Authority, safety and evidence remain stable while capability grows</h2>
+<div class="grid">
+<div class="card"><h3>Edwin remains owner</h3><p>Consequential commitments, production/release authority, spending and protected-environment actions remain governed by explicit approval/runbooks.</p></div>
+<div class="card"><h3>Arthrex boundary</h3><p>Arthrex-related work from deliberately provided material is allowed. Direct protected Arthrex access, authentication, organization repositories and credential use remain prohibited.</p></div>
+<div class="card"><h3>Git is code truth</h3><p>Memory never replaces code history. Before destructive Git operations, unrelated dirty state must be detected and preserved or the operation must stop. Local closure and remote publication are separate states: formal closures report <code>local_commit</code>, <code>remote_push</code>, <code>remote_branch</code> and <code>remote_sha</code>.</p></div>
+<div class="card"><h3>Evidence before promotion</h3><p>A feature, service or agent capability becomes “working” only after demonstrated behavior and acceptance evidence. Configuration or discussion alone is not proof.</p></div>
+<div class="card"><h3>External AI is teacher infrastructure</h3><p>OpenAI, OpenRouter, 1min.ai and future providers may supply bounded explanations, critique and clarification after the local ladder is genuinely blocked. They do not become default workers, cannot expand agent authority, and cannot bypass local validation, durable task state, provenance or owner STOP/CANCEL controls.</p></div>
+<div class="card"><h3>Cognitive overflow is guidance, not delegated execution</h3><p>PT-2026-017 may request one stronger external reasoning response only after eligible bounded local recovery is exhausted. External-context authorization is explicit and separate from action authority. Returned guidance cannot execute directly, cannot broaden permissions and cannot claim completion; local planning, validation, deterministic evidence and STOP/CANCEL precedence remain mandatory.</p></div>
+</div>
+</section>
+<!-- PT-2026-036-FUNCTIONAL-PRIORITY-START -->
+<section id="pre-arrival-functional-priority">
+<span class="tag amber">Highest current priority · pre-Lyra/Mak functional gate</span>
+<h2>Finish Rend as a safe autonomous software-factory operator before additive presence work</h2>
+<div class="callout green"><strong>Priority reset — September 20, 2026:</strong> Interactive Progre, desktop presence,
+wallpaper animation and other nice-to-have presentation work are intentionally deferred until Rend proves the functional
+factory gates below. The governing objective is useful autonomous delivery: Rend must safely accept owner intent and
+project artifacts, inspect and modify software, use qualified local intelligence and tools, recover from bounded failures,
+produce deterministic evidence, and return reviewable artifacts without requiring Edwin to act as the execution relay.</div>
+<h3>Authoritative pre-arrival sequence</h3>
+<table><thead><tr><th>Activity</th><th>Purpose</th><th>Required exit evidence</th></tr></thead><tbody>
+<tr><td><strong>PT-2026-036 · Factory Safety, Recovery &amp; Capability Requalification</strong></td>
+<td>Revalidate PT-2026-015 and PT-2026-016 behavior on the promoted MS-S1 MAX and regression-test the PT-2026-017 recovery boundary before increasing autonomous factory authority. Audit task state, STOP/CANCEL propagation, replay prevention, recovery/resume, durable results, artifact handling, Telegram path, OS/tool authority, catalog/skills, installed models and storage/resource headroom.</td>
+<td>Read-only baseline first; bounded repairs only where evidence shows a gap. STOP/CANCEL wins over work; no duplicate consequential action after resume; failure is explicit and durable; protected/elevated boundaries fail closed. PT-2026-017 automatic cognitive overflow remains OFF unless its existing activation prerequisites are independently satisfied.</td></tr>
+<tr><td><strong>PT-2026-037 · Rend Software Factory Capability Completion</strong></td>
+<td>Resume the previously blocked Rend-only representative factory trial on the promoted hardware. Rend receives owner intent plus a representative baseline/ZIP, inspects it, creates a phased implementation plan, modifies or creates the application, tests it, preserves provenance and packages the result.</td>
+<td>Supervised qualification first, followed by an unattended overnight run reaching <code>READY_FOR_REVIEW</code>. The run produces source/artifact output, tests/evidence, change summary, known limitations and durable task state. No autonomous production/release authority is implied.</td></tr>
+<tr><td><strong>PT-2026-038 · Additive Capability Library Qualification</strong></td>
+<td>Close factory-tool gaps exposed by PT-037. Candidate capabilities include ZIP/archive intake and reconstruction, image/screenshot understanding, image generation, browser/GUI automation, document handling, terminal/OS operations, Git, testing, packaging and Telegram artifact exchange.</td>
+<td>Each capability has a named contract, bounded permissions, input/output expectations, provenance/evidence behavior, failure mode and qualification test. External projects remain additive utilities or references beneath native governance.</td></tr>
+<tr><td><strong>PT-2026-039 · Local Intelligence Expansion &amp; Routing Qualification</strong></td>
+<td>Add and qualify missing models only against demonstrated factory workloads. Prioritize capability coverage such as local vision/image understanding and stronger coding/heavy-senior work where a candidate materially improves completion. Specialized generation models may be retained as tools when useful.</td>
+<td>Every candidate is classified as cached, qualified or promoted. Promotion requires evidence across autonomous completion, tool use, recovery, latency, context behavior, resource efficiency and teacher-escalation reduction. Newer models replace known-good roles only when demonstrably more useful without capability regression.</td></tr>
+<tr><td><strong>PT-2026-040 · Owner-to-Factory Remote Operation</strong></td>
+<td>Prove a bounded owner workflow from Telegram/terminal: receive intent and artifacts, perform local factory work, operate approved user-level Ubuntu capabilities when required, and return results/artifacts plus evidence.</td>
+<td>Representative remote request succeeds end-to-end without turning Telegram into an unrestricted shell. Ordinary user-level operations follow explicit tool contracts; elevated/root, consequential release, spending, protected access and other restricted actions remain separately governed.</td></tr>
+</tbody></table>
+<h3>How this relates to the existing Highest Current Priority</h3>
+<p>The hybrid learning and escalation ladder remains authoritative. These activities are its practical acceptance workload: local execution first; consult MemPalace/catalog/validated examples; route to the smallest qualified local model that can reliably complete the work; use a stronger local senior when justified; use external intelligence as bounded teaching only after local tiers are genuinely blocked; validate the lesson; retain reusable knowledge; retry locally when practical.</p>
+<h3>Factory product boundary for the trial</h3>
+<p>The representative trial must exercise the existing service-catalog operating model: <strong>requirement + baseline → inspect → phased development map → safe autonomous implementation → evidence/test → review/release gate</strong>. The first acceptance target is a bounded full-stack/PWA or focused software product substantial enough to exercise planning, code changes, tool use, correction loops, tests, packaging and artifact return. Success is not measured by generating code alone; Rend must deliver a coherent review package.</p>
+<h3>Target owner experience</h3>
+<div class="callout"><strong>End-state example:</strong> Edwin may send Rend a ZIP and a bounded request from Telegram or the local terminal. Rend should inspect the package, understand relevant text and images, plan and implement changes, run appropriate automation/tests, create or modify supporting visual assets when an approved capability is available, package the result, and return the finished artifact with evidence. Rend may operate his own Ubuntu host through approved user-level tools when required by the task. This target does not grant unrestricted shell/root authority or bypass STOP/CANCEL, protected-access, provenance, Git or release controls.</div>
+<h3>Model and capability grounding</h3>
+<ul>
+<li><strong>Shared host:</strong> MS-S1 MAX is shared local-intelligence/tool infrastructure for Rend and, after arrival, Lyra and Mak. Heavy models should not be duplicated merely because another agent needs the capability.</li>
+<li><strong>Known live voice roles:</strong> Kokoro remains preferred live TTS; Piper remains fallback. Qwen3-TTS is a qualified specialized non-live tool, not a conversational default.</li>
+<li><strong>Model state vocabulary:</strong> <em>downloaded/cached</em> means present; <em>qualified</em> means a role-specific test passed; <em>promoted</em> means selected for an active routing role. These states must not be conflated.</li>
+<li><strong>Upgrade, don't downgrade:</strong> preserve known-good fallbacks. New candidates are benchmarked before promotion and replace an existing role only when measured usefulness improves without regression.</li>
+<li><strong>Capability over novelty:</strong> downloads and external skills are justified by factory gaps or representative workloads, not by model size, benchmark fashion or UI novelty.</li>
+</ul>
+<h3>Safety grounding carried forward</h3>
+<ul>
+<li>PT-2026-015 bounded autonomous/teacher-guided and operational recovery must remain valid after migration.</li>
+<li>PT-2026-016 factory knowledge/service-catalog behavior must remain current, attributable and evidence-backed.</li>
+<li>PT-2026-017 cognitive overflow remains an exceptional advisory continuity path. External guidance cannot execute directly; local planning, validation, transaction/retest/resume and owner STOP/CANCEL precedence remain mandatory.</li>
+<li>Git remains implementation truth; MemPalace stores curated learning rather than replacing code/task/artifact truth.</li>
+<li>Overnight autonomy ends at a review gate. Production/release authority is not inferred from successful implementation.</li>
+</ul>
+<div class="callout amber"><strong>Deferred until these functional gates pass:</strong> Interactive Progre/Desktop Presence and other presentation-oriented enhancements remain valid roadmap items, but they must not displace PT-2026-036 through PT-2026-040. Presence work resumes after Rend demonstrates safe factory execution and owner-to-factory artifact delivery, or earlier only if it directly removes a measured functional blocker.</div>
+</section>
+<!-- PT-2026-036-FUNCTIONAL-PRIORITY-END -->
+<section id="status">
+<span class="tag green">September 20, 2026 · Functional factory gates active</span>
+<h2>Current position: MS-S1 MAX baseline is promoted; PT-2026-035 is closed; PT-2026-036 factory safety, recovery and capability requalification is next</h2>
+<p><strong>Completed / accepted foundations:</strong> PT-2026-003 collaboration tooling; PT-2026-007 portable host/migration; PT-2026-008 maintenance autonomy; PT-2026-009 MemPalace; PT-2026-010 Safe Factory Substrate; PT-2026-012 Voice Heartbeat foundation; PT-2026-013 Arthrex Protected-Boundary Policy Migration; PT-2026-014 Local Learning Engine; PT-2026-015 Autonomous Teacher-Guided &amp; Operational Recovery; PT-2026-016 Factory Knowledge + Service Catalog; and PT-2026-017 Resilient Model Escalation.</p>
+<div class="callout green"><strong>MS-S1 MAX cutover checkpoint:</strong> the clean-host migration has reached infrastructure promotion. The MS-S1 MAX is Rend's primary host, the Acer is rollback/reference, and an Acer-off functional test proved independent Telegram → OpenClaw → local model operation. Linux tool invocation from the Telegram agent path has also been demonstrated on the Mini.</div>
+<p><strong>Current model state:</strong> <code>ollama/qwen3.8:27b</code> is the qualified Senior S1 and current Rend primary. <code>qwen3-coder:30b</code> remains the qualified local worker; <code>qwen3:1.7b</code> remains the utility tier; and <code>qwen3.5:2b</code> is retained as lightweight/baseline evidence. The <code>qwen3-coder-next</code> 80B-class heavy-senior comparison is optional and evidence-gated rather than a Phase 1 blocker. Frontier Qwen3.8-Max-class capability remains future teacher/hardware infrastructure rather than a requirement for the current Mini.</p>
+<p><strong>Current runtime state:</strong> OpenClaw gateway, Telegram, primary-host guard, PT_CONTEXT-backed <code>/mnt/rend-support</code>, durable MemPalace, Ollama model storage, healthcheck, operational heartbeat and idle-study scheduling are present on the Mini. Voice is accepted and remains intentionally manual/disabled at boot. The stale routing-observer unit remains intentionally disabled because its referenced executable was not present in Git history. Two non-core operational follow-ups remain tracked separately: the OpenClaw in-band heartbeat is timing out while the deterministic systemd operational heartbeat remains healthy, and the 1minAI daily job currently fails at <code>browser_start</code>.</p>
+<p><strong>Physical-presence direction:</strong> the MS-S1 MAX voice path and explicit microphone controller are accepted now. The old Heartbeat UI will not be repaired as an isolated endpoint; its state semantics will be carried forward into the Autonomous Presence interactive wallpaper. Camera perception, movement-following around the workstation, visible listening/processing/speaking/multi-agent states and the later Office Chatter mode form one coherent Autonomous OS presence roadmap, with perception remaining local, observable and privacy-bounded.</p>
+<p><strong>PT-017 live state:</strong> automatic cognitive overflow remains <strong>OFF</strong>. Its qualified/manual owner-controlled path remains preserved. Explicit integrated STOP/CANCEL propagation remains a prerequisite before automatic activation is reconsidered.</p>
+<p><strong>Protected working state:</strong> intentional dirty/untracked runtime and recovery artifacts remain preserved rather than normalized merely for migration. The frozen migration snapshot on PT_CONTEXT and the Acer reference host remain intact until formal MS-S1 MAX acceptance and closeout.</p>
+<p><strong>Immediate next gate:</strong> PT-2026-036 Factory Safety, Recovery &amp; Capability Requalification. Begin with the read-only baseline audit of PT-2026-015/PT-2026-016/PT-2026-017 safety and recovery behavior, STOP/CANCEL propagation, replay prevention, durable task/result state, artifact and Telegram paths, OS/tool authority, factory/catalog/skills state, installed models and resource headroom. Do not activate PT-2026-017 automatic cognitive overflow during the audit. After evidence-backed repair/requalification, proceed through PT-2026-037 Rend Software Factory Capability Completion, PT-2026-038 Additive Capability Library Qualification, PT-2026-039 Local Intelligence Expansion &amp; Routing Qualification and PT-2026-040 Owner-to-Factory Remote Operation. Camera/visual-input and Interactive Progre/Desktop Presence remain valid later capability work but are not the active gate.</p>
+</section>
+<!-- PT044_AUTONOMOUS_OFFICE_FOUNDATION_CLOSED_V1 -->
+<section id="pt044-closeout">
+<h2>PT-2026-044 — Rend Autonomous Office Foundation — CLOSED / QUALIFIED</h2>
+<p>PT-2026-044 completed its five-phase acceptance: capability adoption governance; durable factual office events/state with live runtime and factory projection; bounded factual Office Chatter with qualified Telegram delivery; durable Rend/Lyra/Mak coordination interfaces; and integrated replay/idempotency/authority-boundary acceptance.</p>
+<p>The office layer remains an observable coordination substrate. It does not replace factory, routing, memory, credential, protected-access, or release authority. Automatic production release remains disabled; autonomous sudo/root/protected actions remain prohibited; PT-2026-042 remains paused; Lyra/Mak commissioning remains separate.</p>
+<p>Operator reference: <code>docs/operators/REND_PROGRETECH_OPERATOR_GUIDE.md</code></p>
+</section>
+</main>
+<footer>
+<div><strong>The ProgreTech Project Charter v5.17</strong></div>
+<div class="small">Updated September 21, 2026 · v5.17 Mesh release-automation and production-identity evidence extension · preserves the post-PT-2026-047 maintenance baseline and adds the Rend Cloud Operator requirement: qualified autonomous cloud deployment/operations must use dedicated least-privilege service identity, Secret Manager-backed credentials, explicit owner gates for high-impact actions, durable audit evidence in Mesh, and no long-term dependence on Edwin's personal interactive cloud login.</div>
+</footer>
+</div>
+<!-- PT-2026-035-SHARED-CAPABILITY-START -->
+<section class="charter-section" id="pt-2026-035-shared-capability">
+<h2>Shared Model and Audio Capability Architecture — PT-2026-035</h2>
+<p><strong>Status:</strong> Qualified shared capability architecture. Live-Qwen optimization branch closed by design decision.</p>
+<p>Rend's MS-S1 MAX is the shared ProgreTech model and audio capability host. Rend may invoke qualified
+  capabilities locally. Lyra and Mak may invoke the same capabilities through Rend's hardware when a task
+  requires them. A model being downloaded, cached, or qualified does not make it a default provider.</p>
+<h3>Live conversational voice</h3>
+<ul>
+<li><strong>Kokoro:</strong> preferred primary live TTS provider.</li>
+<li><strong>Piper:</strong> qualified live TTS fallback.</li>
+</ul>
+<h3>Specialized shared tools</h3>
+<ul>
+<li><strong>Qwen3-TTS 0.6B Base:</strong> qualified local voice-cloning and non-live audio-generation tool.
+    Human review accepted its clear output. Current generation latency is approximately 17 times real time,
+    so it is not a live conversational provider.</li>
+<li>Other qualified or cached models remain workload-specific tools for Rend, Lyra, and Mak, including
+    future language lessons, tutorials, pronunciation/audio exercises, prepared narration, sound generation,
+    and other tasks where latency is acceptable.</li>
+</ul>
+<h3>Governance</h3>
+<p>Preserve known-good providers. Qualify new capabilities before promotion. Prefer shared access through
+  Rend's hardware over unnecessary duplication on Lyra or Mak. Model maintenance follows the upgrade-don't-
+  downgrade rule: a newer model replaces a qualified capability only when it is demonstrably more useful for
+  the intended role without creating a capability regression.</p>
+<h3>PT-2026-035 conclusion</h3>
+<p>Qwen3-TTS passed local AMD/ROCm execution, voice cloning, repeatability, prompt caching, and human audio
+  quality review. Experimental AOTriton did not improve normalized throughput. Prompt extraction was below
+  one second, identifying generation as the latency bottleneck. Further FlashAttention/toolchain work is not
+  required for the current architecture and was stopped without forcing incompatible host packages.</p>
+</section>
+<!-- PT-2026-035-SHARED-CAPABILITY-END -->
+<!-- PT044_AUTONOMOUS_OFFICE_FOUNDATION_V1 -->
+<section id="pt-2026-043-closeout-pt-2026-044-handoff">
+<h2>PT-2026-043 Closeout and PT-2026-044 Handoff</h2>
+<p><strong>PT-2026-043 — Rend Runtime &amp; Factory Integration Hardening:</strong> CLOSED / QUALIFIED on 2026-09-20 at checkpoint <code>25ba6ee03b073a73f436077d971a1a9400040a53</code>, tag <code>checkpoint/PT-2026-043-closed</code>.</p>
+<p>Qualified acceptance includes native Telegram <code>/factory</code> ownership through <code>before_dispatch</code>, bounded authoritative command parsing, durable factory status and submit/job creation, exactly-once dispatch and Telegram result delivery for the acceptance transaction, and suppression of the normal conversational duplicate. Automatic merge and release remain disabled; no production release was performed.</p>
+<h3>PT-2026-044 — Rend Autonomous Office Foundation</h3>
+<p><strong>Status:</strong> NEXT / ACTIVE AFTER CHARTER HANDOFF.</p>
+<p>PT-2026-044 turns Rend's qualified runtime capabilities into a coherent autonomous-office operating layer. It consumes the existing runtime event/state substrate, model-routing hierarchy, factory control path, presence signals, learning/escalation policy, and report-by-exception behavior rather than replacing them.</p>
+<h4>Expected outcomes</h4>
+<ul>
+<li>One durable office activity/event contract for meaningful work, learning, factory activity, owner interaction, and future agent-to-agent coordination.</li>
+<li>Bounded Office Chatter derived from factual runtime events; chatter must describe observed work/state and must not invent activity.</li>
+<li>Explicit idle, working, blocked, waiting-for-owner, and learning coordination states suitable for Rend now and Lyra/Mak later.</li>
+<li>A durable activity ledger and queryable recent-office state without creating a second source of truth for factory jobs or model routing.</li>
+<li>Preserve the local-first escalation ladder: local intern → local knowledge → local senior → external teacher only when genuinely blocked → validate/retain/retry locally.</li>
+<li>Keep PT-017 cognitive-overflow exceptional and bounded; external guidance cannot directly execute consequential actions.</li>
+<li>Preserve owner gates for sudo/root, protected or consequential actions, merge, production release, credentials, and other governed boundaries.</li>
+<li>Prepare additive multi-agent interfaces for Lyra and Mak without requiring either agent to be online during PT-2026-044 qualification.</li>
+</ul>
+<h4>Acceptance expectation</h4>
+<p>PT-2026-044 is qualified when Rend can turn real runtime events into durable, inspectable office state and bounded factual chatter; survive restart/replay without duplicate actions or fabricated activity; distinguish idle, active, blocked, learning, and owner-wait states; and expose a stable additive contract that Lyra and Mak can later consume without weakening existing factory, routing, learning, or safety governance.</p>
+<p><strong>Explicit exclusions:</strong> PT-2026-044 does not resume the paused PT-2026-042 interactive Progre desktop work, does not grant autonomous production release, and does not require Lyra or Mak commissioning.</p>
+</section>
+<!-- PT044_CAPABILITY_ADOPTION_GOVERNANCE_V1 -->
+<section id="pt044-capability-adoption-governance">
+<h3>PT-2026-044 Capability Adoption Expectations</h3>
+<p>External tools, skill marketplaces, agent harnesses and specialist runtimes are an additive capability supply chain. A charter mention is not installation, qualification, activation, authority or permission. ProgreTech may adopt substantial portions of a proven external capability when that is safer and more useful than reimplementing it, but the ProgreTech contracts remain authoritative.</p>
+<h4>Adoption lanes</h4>
+<ul>
+<li><strong>Reference:</strong> study architecture, UX, contracts or operating patterns without runtime dependency.</li>
+<li><strong>Curated skill:</strong> vendor or adapt a bounded skill into the ProgreTech capability library with source/version/license provenance.</li>
+<li><strong>Qualified tool:</strong> install a pinned capability and expose it through the executable catalog after representative tests, failure tests and rollback are proven.</li>
+<li><strong>Integrated subsystem:</strong> reuse a mature external subsystem behind a ProgreTech adapter when it provides meaningful tested capability and does not become the authority for identity, governance, memory, factory state, routing or release.</li>
+</ul>
+<h4>Named adoption expectations</h4>
+<ul>
+<li><strong>Autonomous OS:</strong> treat its skill marketplace/catalog and reusable agent capability patterns as a discovery source. Build a bounded marketplace intake lane so candidate skills can be inspected, pinned, scanned, classified, tested and promoted without receiving authority merely by installation. Reuse runtime/device patterns only where they fit ProgreTech's local-first architecture.</li>
+<li><strong>Munder Difflin:</strong> treat its multi-agent office/hive work as a high-value reference and potential subsystem source for mailboxes, shared blackboard/event-log patterns, supervisor routing, agent lifecycle, per-agent isolation, approvals, circuit breaking and observable office activity. Prefer adaptation or an adapter over recreating proven mechanisms, but keep Rend/Mak/Lyra identity, MemPalace, ProgreTech task/recovery contracts and owner authority native.</li>
+<li><strong>Archify:</strong> qualify as the preferred technical architecture/workflow/sequence/data-flow/lifecycle visualization skill when its deterministic validation and export behavior passes local acceptance. Generated topology must remain source/evidence grounded.</li>
+<li><strong>Firecrawl anydoc:</strong> qualify local document-to-Markdown conversion as the preferred normalization path for supported office artifacts. Local conversion is the default; hosted OCR is a separately authorized network/data-egress capability.</li>
+<li><strong>mattpocock/skills:</strong> maintain a curated, pinned subset of useful engineering skills rather than subscribing the factory wholesale. Initial candidates include diagnosis, TDD, review, specification/PRD, planning, domain language/modeling, handoff and skill-authoring disciplines. ProgreTech governance overrides imported workflow assumptions.</li>
+<li><strong>OpenMontage:</strong> qualify as a specialist creative-production subsystem, primarily for Lyra with Rend orchestration and Mak integration support. Provider/API cost, licensing, network access, generated-media provenance and artifact storage must remain explicit. It is not part of the core office control plane.</li>
+</ul>
+<h4>Required controls for every adopted capability</h4>
+<ul>
+<li>Record canonical source, immutable version/commit, license, supported agents, owner, dependencies and provenance before promotion.</li>
+<li>Classify filesystem, network, credential, subprocess, GPU/CPU, data-egress and destructive-action behavior; default-deny capabilities not required for the role.</li>
+<li>Use representative success, malformed-input, offline/failure, timeout/resource and rollback tests. A successful install is not qualification.</li>
+<li>Define the source of truth and overlap boundary so an imported tool cannot silently create a second authority for factory jobs, memory, routing, identity, task state or release.</li>
+<li>Pin qualified versions. Updates enter as candidates and must requalify under the upgrade-don't-downgrade rule; known-good versions remain available for rollback.</li>
+<li>Skills from marketplaces or remote repositories enter quarantine/staging first. Inspect instructions and executable content before allowing tool calls, network use, credentials or persistent writes.</li>
+<li>Record privacy/data classification. External OCR, hosted models, telemetry and cloud providers require an explicit egress decision appropriate to the artifact.</li>
+<li>Expose capability health and qualification state to the future office-state layer, but never treat presence in a catalog as proof that the capability is healthy or authorized.</li>
+<li>Retain evidence sufficient to reproduce why a capability was promoted, rejected, superseded or rolled back.</li>
+</ul>
+<h4>PT-2026-044 sequencing</h4>
+<ol>
+<li><strong>Phase 1:</strong> reconcile the capability baseline; establish adoption governance; qualify or explicitly defer the named candidates that materially support the Autonomous Office.</li>
+<li><strong>Phase 2:</strong> implement the durable factual office event/state substrate and activity ledger.</li>
+<li><strong>Phase 3:</strong> implement bounded Office Chatter derived only from qualified factual state/events.</li>
+<li><strong>Phase 4:</strong> implement additive multi-agent coordination contracts for Rend, Lyra and Mak, borrowing proven office/hive patterns where appropriate.</li>
+<li><strong>Phase 5:</strong> restart/replay, duplicate-action, blocked/owner-wait, capability-health, chatter and multi-agent acceptance; close only with preserved evidence.</li>
+</ol>
+<p><strong>Additional required capability classes:</strong> PT-2026-044 must also account for a capability registry with provenance and health, skill-supply-chain quarantine, network/data-egress policy, resource budgets/timeouts, deterministic replay/idempotency, observability/audit, secret brokering, artifact provenance/retention, and a stable adapter boundary for future providers. These are infrastructure requirements even when no single external project supplies them.</p>
+</section>
+<!-- PT044_ODYSSEUS_ADOPTION_V1 -->
+<section id="pt044-odysseus-adoption">
+<h4>Odysseus adoption expectation</h4>
+<p><strong>Odysseus:</strong> treat as a reference architecture and selective capability/subsystem candidate for model cookbook and qualification patterns, research workflows, workspace/task concepts, MCP/tool/skill integration and provider abstractions. Perform explicit overlap analysis before adoption. Prefer concepts and bounded adapters where ProgreTech already has an authority. Code-level reuse requires explicit license review. Odysseus must not replace MemPalace, ProgreTech model-routing authority, factory state, agent identity or Charter governance.</p>
+<p><strong>Overlap-analysis gate:</strong> before promotion, record capability gap - existing ProgreTech implementation - external implementation - demonstrable advantage - integration cost - authority collision - license/security impact - adopt/adapt/reference/defer.</p>
+</section>
+<!-- PT044_PHASE1_CAPABILITY_BASELINE_CLOSED_V1 -->
+<section id="pt044-phase1-capability-baseline-closed">
+<h4>PT-2026-044 Phase 1 capability baseline — qualified with goalposts</h4>
+<p>The capability supply chain, quarantine policy, overlap-analysis gate and adapter boundary are established. Munder Difflin patterns are approved for bounded adaptation behind native ProgreTech coordination contracts. Firecrawl anydoc has a local-only adapter contract but its binary is not automatically installed or activated. The mattpocock skill source has a curated profile but individual skills require representative qualification before activation. Odysseus remains a reference/selective-subsystem source, OpenMontage is deferred to a representative creative workload, and Autonomous OS plus Archify canonical-source resolution remain explicit non-blocking goalposts. Phase 2 may proceed without weakening these boundaries.</p>
+</section>
+<!-- PT045_LOCAL_LEARNING_ENGINE_CLOSED_QUALIFIED_V1 -->
+<!-- PT046_MULTIMODAL_PRESENCE_FOUNDATION_V1 -->
+<div class="callout amber"><strong>PT-2026-046 · Multimodal Presence Foundation — CLOSED / QUALIFIED.</strong>
+Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence as the first genuinely unfinished current requirement family. The accepted camera-provider foundation is reused rather than rebuilt. PT-042 remains paused. PT-2026-046 advances bounded local perception, deterministic runtime perception events, observable listener/vision state, cockpit convergence where practical, and final reboot/persistence acceptance. Visual perception remains explicit, locally bounded and observable; no background surveillance, biometric identification, silent camera retention, autonomous production release, or perception-derived execution authority is granted.</div>
+<div class="callout purple"><strong>PT-2026-047 · Autonomous Presence Behavior &amp; Integration — CLOSED / QUALIFIED.</strong> PT-2026-046 supplied the qualified multimodal substrate; PT-2026-047 adds bounded presence behavior without resuming PT-042.</div>
+<!-- REND_CLOUD_OPERATOR_GOVERNANCE_V1 -->
+<section class="section" id="rend-cloud-operator-governance">
+<h2>Rend Cloud Operator Governance — Future Qualified Capability</h2>
+<p><strong>Master-charter requirement:</strong> Rend must be able to perform bounded cloud engineering and operations directly rather than relying on Edwin as a permanent command proxy. Human interactive login may be used for one-time provider bootstrap or consent when the provider requires it, but it is not the long-term operating identity for autonomous work.</p>
+<ul>
+<li><strong>Dedicated identity:</strong> routine autonomous cloud work uses a dedicated Rend/ProgreTech service identity or other provider-supported workload identity with narrowly scoped, task-appropriate permissions. Personal owner credentials are not copied into agent memory, prompts, repositories or general-purpose configuration.</li>
+<li><strong>Secret boundary:</strong> credentials, tokens and sensitive configuration are brokered through approved secret storage such as Google Secret Manager. Rend receives only the minimum secret material required for an authorized action; retrieval and use are auditable.</li>
+<li><strong>Routine autonomous authority after qualification:</strong> inspect projects/services, read logs and health, build approved source, deploy to approved non-production targets, update bounded service configuration, run validation, collect evidence, and perform tested rollback/recovery without requiring Edwin to re-enter the equivalent shell commands manually.</li>
+<li><strong>Owner-approval gates:</strong> broad IAM grants, privilege expansion, resource deletion, destructive migration, shared-secret rotation, new billable-service activation, production promotion/cutover, or any action outside the qualified capability envelope remains explicitly owner-approved. STOP/CANCEL and protected-resource boundaries win over autonomous work.</li>
+<li><strong>Mesh audit surface:</strong> cloud actions expose actor/service identity, target project/resource, requested operation, authorization basis, approval state when applicable, result, rollback/evidence references and failure reason through the Mesh activity/audit layer. Audit records must not contain reusable secret values.</li>
+<li><strong>Qualification and replay safety:</strong> the capability must prove least-privilege access, malformed/offline/timeout behavior, idempotent/replay-safe operations where applicable, rollback, denied-action behavior, expired/revoked credential handling and prevention of duplicate consequential actions before autonomous production use is considered.</li>
+<li><strong>Acceptance-source rule:</strong> owner-performed commissioning procedures may be converted into reproducible acceptance cases for Rend. Successful human proxy execution is evidence for capability design, not evidence that Rend has already been granted or qualified for the same authority.</li>
+</ul>
+<p><strong>Current posture:</strong> this requirement is additive master-charter governance and does not create or authorize a new numbered PT activity by itself. Existing restrictions on autonomous production release remain in force until a future activity explicitly implements, qualifies and activates the Cloud Operator capability.</p>
+</section>
+<!-- PT-LEGACY-CONTINUITY:START -->
+<section class="section" id="legacy-continuity">
+<h2>Legacy Charter Continuity — Preserved Future Gates</h2>
+<p>The post-PT-2026-047 maintenance baseline does not retire still-valid requirements from the v5.1 factory roadmap. Work superseded by later qualification remains closed; the following requirements remain authoritative future gates or conditional maintenance items.</p>
+<ul>
+<li><strong>Lyra + Mak commissioning:</strong> hardware arrival and explicit owner start remain prerequisites. Each specialist receives distinct role, memory identity, permissions, task ownership and output provenance.</li>
+<li><strong>Team handoff acceptance:</strong> prove <code>Lyra → Rend → Mak → Rend/Edwin</code> end-to-end without weakening isolation, recovery, Git, artifact or authority contracts.</li>
+<li><strong>Three-agent qualification:</strong> representative service-catalog deliveries followed by the postponed 24-hour combined soak, observing handoffs, memory, model routing, Git isolation, recovery, resources, failures and teacher frequency.</li>
+<li><strong>Flagship challenge:</strong> after three-agent qualification, issue a Russian language-learning product challenge comparable in ambition to Manabi Kōbō from high-level owner guidance, without copying it. Preserve it as a blind acceptance workload; do not pre-build it from historical detailed solution discussion.</li>
+<li><strong>Orchestration:</strong> LangGraph remains an optional measured comparison after native three-agent contracts are proven, not a required architecture.</li>
+<li><strong>Acceleration:</strong> benchmark the already-owned OneXGPU first only if measured local latency/throughput remains a bottleneck.</li>
+<li><strong>Delivery standard:</strong> the service catalog remains the acceptance envelope, including Guided Tutorial capability by default unless declined.</li>
+<li><strong>Learning maintenance:</strong> validated knowledge is rechecked against current evidence; bounded maintenance/study yields to active work.</li>
+</ul>
+<p><strong>Historical maintenance checks:</strong> verify rather than assume the current disposition of the old workshop-skill <code>description</code> metadata finding and Mesh <code>agent_end</code> conversation-access permission guard.</p>
+<p><strong>Metrics retained:</strong> local completion, repeat teacher escalation, lesson reuse, retries/failure categories, context pressure, tool latency, queue contention, duplicate actions, cross-task contamination, knowledge freshness, durable-result/notification mismatch, stalled intents, publication state and power per useful deliverable.</p>
+<p><strong>Current sequence:</strong> controlled MS-S1 MAX reboot acceptance → normal-use Rend soak → commissioning baseline → Lyra/Mak arrival and owner start → specialist commissioning → team handoff acceptance → representative three-agent workload → 24-hour combined soak → optional orchestration evaluation → Russian flagship challenge.</p>
+</section>
+<!-- PT-LEGACY-CONTINUITY:END -->
+<!-- PT-CURRENT-OPERATIONAL-STATUS:START -->
+<section class="section" id="current-operational-status">
+<h2>Current Operational Status — Post PT-2026-047</h2>
+<p><strong>Roadmap state:</strong> maintenance / acceptance cadence. PT-2026-048 is not authorized. PT-2026-042 remains paused.</p>
+<ul>
+<li><strong>PT-2026-043:</strong> Rend Runtime &amp; Factory Integration Hardening — CLOSED / QUALIFIED.</li>
+<li><strong>PT-2026-044:</strong> Rend Autonomous Office Foundation — CLOSED / QUALIFIED.</li>
+<li><strong>PT-2026-045:</strong> Local Learning Engine — CLOSED / QUALIFIED.</li>
+<li><strong>PT-2026-046:</strong> Multimodal Presence Foundation — CLOSED / QUALIFIED.</li>
+<li><strong>PT-2026-047:</strong> Autonomous Presence Behavior &amp; Integration — CLOSED / QUALIFIED.</li>
+</ul>
+<p><strong>Current capability posture:</strong> qualified local model routing, local learning, bounded Factory workflows, Telegram owner operation, runtime-driven non-chatter presence, local voice and visual-perception foundations, persistent owner Quiet Mode, and Control Center surfaces for Presence, Voice, Vision, Models, and Factory functions.</p>
+<p><strong>Preserved boundaries:</strong> vision defaults OFF; visual activation remains explicit; image retention, biometric identification, background surveillance, perception-derived execution authority, and autonomous production release remain disabled. PT-042 desktop/sprite work remains paused.</p>
+<p><strong>Deferred / maintenance:</strong> heavy-local-senior review remains routine qualification maintenance; Lyra and Mak commissioning remains hardware + owner-start gated; historical Factory Trial scope is satisfied/superseded by PT-2026-043/PT-2026-044; host reboot remains a separate machine-level acceptance activity.</p>
+</section>
+<!-- PT-CURRENT-OPERATIONAL-STATUS:END -->
+<!-- progretech:pt047-local-image-closeout:start -->
+<section id="pt047-local-image-closeout">
+<h2>PT-2026-047 — Local Image Generation Acceptance</h2>
+<p><strong>Status:</strong> QUALIFIED / PROMOTED / TELEGRAM ACCEPTED</p>
+<ul>
+<li><strong>Checkpoint:</strong> 8a25bd77caa5e308769f3415eed66c0b4efebbf8 / checkpoint/local-image-promotion-v0.1.2</li>
+<li><strong>Primary:</strong> ComfyUI 0.37.0 + FLUX.1 Schnell FP8 on Radeon 8060S / ROCm 7.2</li>
+<li><strong>Commands:</strong> /rend-use image &lt;prompt&gt; and /rend-use local image &lt;prompt&gt;</li>
+<li><strong>Backup/surge:</strong> /rend-use 1minai image &lt;prompt&gt;</li>
+<li><strong>Runtime:</strong> on-demand; broker-started ComfyUI stops after the request.</li>
+<li><strong>Typography caveat:</strong> exact text/logos may require post-processing or an alternate provider.</li>
+<li><strong>Telegram:</strong> end-to-end local generation and delivery accepted.</li>
+<li><strong>State:</strong> frozen for normal-use soak unless a defect or explicit requirement reopens it.</li>
+</ul>
+</section>
+<!-- progretech:pt047-local-image-closeout:end -->
+<section id="pt044-mesh-release-automation">
+<!-- PT044_MESH_RELEASE_AUTOMATION_V1 -->
+<div class="tag green">PT-2026-044 · Maintenance evidence</div>
+<h2>PT-2026-044 — Mesh Command Center Production Release Automation</h2>
+<p><strong>Status:</strong> RELEASE AUTOMATION QUALIFIED / CLOSED · SECURITY CLOSEOUT REMAINS ACTIVE</p>
+<p>The Mesh command-center maintenance stream established GitHub <code>main</code> as the authoritative production release source and qualified a real push-driven production path through Google Cloud Build, Artifact Registry, Cloud Run and <code>mesh.progretech.com</code>. The accepted closeout commit is <code>73f183459ca7bd5305fe3820ac82c7cd18474ae2</code>.</p>
+<h3>Qualified production path</h3>
+<ul>
+<li><strong>Repository:</strong> <code>eabdiel/progretech-mesh</code>, branch <code>main</code>.</li>
+<li><strong>Trigger:</strong> <code>progretech-mesh-main-deploy</code>, region <code>global</code>, branch pattern <code>^main$</code>.</li>
+<li><strong>Build identity:</strong> <code>976845554497-compute@developer.gserviceaccount.com</code>.</li>
+<li><strong>Artifact Registry:</strong> <code>us-east1-docker.pkg.dev/progretech-production/cloud-run-source-deploy/progretech-mesh</code>.</li>
+<li><strong>Cloud Run:</strong> service <code>progretech-mesh</code>, region <code>us-east1</code>.</li>
+<li><strong>Custom domain:</strong> <code>https://mesh.progretech.com</code>; unauthenticated root request correctly redirects to <code>/login?next=/</code>.</li>
+<li><strong>HTTP edge:</strong> <code>http://mesh.progretech.com</code> returns a permanent redirect to HTTPS.</li>
+</ul>
+<h3>Acceptance evidence</h3>
+<ul>
+<li>Capability/production convergence commit: <code>12fdcf2ace28891fc1bcaf42373079630a79e584</code>.</li>
+<li>Artifact Registry pipeline commit: <code>714326e275e40610c869219c7cd5b7e79a2a51c9</code>.</li>
+<li>First qualified trigger-driven build: <code>d35240a4-6c72-4c53-9e3d-b48ff9db9ab0</code> — SUCCESS.</li>
+<li>Real GitHub push acceptance build: <code>ec487274-d4e4-4a34-8513-ad6e50e40883</code> — SUCCESS.</li>
+<li>Real push commit: <code>73f183459ca7bd5305fe3820ac82c7cd18474ae2</code>; build provenance and deployed Cloud Run image both matched this exact commit.</li>
+<li>Cloud Run advanced to revision <code>progretech-mesh-00008-nwd</code>.</li>
+<li>Mesh regression suite at release reconciliation: <strong>135 / 135 PASS</strong>.</li>
+</ul>
+<div class="callout green"><strong>Release governance:</strong> normal Mesh production deployment now flows <code>GitHub main → Cloud Build → Docker → Artifact Registry → Cloud Run</code>. Ad-hoc local source deploys are reserved for explicitly approved recovery or bounded qualification work.</div>
+<h3>CodeSeal production identity evidence</h3>
+<p>Rend's existing CodeSeal event <code>PTCS-EVT-AF56CED8087E6350EC75</code> was qualified in production for current-state enforcement. The exact event was temporarily revoked, production verification changed to invalid with <code>registry_event_revoked</code>, Mesh rejected the identity, the original database state was restored, verification returned active/valid, and Rend reconnected. The original event was reused; no replacement identity was issued.</p>
+<h3>Remaining PT-2026-044 security closeout</h3>
+<p>The release-automation gate is closed, but this maintenance stream must not claim full cloud identity readiness until the remaining cloud-runtime identity controls are qualified. The required remaining items are:</p>
+<ul>
+<li>Make missing CodeSeal evidence fail closed in the agent adapter rather than allowing an optional skip path.</li>
+<li>Add full HTTP-level negative/positive tests for missing/invalid/revoked device credentials, missing proof, wrong signature, replay, expiry, evidence mismatch, revoked CodeSeal state and successful trust update.</li>
+<li>Resolve the process-local proof-of-possession challenge/replay cache for Cloud Run multi-instance behavior using an accepted shared-state design or an explicitly qualified bounded single-instance design.</li>
+<li>Only after those controls pass may cloud <code>MESH_CODESEAL_READY=1</code> be promoted as a production-readiness claim.</li>
+</ul>
+<div class="callout amber"><strong>Boundary:</strong> release automation being QUALIFIED does not by itself promote cloud CodeSeal/PoP readiness. Local Rend identity readiness and the production CodeSeal revocation path are qualified; cloud replay/fail-closed semantics remain a separate acceptance gate.</div>
+</section><!-- REND_IDE_PYCHARM_INTEGRATION_V1 -->
+<section id="rend-ide-pycharm-integration">
+<div class="tag purple">Required pre-arrival activity · Rend IDE integration</div>
+<h2>Rend IDE / PyCharm Integration</h2>
+<p><strong>Status:</strong> REQUIRED BEFORE LYRA / MAK COMMISSIONING · NOT YET STARTED</p>
+<p><strong>Activity numbering:</strong> This is an explicit required activity in the current roadmap, but it does not consume <code>PT-2026-048</code> or another project number until execution is formally authorized.</p>
+<p>The ProgreTech coding workflow must allow PyCharm to use <strong>Rend himself</strong> as the engineering assistant rather than connecting PyCharm directly to Ollama or to an individual model. PyCharm is therefore treated as an IDE surface; Rend remains the governed agent/runtime behind code generation and assistance.</p>
+<div class="callout green"><strong>Required architecture:</strong> <code>PyCharm → JetBrains AI Assistant / OpenAI-compatible client → Rend IDE Gateway → Rend Runtime / governance / MemPalace / model routing → qualified local models on the MS-S1 MAX</code>.</div>
+<h3>Required capabilities</h3>
+<ul>
+<li>Expose a bounded OpenAI-compatible IDE gateway from Rend with, at minimum, <code>GET /health</code>, <code>GET /v1/models</code>, and <code>POST /v1/chat/completions</code>.</li>
+<li>Use authenticated, LAN-only access. PyCharm must not require direct access to Ollama port <code>11434</code>.</li>
+<li>Advertise stable capability aliases such as <code>rend</code>, <code>rend-code</code>, and <code>rend-fast</code> rather than coupling PyCharm to model-version names.</li>
+<li>Route those aliases through Rend's qualified model hierarchy so future model upgrades do not require IDE reconfiguration.</li>
+<li>Support PyCharm-assisted code generation, code explanation, refactoring, test generation, documentation generation, review assistance, and related engineering chat.</li>
+<li>Inject bounded repository context such as repository identity, active branch/status, project instructions, relevant <code>AGENTS.md</code>/<code>REND.md</code> rules, and relevant MemPalace knowledge without transmitting unrelated repository content.</li>
+<li>Preserve Rend's existing governance boundaries for STOP/CANCEL, root/sudo, credentials, protected access, Git controls, merge/release gates, and production actions.</li>
+<li>Tool calling, if enabled, must remain bounded and cannot become an unrestricted shell or bypass existing owner gates.</li>
+<li>Maintain reviewable provenance so repository-assisted changes can be traced to the IDE request, Rend's actions, validation evidence, and the resulting Git state.</li>
+</ul>
+<h3>Model-routing contract</h3>
+<ul>
+<li><code>rend</code> — normal Rend orchestration and engineering assistance.</li>
+<li><code>rend-code</code> — qualified coding worker capability, currently expected to route to the qualified coding model rather than exposing that model name directly.</li>
+<li><code>rend-fast</code> — small, fast local capability for lightweight IDE assistance.</li>
+<li>Model maintenance continues to follow the existing <strong>upgrade, don't downgrade</strong> rule: aliases remain stable while underlying models may be replaced only after qualification.</li>
+</ul>
+<h3>Repository and context behavior</h3>
+<p>PyCharm may provide selected code, the active file, nearby context, or explicit user prompts. Rend may augment this with bounded repository and project context. The gateway must not indiscriminately transmit or ingest the entire repository for every request.</p>
+<h3>Inline completion boundary</h3>
+<p>Ghost-text / fill-in-the-middle completion is a separate capability. The initial Rend IDE integration is not blocked by FIM autocomplete. PyCharm may continue using JetBrains/default completion or a separately qualified local FIM model until a Rend-local completion path is explicitly qualified.</p>
+<h3>Pre-arrival acceptance gate</h3>
+<p>This activity must be completed before Lyra and Mak commissioning begins. Acceptance requires all of the following:</p>
+<ul>
+<li>PyCharm can connect to the Rend IDE Gateway using a generated bearer token and a stable Rend capability alias.</li>
+<li>Rend can complete representative chat, code-generation, explanation, test-generation, documentation, and refactoring tasks from PyCharm.</li>
+<li>At least one real ProgreTech repository-assisted change is completed through this path with tests/validation and reviewable provenance.</li>
+<li>Rend's local governance and project instructions remain effective from the IDE surface.</li>
+<li>No protected Git, credential, root/sudo, production, release, or STOP/CANCEL boundary can be bypassed from PyCharm.</li>
+<li>The gateway can be stopped/disabled cleanly and does not require exposing Ollama directly to the LAN.</li>
+</ul>
+<h3>Reference architecture</h3>
+<div class="card" style="overflow:auto;padding:18px;">
+<svg height="1050" viewbox="0 0 1600 1050" width="1600" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<style>
+      .bg { fill:#f6f8fb; }
+      .panel { fill:#ffffff; stroke:#d0d5dd; stroke-width:2; }
+      .panel-dark { fill:#102a43; stroke:#0b1728; stroke-width:2; }
+      .panel-blue { fill:#eff6ff; stroke:#175cd3; stroke-width:2; }
+      .panel-green { fill:#ecfdf3; stroke:#067647; stroke-width:2; }
+      .panel-purple { fill:#f4f0ff; stroke:#6941c6; stroke-width:2; }
+      .title { font:700 34px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#102a43; }
+      .subtitle { font:500 18px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#667085; }
+      .box-title { font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#102a43; }
+      .box-title-white { font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#ffffff; }
+      .body { font:500 17px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#344054; }
+      .body-white { font:500 17px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#dceaf6; }
+      .small { font:600 15px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#667085; }
+      .pill { fill:#eef3f8; stroke:#d0d5dd; stroke-width:1.5; }
+      .pillText { font:700 14px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#102a43; }
+      .arrow { stroke:#175cd3; stroke-width:5; fill:none; marker-end:url(#arrowhead); }
+      .arrow2 { stroke:#6941c6; stroke-width:4; fill:none; marker-end:url(#arrowhead2); }
+      .divider { stroke:#d0d5dd; stroke-width:2; }
+      .gate { fill:#fff7ed; stroke:#f79009; stroke-width:2.5; }
+      .gateTitle { font:700 22px system-ui,-apple-system,"Segoe UI",sans-serif; fill:#b54708; }
+    </style>
+<marker id="arrowhead" markerheight="12" markerwidth="12" orient="auto" refx="10" refy="6">
+<path d="M0,0 L12,6 L0,12 z" fill="#175cd3"></path>
+</marker>
+<marker id="arrowhead2" markerheight="12" markerwidth="12" orient="auto" refx="10" refy="6">
+<path d="M0,0 L12,6 L0,12 z" fill="#6941c6"></path>
+</marker>
+</defs>
+<rect class="bg" height="1050" width="1600"></rect>
+<text class="title" x="80" y="78">Rend IDE Integration — PyCharm Assistance Architecture</text>
+<text class="subtitle" x="80" y="112">Pre-arrival requirement before Lyra + Mak commissioning · PyCharm connects to Rend, not directly to Ollama</text>
+<!-- PyCharm -->
+<rect class="panel" height="250" rx="24" width="355" x="95" y="190"></rect>
+<text class="box-title" text-anchor="middle" x="272" y="235">PyCharm</text>
+<line class="divider" x1="125" x2="420" y1="255" y2="255"></line>
+<text class="body" x="130" y="295">AI Chat / Generate / Explain</text>
+<text class="body" x="130" y="330">Refactor / Tests / Docs</text>
+<text class="body" x="130" y="365">Selected code + file context</text>
+<text class="body" x="130" y="400">JetBrains AI Assistant</text>
+<!-- Gateway -->
+<rect class="panel-blue" height="280" rx="24" width="385" x="615" y="175"></rect>
+<text class="box-title" text-anchor="middle" x="808" y="225">Rend IDE Gateway</text>
+<text class="small" text-anchor="middle" x="808" y="255">MS-S1 MAX · LAN-only · authenticated</text>
+<line class="divider" x1="650" x2="965" y1="275" y2="275"></line>
+<text class="body" x="665" y="315">GET  /health</text>
+<text class="body" x="665" y="350">GET  /v1/models</text>
+<text class="body" x="665" y="385">POST /v1/chat/completions</text>
+<text class="body" x="665" y="420">Bearer token + bounded tool calling</text>
+<!-- Rend runtime -->
+<rect class="panel-dark" height="270" rx="24" width="345" x="1165" y="180"></rect>
+<text class="box-title-white" text-anchor="middle" x="1338" y="225">Rend Runtime</text>
+<line stroke="#55708c" stroke-width="2" x1="1200" x2="1475" y1="250" y2="250"></line>
+<text class="body-white" x="1205" y="290">Identity + project rules</text>
+<text class="body-white" x="1205" y="325">MemPalace context</text>
+<text class="body-white" x="1205" y="360">Model routing</text>
+<text class="body-white" x="1205" y="395">Tool / Git / release policy</text>
+<!-- arrows -->
+<path class="arrow" d="M450 315 C520 315, 540 315, 615 315"></path>
+<text class="small" text-anchor="middle" x="530" y="292">OpenAI-compatible API</text>
+<path class="arrow" d="M1000 315 C1060 315, 1100 315, 1165 315"></path>
+<text class="small" text-anchor="middle" x="1082" y="292">Rend bridge</text>
+<!-- Capability aliases -->
+<rect class="panel-purple" height="160" rx="22" width="420" x="600" y="525"></rect>
+<text class="box-title" text-anchor="middle" x="810" y="565">Stable capability aliases</text>
+<rect class="pill" height="44" rx="22" width="105" x="635" y="595"></rect>
+<text class="pillText" text-anchor="middle" x="688" y="623">rend</text>
+<rect class="pill" height="44" rx="22" width="125" x="755" y="595"></rect>
+<text class="pillText" text-anchor="middle" x="818" y="623">rend-code</text>
+<rect class="pill" height="44" rx="22" width="105" x="895" y="595"></rect>
+<text class="pillText" text-anchor="middle" x="948" y="623">rend-fast</text>
+<path class="arrow2" d="M1170 450 C1115 500, 1050 535, 1020 560"></path>
+<!-- Local models -->
+<rect class="panel-green" height="235" rx="24" width="380" x="1135" y="535"></rect>
+<text class="box-title" text-anchor="middle" x="1325" y="580">Qualified local models</text>
+<line class="divider" x1="1170" x2="1480" y1="602" y2="602"></line>
+<text class="body" x="1180" y="640">Coding worker → qwen3-coder</text>
+<text class="body" x="1180" y="675">Senior/general → qwen3.8</text>
+<text class="body" x="1180" y="710">Utility/fast → small local model</text>
+<text class="small" x="1180" y="745">Aliases stay stable as models upgrade</text>
+<path class="arrow2" d="M1020 605 C1070 605, 1095 605, 1135 605"></path>
+<!-- Governance gate -->
+<rect class="gate" height="270" rx="24" width="395" x="95" y="560"></rect>
+<text class="gateTitle" text-anchor="middle" x="293" y="607">IDE governance boundary</text>
+<line stroke="#f79009" stroke-width="1.8" x1="130" x2="455" y1="630" y2="630"></line>
+<text class="body" x="135" y="670">• No direct Ollama exposure</text>
+<text class="body" x="135" y="705">• No unrestricted shell</text>
+<text class="body" x="135" y="740">• Respect STOP / CANCEL</text>
+<text class="body" x="135" y="775">• Preserve Git / credential gates</text>
+<text class="body" x="135" y="810">• Production/release remains owner-gated</text>
+<path class="arrow2" d="M490 680 C550 680, 565 640, 600 620"></path>
+<!-- Bottom gate -->
+<rect class="panel" height="110" rx="20" width="1420" x="95" y="885"></rect>
+<text class="box-title" x="125" y="925">Pre-arrival acceptance gate</text>
+<text class="body" x="125" y="958">Qualify Rend-powered PyCharm chat, code generation, explanation, tests, documentation and refactoring on a real ProgreTech repository with reviewable provenance.</text>
+<text class="small" x="125" y="984">Inline FIM / ghost autocomplete is a separate capability and does not block the Rend IDE gateway.</text>
+</svg>
+</div>
+<div class="callout amber"><strong>Commissioning dependency:</strong> Lyra/Mak arrival does not authorize skipping this gate. The Rend IDE integration should be qualified first so the existing lead agent has a stable, governed development surface before additional agent commissioning increases operational complexity.</div>
+</section></body></html>
