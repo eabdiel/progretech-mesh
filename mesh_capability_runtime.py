@@ -25,6 +25,18 @@ RUNTIME_DESCRIPTORS: dict[str, dict[str, Any]] = {
         "timeout_seconds": 15,
         "notes": "Local Secret Service broker. Runtime CLI intentionally has no command that prints secret values.",
     },
+    "imap-review": {
+        "label": "ProgreTech IMAP Review",
+        "agents": ["Rend", "Mak", "Lyra"],
+        "mode": "bounded_mail_review",
+        "entrypoint": str(MESH_ROOT / "scripts" / "imap-review.py"),
+        "interpreter": str(MESH_ROOT / ".venv" / "bin" / "python"),
+        "network": "explicit_mail_provider",
+        "egress": "mail_provider_only",
+        "arguments": ["command", "args"],
+        "timeout_seconds": 30,
+        "notes": "Mailbox review runtime descriptor. Cannot execute unless lifecycle state is ACTIVE with explicit owner approval.",
+    },
     "webhooks": {
         "label": "ProgreTech Webhook Inbox",
         "agents": ["Rend", "Mak", "Lyra"],
