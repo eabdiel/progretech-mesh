@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>The ProgreTech Project Charter v5.20</title>
+<title>The ProgreTech Project Charter v5.21</title>
 <style>
 :root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
 </head>
 <body><div class="page">
 <header>
-<div class="eyebrow">ProgreTech · Project Charter · v5.20 · September 22, 2026</div>
+<div class="eyebrow">ProgreTech · Project Charter · v5.21 · September 22, 2026</div>
 <h1>One factory. One learning loop. One path forward.</h1>
 <p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
 </header>
@@ -802,12 +802,13 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <section id="pt048-remote-agent-access-ide-relay">
 <div class="tag purple">PT-2026-048 · AUTHORIZED / ACTIVE · September 22, 2026</div>
 <h2>PT-2026-048 — Mesh Remote Agent Access &amp; IDE Relay</h2>
-<p><strong>Status:</strong> AUTHORIZED / ACTIVE</p>
+<p><strong>Status:</strong> AUTHORIZED / ACTIVE · GATE 1 QUALIFIED · GATE 2 NEXT</p>
 <p>PT-2026-048 makes <code>mesh.progretech.com</code> the authenticated rendezvous and relay surface for a user's own enrolled agents from anywhere, while preserving the rule that agents initiate outbound connections and local model/runtime ports are never exposed directly to the public internet.</p>
 <div class="callout green"><strong>Priority decision:</strong> build the cloud relay contract first because the same outbound HTTPS/WSS path unlocks both goals: browser access to Rend from anywhere and PyCharm access from restrictive networks such as a corporate GlobalProtect/VPN environment. The work-computer IDE path therefore rides the qualified Mesh relay rather than requiring inbound Tailscale, direct LAN reachability, port <code>8766</code>, or direct Ollama access.</div>
+<div class="callout green"><strong>Gate 1 qualified:</strong> the ownership foundation passed 13 targeted identity/ownership tests plus the full 166-test regression suite, published to GitHub main at <code>90725d715a7ad74e98f06f4dcb7c9c039b838e4f</code>, deployed successfully through Cloud Build <code>06bf68c2-08cb-49ac-9a84-dbf871508e41</code>, and production health remained green. The next gate is owner-bound Rend migration followed by anywhere-web acceptance.</div>
 <h3>Implementation order</h3>
 <table><thead><tr><th>Gate</th><th>Deliverable</th></tr></thead><tbody>
-<tr><td><strong>1 · Ownership + relay foundation</strong></td><td>Explicit user→agent ownership and outbound relay foundation.</td></tr>
+<tr><td><strong>1 · Ownership + relay foundation</strong></td><td><strong>QUALIFIED · 2026-09-22</strong> — explicit user→agent ownership, owner-bound enrollment/device credentials, cross-owner isolation, legacy observe mode and PTMOWN1 migration foundation. Evidence: commit <code>90725d715a7ad74e98f06f4dcb7c9c039b838e4f</code>.</td></tr>
 <tr><td><strong>2 · Anywhere web acceptance</strong></td><td>Authenticated remote browser messaging and artifact return.</td></tr>
 <tr><td><strong>3 · Generic payload enrollment</strong></td><td>Site-generated PTM1 enrollment for user-created agents.</td></tr>
 <tr><td><strong>4 · IDE relay API</strong></td><td>Scoped IDE credential plus OpenAI-compatible HTTPS facade.</td></tr>
