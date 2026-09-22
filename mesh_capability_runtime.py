@@ -33,9 +33,9 @@ RUNTIME_DESCRIPTORS: dict[str, dict[str, Any]] = {
         "interpreter": str(MESH_ROOT / ".venv" / "bin" / "python"),
         "network": "explicit_mail_provider",
         "egress": "mail_provider_only",
-        "arguments": ["command", "args"],
+        "arguments": ["status|list-headers", "--mailbox", "--limit", "--timeout"],
         "timeout_seconds": 30,
-        "notes": "Mailbox review runtime descriptor. Cannot execute unless lifecycle state is ACTIVE with explicit owner approval.",
+        "notes": "Read-only mailbox header review. Runtime cannot execute unless lifecycle state is ACTIVE with explicit owner approval.",
     },
     "webhooks": {
         "label": "ProgreTech Webhook Inbox",
