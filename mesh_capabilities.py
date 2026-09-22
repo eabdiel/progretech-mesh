@@ -52,6 +52,26 @@ class Capability:
 
 CAPABILITIES: tuple[Capability, ...] = (
     Capability(
+        id="secret-broker",
+        name="ProgreTech Secret Broker",
+        classification="native integrated subsystem candidate",
+        state="CANDIDATE",
+        source="Freedesktop Secret Service / GNOME Keyring",
+        intended_use="Local secret storage and retrieval boundary for future providers without plaintext credential files.",
+        supported_agents=("Rend", "Mak", "Lyra"),
+        authority_boundary="Stores secrets only. It grants no task, release, model, network or execution authority.",
+        network="None",
+        data_egress="None",
+        filesystem="GNOME Keyring managed storage; no ProgreTech plaintext secret file",
+        subprocess="Bounded secret-tool calls through local Secret Service",
+        compute="Low",
+        credentials="Secrets remain inside local Secret Service",
+        version="0.1.0",
+        license="ProgreTech internal wrapper; system provider packages",
+        rollback="Deactivate adapter; stored provider entries remain under provider control until explicitly deleted.",
+        notes="Public/runtime CLI never returns secret values.",
+    ),
+    Capability(
         id="webhooks",
         name="ProgreTech Webhook Inbox",
         classification="native integrated subsystem candidate",

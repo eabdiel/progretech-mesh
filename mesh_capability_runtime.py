@@ -13,6 +13,18 @@ MESH_ROOT = HOME / "PycharmProjects" / "progretech-mesh"
 STATE_ROOT = HOME / ".progretech-mesh"
 
 RUNTIME_DESCRIPTORS: dict[str, dict[str, Any]] = {
+    "secret-broker": {
+        "label": "ProgreTech Secret Broker",
+        "agents": ["Rend", "Mak", "Lyra"],
+        "mode": "bounded_local_secret_service",
+        "entrypoint": str(MESH_ROOT / "scripts" / "secret-broker.py"),
+        "interpreter": str(MESH_ROOT / ".venv" / "bin" / "python"),
+        "network": "none",
+        "egress": "none",
+        "arguments": ["status|exists|delete|selftest"],
+        "timeout_seconds": 15,
+        "notes": "Local Secret Service broker. Runtime CLI intentionally has no command that prints secret values.",
+    },
     "webhooks": {
         "label": "ProgreTech Webhook Inbox",
         "agents": ["Rend", "Mak", "Lyra"],
