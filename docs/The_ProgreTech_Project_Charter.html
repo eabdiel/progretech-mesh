@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>The ProgreTech Project Charter v5.19</title>
+<title>The ProgreTech Project Charter v5.20</title>
 <style>
 :root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
 </head>
 <body><div class="page">
 <header>
-<div class="eyebrow">ProgreTech · Project Charter · v5.19 · September 22, 2026</div>
+<div class="eyebrow">ProgreTech · Project Charter · v5.20 · September 22, 2026</div>
 <h1>One factory. One learning loop. One path forward.</h1>
 <p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
 </header>
@@ -593,7 +593,7 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <!-- PT-CURRENT-OPERATIONAL-STATUS:START -->
 <section class="section" id="current-operational-status">
 <h2>Current Operational Status — Post PT-2026-047</h2>
-<p><strong>Roadmap state:</strong> maintenance / acceptance cadence. PT-2026-048 is not authorized. PT-2026-042 remains paused.</p>
+<p><strong>Roadmap state:</strong> maintenance / acceptance cadence. PT-2026-048 is AUTHORIZED / ACTIVE: Mesh Remote Agent Access &amp; IDE Relay. PT-2026-042 remains paused.</p>
 <ul>
 <li><strong>PT-2026-043:</strong> Rend Runtime &amp; Factory Integration Hardening — CLOSED / QUALIFIED.</li>
 <li><strong>PT-2026-044:</strong> Rend Autonomous Office Foundation — CLOSED / QUALIFIED.</li>
@@ -658,8 +658,8 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <section id="rend-ide-pycharm-integration">
 <div class="tag purple">Required pre-arrival activity · Rend IDE integration</div>
 <h2>Rend IDE / PyCharm Integration</h2>
-<p><strong>Status:</strong> REQUIRED BEFORE LYRA / MAK COMMISSIONING · NOT YET STARTED</p>
-<p><strong>Activity numbering:</strong> This is an explicit required activity in the current roadmap, but it does not consume <code>PT-2026-048</code> or another project number until execution is formally authorized.</p>
+<p><strong>Status:</strong> QUALIFIED / CLOSED · PRE-ARRIVAL IDE GATE SATISFIED</p>
+<p><strong>Activity numbering:</strong> This required pre-arrival activity was completed without consuming a numbered project activity. Its qualified gateway, multi-device PyCharm acceptance, governance boundary and milestone lesson remain frozen as accepted evidence.</p>
 <p>The ProgreTech coding workflow must allow PyCharm to use <strong>Rend himself</strong> as the engineering assistant rather than connecting PyCharm directly to Ollama or to an individual model. PyCharm is therefore treated as an IDE surface; Rend remains the governed agent/runtime behind code generation and assistance.</p>
 <div class="callout green"><strong>Required architecture:</strong> <code>PyCharm → JetBrains AI Assistant / OpenAI-compatible client → Rend IDE Gateway → Rend Runtime / governance / MemPalace / model routing → qualified local models on the MS-S1 MAX</code>.</div>
 <h3>Required capabilities</h3>
@@ -798,4 +798,22 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 </svg>
 </div>
 <div class="callout amber"><strong>Commissioning dependency:</strong> Lyra/Mak arrival does not authorize skipping this gate. The Rend IDE integration should be qualified first so the existing lead agent has a stable, governed development surface before additional agent commissioning increases operational complexity.</div>
-</section></body></html>
+</section><!-- PT048_REMOTE_AGENT_ACCESS_IDE_RELAY_V1 -->
+<section id="pt048-remote-agent-access-ide-relay">
+<div class="tag purple">PT-2026-048 · AUTHORIZED / ACTIVE · September 22, 2026</div>
+<h2>PT-2026-048 — Mesh Remote Agent Access &amp; IDE Relay</h2>
+<p><strong>Status:</strong> AUTHORIZED / ACTIVE</p>
+<p>PT-2026-048 makes <code>mesh.progretech.com</code> the authenticated rendezvous and relay surface for a user's own enrolled agents from anywhere, while preserving the rule that agents initiate outbound connections and local model/runtime ports are never exposed directly to the public internet.</p>
+<div class="callout green"><strong>Priority decision:</strong> build the cloud relay contract first because the same outbound HTTPS/WSS path unlocks both goals: browser access to Rend from anywhere and PyCharm access from restrictive networks such as a corporate GlobalProtect/VPN environment. The work-computer IDE path therefore rides the qualified Mesh relay rather than requiring inbound Tailscale, direct LAN reachability, port <code>8766</code>, or direct Ollama access.</div>
+<h3>Implementation order</h3>
+<table><thead><tr><th>Gate</th><th>Deliverable</th></tr></thead><tbody>
+<tr><td><strong>1 · Ownership + relay foundation</strong></td><td>Explicit user→agent ownership and outbound relay foundation.</td></tr>
+<tr><td><strong>2 · Anywhere web acceptance</strong></td><td>Authenticated remote browser messaging and artifact return.</td></tr>
+<tr><td><strong>3 · Generic payload enrollment</strong></td><td>Site-generated PTM1 enrollment for user-created agents.</td></tr>
+<tr><td><strong>4 · IDE relay API</strong></td><td>Scoped IDE credential plus OpenAI-compatible HTTPS facade.</td></tr>
+<tr><td><strong>5 · Work-computer PyCharm acceptance</strong></td><td>PyCharm through allowed HTTPS to mesh.progretech.com only.</td></tr>
+<tr><td><strong>6 · Product qualification</strong></td><td>Multi-user isolation, revocation, replay negatives, rate/size limits, recovery, evidence and teaching.</td></tr>
+</tbody></table>
+<div class="callout amber"><strong>Non-goal:</strong> PT-2026-048 does not create a generic public remote shell, expose local model ports, bypass enterprise network controls, or allow a Mesh account to command agents it does not own.</div>
+</section>
+</body></html>
