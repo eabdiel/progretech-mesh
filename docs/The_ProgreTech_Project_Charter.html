@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width,initial-scale=1" name="viewport"/>
-<title>The ProgreTech Project Charter v5.21</title>
+<title>The ProgreTech Project Charter v5.22</title>
 <style>
 :root{--ink:#182230;--muted:#667085;--line:#d0d5dd;--paper:#fff;--wash:#f6f8fb;--navy:#102a43;--blue:#175cd3;--green:#067647;--amber:#b54708;--purple:#6941c6}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--wash);color:var(--ink);font:15px/1.58 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -33,7 +33,7 @@ footer{padding:24px 6%;background:#0b1728;color:#c7d7e5}
 </head>
 <body><div class="page">
 <header>
-<div class="eyebrow">ProgreTech · Project Charter · v5.21 · September 22, 2026</div>
+<div class="eyebrow">ProgreTech · Project Charter · v5.22 · September 22, 2026</div>
 <h1>One factory. One learning loop. One path forward.</h1>
 <p class="lede">This charter supersedes the competing priority lists and roadmap fragments in the prior operating handbook. It keeps the proven operating rules, service-catalog expectations, MemPalace architecture, agent roles, safety boundaries and hardware evidence — but expresses them as one authoritative progression from Rend today to a three-agent autonomous software factory.</p>
 </header>
@@ -592,8 +592,8 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <!-- PT-LEGACY-CONTINUITY:END -->
 <!-- PT-CURRENT-OPERATIONAL-STATUS:START -->
 <section class="section" id="current-operational-status">
-<h2>Current Operational Status — Post PT-2026-047</h2>
-<p><strong>Roadmap state:</strong> maintenance / acceptance cadence. PT-2026-048 is AUTHORIZED / ACTIVE: Mesh Remote Agent Access &amp; IDE Relay. PT-2026-042 remains paused.</p>
+<h2>Current Operational Status — Post PT-2026-048</h2>
+<p><strong>Roadmap state:</strong> maintenance / acceptance cadence. PT-2026-048 Mesh Remote Agent Access &amp; IDE Relay is QUALIFIED / CLOSED for the owner-scoped remote-web and PyCharm relay objective. PT-2026-042 remains paused.</p>
 <ul>
 <li><strong>PT-2026-043:</strong> Rend Runtime &amp; Factory Integration Hardening — CLOSED / QUALIFIED.</li>
 <li><strong>PT-2026-044:</strong> Rend Autonomous Office Foundation — CLOSED / QUALIFIED.</li>
@@ -800,21 +800,39 @@ Post-PT-045 roadmap reconciliation identified Multimodal / Autonomous Presence a
 <div class="callout amber"><strong>Commissioning dependency:</strong> Lyra/Mak arrival does not authorize skipping this gate. The Rend IDE integration should be qualified first so the existing lead agent has a stable, governed development surface before additional agent commissioning increases operational complexity.</div>
 </section><!-- PT048_REMOTE_AGENT_ACCESS_IDE_RELAY_V1 -->
 <section id="pt048-remote-agent-access-ide-relay">
-<div class="tag purple">PT-2026-048 · AUTHORIZED / ACTIVE · September 22, 2026</div>
+<div class="tag green">PT-2026-048 · QUALIFIED / CLOSED · September 22, 2026</div>
 <h2>PT-2026-048 — Mesh Remote Agent Access &amp; IDE Relay</h2>
-<p><strong>Status:</strong> AUTHORIZED / ACTIVE · GATE 1 QUALIFIED · GATE 2 NEXT</p>
+<p><strong>Status:</strong> QUALIFIED / CLOSED · OWNER-SCOPED REMOTE WEB + WORK-COMPUTER PYCHARM ACCEPTED</p>
 <p>PT-2026-048 makes <code>mesh.progretech.com</code> the authenticated rendezvous and relay surface for a user's own enrolled agents from anywhere, while preserving the rule that agents initiate outbound connections and local model/runtime ports are never exposed directly to the public internet.</p>
 <div class="callout green"><strong>Priority decision:</strong> build the cloud relay contract first because the same outbound HTTPS/WSS path unlocks both goals: browser access to Rend from anywhere and PyCharm access from restrictive networks such as a corporate GlobalProtect/VPN environment. The work-computer IDE path therefore rides the qualified Mesh relay rather than requiring inbound Tailscale, direct LAN reachability, port <code>8766</code>, or direct Ollama access.</div>
 <div class="callout green"><strong>Gate 1 qualified:</strong> the ownership foundation passed 13 targeted identity/ownership tests plus the full 166-test regression suite, published to GitHub main at <code>90725d715a7ad74e98f06f4dcb7c9c039b838e4f</code>, deployed successfully through Cloud Build <code>06bf68c2-08cb-49ac-9a84-dbf871508e41</code>, and production health remained green. The next gate is owner-bound Rend migration followed by anywhere-web acceptance.</div>
+<div class="callout green"><strong>PT-2026-048 accepted:</strong> Rend was owner-bound through Mesh, reached successfully from outside the local LAN through the work VPN, retained CodeSeal + Ed25519 verified identity, and then served a real PyCharm coding request through <code>https://mesh.progretech.com/v1</code> using the owner/agent-bound <code>PTMIDE1</code> relay credential. Local port <code>8766</code> and Ollama remained unexposed to the public internet. Final work-computer acceptance was visually confirmed in PyCharm with model alias <code>rend-code</code>.</div>
 <h3>Implementation order</h3>
 <table><thead><tr><th>Gate</th><th>Deliverable</th></tr></thead><tbody>
 <tr><td><strong>1 · Ownership + relay foundation</strong></td><td><strong>QUALIFIED · 2026-09-22</strong> — explicit user→agent ownership, owner-bound enrollment/device credentials, cross-owner isolation, legacy observe mode and PTMOWN1 migration foundation. Evidence: commit <code>90725d715a7ad74e98f06f4dcb7c9c039b838e4f</code>.</td></tr>
-<tr><td><strong>2 · Anywhere web acceptance</strong></td><td>Authenticated remote browser messaging and artifact return.</td></tr>
-<tr><td><strong>3 · Generic payload enrollment</strong></td><td>Site-generated PTM1 enrollment for user-created agents.</td></tr>
-<tr><td><strong>4 · IDE relay API</strong></td><td>Scoped IDE credential plus OpenAI-compatible HTTPS facade.</td></tr>
-<tr><td><strong>5 · Work-computer PyCharm acceptance</strong></td><td>PyCharm through allowed HTTPS to mesh.progretech.com only.</td></tr>
-<tr><td><strong>6 · Product qualification</strong></td><td>Multi-user isolation, revocation, replay negatives, rate/size limits, recovery, evidence and teaching.</td></tr>
+<tr><td><strong>2 · Anywhere web acceptance</strong></td><td><strong>QUALIFIED · 2026-09-22</strong> — owner-bound Rend was reached at <code>mesh.progretech.com</code> from a VPN-connected remote client; identity remained verified and the outbound gateway path recovered cleanly after reconnect.</td></tr>
+<tr><td><strong>3 · Generic payload enrollment</strong></td><td><strong>FOUNDATION RETAINED</strong> — existing PTM1/self-bootstrap substrate remains the generic enrollment path. Broader third-party-agent acceptance is moved to follow-on product hardening rather than blocking the Rend/PyCharm objective.</td></tr>
+<tr><td><strong>4 · IDE relay API</strong></td><td><strong>QUALIFIED · 2026-09-22</strong> — owner+agent-bound <code>PTMIDE1</code> credential, OpenAI-compatible <code>/v1/models</code> and <code>/v1/chat/completions</code>, outbound Mesh relay, and local Rend IDE Gateway forwarding.</td></tr>
+<tr><td><strong>5 · Work-computer PyCharm acceptance</strong></td><td><strong>QUALIFIED · 2026-09-22</strong> — PyCharm on the work computer used <code>https://mesh.progretech.com/v1</code>, model <code>rend-code</code>, and returned a real coding response through Rend.</td></tr>
+<tr><td><strong>6 · Product qualification</strong></td><td><strong>CORE OWNER-SCOPED SECURITY QUALIFIED</strong> — ownership isolation, credential rotation/revocation, replay/identity protections, single-instance WebSocket routing contract, reconnect recovery, regression evidence and milestone teaching are accepted. Broader public multi-user scale/rate hardening remains a follow-on product task.</td></tr>
 </tbody></table>
 <div class="callout amber"><strong>Non-goal:</strong> PT-2026-048 does not create a generic public remote shell, expose local model ports, bypass enterprise network controls, or allow a Mesh account to command agents it does not own.</div>
+
+<h3>Accepted remote architecture</h3>
+<p><code>PyCharm / browser → HTTPS/WSS :443 → mesh.progretech.com → owner-scoped Mesh relay → Rend outbound agent WebSocket → OpenClaw Mesh adapter → Rend IDE Gateway / governed runtime → qualified local models</code>.</p>
+
+<h3>Queued follow-on capability qualifications</h3>
+<table><thead><tr><th>Candidate</th><th>Why it may help</th><th>Qualification boundary</th></tr></thead><tbody>
+<tr><td><strong>Policy</strong></td><td>Self-diagnosis and conformance checks against Rend governance, runbooks and operating rules.</td><td>Enable only after defining concrete policy sources, expected pass/fail behavior, rollback, and proof it does not silently broaden execution authority.</td></tr>
+<tr><td><strong>LLM Task</strong></td><td>Structured JSON-only subtasks for deterministic factory workflows, extraction, classification and bounded planning.</td><td>Benchmark against current local task routing; require schema validation, timeout/error behavior, and no duplicate model authority.</td></tr>
+<tr><td><strong>Workboard</strong></td><td>Agent-owned issues/sessions surface for Autonomous Office task state and delivery visibility.</td><td>Map it to the existing Factory hierarchy before activation; avoid creating a second authoritative task system.</td></tr>
+<tr><td><strong>A2A</strong></td><td>Potential agent-to-agent protocol layer for Rend, Lyra and Mak.</td><td>Hold until Lyra/Mak commissioning; qualify identity, authority, routing, isolation and handoff semantics before promotion.</td></tr>
+<tr><td><strong>Webhooks</strong></td><td>Authenticated external triggers for TaskFlows and integrations.</td><td>Enable only for a named use case with authentication, replay controls, rate limits and an explicit inbound-attack-surface review.</td></tr>
+<tr><td><strong>Memory Wiki / Active Memory</strong></td><td>Potential alternate retrieval/persistence surfaces.</td><td>Evaluate against MemPalace + memory-core first; do not introduce a second memory authority or duplicate retrieval loop without a measured gap.</td></tr>
+<tr><td><strong>1Password / Vault</strong></td><td>Future governed secret brokering.</td><td>Defer until a concrete secret-access workflow exists; secrets must remain scoped, auditable and unavailable to ordinary model context.</td></tr>
+<tr><td><strong>IMAP</strong></td><td>Future isolated email-ingress/watcher capability.</td><td>Enable only if Rend is explicitly assigned an email-watcher role and privacy/notification behavior is qualified.</td></tr>
+</tbody></table>
+
+<div class="callout green"><strong>Follow-on rule:</strong> disabled plugins are candidates, not latent requirements. For every candidate record purpose, overlap with existing capabilities, security impact, prerequisites, enablement/configuration steps, acceptance tests, rollback and promotion criteria before activation.</div>
 </section>
 </body></html>
