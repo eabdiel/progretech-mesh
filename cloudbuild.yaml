@@ -3,13 +3,13 @@ steps:
     args:
       - build
       - -t
-      - gcr.io/$PROJECT_ID/progretech-mesh:$COMMIT_SHA
+      - us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/progretech-mesh:$COMMIT_SHA
       - .
 
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - gcr.io/$PROJECT_ID/progretech-mesh:$COMMIT_SHA
+      - us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/progretech-mesh:$COMMIT_SHA
 
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
@@ -18,13 +18,13 @@ steps:
       - services
       - update
       - progretech-mesh
-      - --image=gcr.io/$PROJECT_ID/progretech-mesh:$COMMIT_SHA
+      - --image=us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/progretech-mesh:$COMMIT_SHA
       - --region=us-east1
       - --project=$PROJECT_ID
       - --quiet
 
 images:
-  - gcr.io/$PROJECT_ID/progretech-mesh:$COMMIT_SHA
+  - us-east1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/progretech-mesh:$COMMIT_SHA
 
 options:
   logging: CLOUD_LOGGING_ONLY
