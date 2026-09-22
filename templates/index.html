@@ -75,6 +75,48 @@
             <button class="ghost-btn" id="groupRoomButton">Start group room</button>
             <button class="ghost-btn" id="heartbeatButton">Request heartbeat</button>
           </div>
+
+          <div class="buddy-slot buddy-hero-dock" id="buddySlot" aria-live="polite">
+            <button class="buddy-anchor-home" id="buddyAnchorHome" type="button" hidden aria-label="Return buddy to banner">
+              <img id="buddyAnchorSprite" src="{{ url_for('static', filename='buddy/default-progre/eyes-closed.png') }}" alt="" />
+              <span>↙</span>
+            </button>
+
+            <div class="buddy-tile" id="buddyTile">
+              <div class="buddy-tile-head" id="buddyDragHandle">
+                <div class="buddy-title-block">
+                  <strong>Buddy mode</strong>
+                  <span id="buddyAgentLabel">Progre · not assigned</span>
+                </div>
+                <div class="buddy-head-actions">
+                  <button class="icon-btn buddy-icon-btn" id="buddySettingsButton" type="button" aria-label="Buddy settings" title="Buddy settings">⚙</button>
+                  <button class="icon-btn buddy-icon-btn" id="buddyPopButton" type="button" aria-label="Pop out buddy" title="Pop out buddy">↗</button>
+                </div>
+              </div>
+
+              <div class="buddy-stage-wrap">
+                <div class="buddy-stage" id="buddyStage" style="--buddy-bg:#ffffff">
+                  <img id="buddySprite" src="{{ url_for('static', filename='buddy/default-progre/idle.png') }}" alt="Buddy sprite" width="126" height="126" />
+                  <span class="buddy-speaking-indicator" id="buddySpeakingIndicator" aria-hidden="true"></span>
+                </div>
+              </div>
+
+              <div class="buddy-status-row">
+                <label class="buddy-power">
+                  <input id="buddyEnabledToggle" type="checkbox" />
+                  <span>Buddy on</span>
+                </label>
+                <span id="buddyStateLabel">Idle</span>
+              </div>
+
+              <form class="buddy-composer" id="buddyComposer">
+                <input id="buddyMessageInput" type="text" autocomplete="off" placeholder="Type to your buddy…" />
+                <button type="submit">Send</button>
+              </form>
+
+              <button class="buddy-return-placeholder" id="buddyReturnButton" type="button" hidden>Return buddy here</button>
+            </div>
+          </div>
         </div>
 
         <aside class="hero-side">
@@ -103,52 +145,6 @@
       </div>
 
       <section class="agent-grid" id="agentGrid" aria-live="polite"></section>
-
-
-      <div class="section-head" id="buddySectionHead">
-        <div>
-          <h2>Buddy mode</h2>
-          <p>Give one connected agent a lightweight animated companion. One buddy can be active at a time.</p>
-        </div>
-      </div>
-
-      <section class="buddy-slot" id="buddySlot" aria-live="polite">
-        <button class="buddy-anchor-home" id="buddyAnchorHome" type="button" hidden>Buddy is floating · anchor here</button>
-        <div class="buddy-tile" id="buddyTile">
-          <div class="buddy-tile-head">
-            <div>
-              <strong>Buddy mode</strong>
-              <span id="buddyAgentLabel">Progre · not assigned</span>
-            </div>
-            <div class="buddy-head-actions">
-              <button class="icon-btn buddy-icon-btn" id="buddySettingsButton" type="button" aria-label="Buddy settings" title="Buddy settings">⚙</button>
-              <button class="icon-btn buddy-icon-btn" id="buddyPopButton" type="button" aria-label="Pop out buddy" title="Pop out buddy">↗</button>
-            </div>
-          </div>
-
-          <div class="buddy-stage-wrap">
-            <div class="buddy-stage" id="buddyStage" style="--buddy-bg:#ffffff">
-              <img id="buddySprite" src="{{ url_for('static', filename='buddy/default-progre/idle.png') }}" alt="Buddy sprite" width="126" height="126" />
-              <span class="buddy-speaking-indicator" id="buddySpeakingIndicator" aria-hidden="true"></span>
-            </div>
-          </div>
-
-          <div class="buddy-status-row">
-            <label class="buddy-power">
-              <input id="buddyEnabledToggle" type="checkbox" />
-              <span>Buddy on</span>
-            </label>
-            <span id="buddyStateLabel">Idle</span>
-          </div>
-
-          <form class="buddy-composer" id="buddyComposer">
-            <input id="buddyMessageInput" type="text" autocomplete="off" placeholder="Type to your buddy…" />
-            <button type="submit">Send</button>
-          </form>
-
-          <button class="buddy-return-placeholder" id="buddyReturnButton" type="button" hidden>Return buddy here</button>
-        </div>
-      </section>
 
       <div class="mobile-monitor-bar" id="mobileMonitorBar">
         <button class="active" data-mobile-view="stream">Conversation</button>
