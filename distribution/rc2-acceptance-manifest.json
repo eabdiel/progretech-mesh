@@ -45,7 +45,7 @@
   ],
   "artifact_pins": {
     "openclaw_adapter_version": "0.7.9",
-    "openclaw_adapter_sha256": "364897fabd3d8a15bb63d16ee348bf4700b699feb0ceeb9f8cecce47bfb6df65",
+    "openclaw_adapter_sha256": "09f9159cb391eeda37df9d66e8e48f61491bafaa89cd7bc0349fba410e7ebd1e",
     "bootstrap_helper_sha256": "7a309839f409cc67199536b28c08e7659c777c9b1b584e76f668db45b9b877d6"
   },
   "claims_not_yet_proven_until_live_test": [
