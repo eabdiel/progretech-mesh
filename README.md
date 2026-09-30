@@ -184,6 +184,10 @@ Roles sharing one workstation keep separate profiles through their verified host
 Setup includes Minimum Requirements and Rend’s dated stack reference.
 See [the integration guide](docs/PER_AGENT_CONTROL_CENTER.md) for setup and runtime limits.
 
+## Agent enrollment and management
+
+**Add signed agent** explains identity keys, imports signed evidence, and can generate a new Ed25519 identity plus a registry-issued CodeSeal key. **Manage** saves host-local communication models, removes enrollments, and launches configured CrewAI/OpenHands factory jobs. Lyra and Mak can be messaged through their verified host in separate Mesh sessions. See [setup and local/offline instructions](docs/AGENT_MANAGEMENT.md).
+
 ## Current Reference Agent: Rend
 
 Mesh is currently being developed and acceptance-tested against **Rend**, an independently running OpenClaw-based autonomous agent.

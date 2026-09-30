@@ -1,4 +1,4 @@
-const actions = new Set('profile.get profile.save voice.preview host.system models.list audio.get audio.set voice.get voice.start voice.stop vision.get vision.analyze skills.list mail.status orchestration.status harness.status grid.status vllm.status chatter.get chatter.settings chatter.test'.split(' '));
+const actions = new Set('communication.get communication.save communication.chat enrollment.remove factory.providers factory.run factory.job profile.get profile.save voice.preview host.system models.list audio.get audio.set voice.get voice.start voice.stop vision.get vision.analyze skills.list mail.status orchestration.status harness.status grid.status vllm.status chatter.get chatter.settings chatter.test'.split(' '));
 
 export async function forwardControlCenter(payload, agentId, token, fetchImpl = fetch) {
   if (!payload || !actions.has(payload.action)) throw new Error('action_not_allowed');

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import hashlib
 import ipaddress
 import json
@@ -53,6 +54,7 @@ from mesh_capabilities import register_capability_routes
 from mesh_capability_routes import register_capability_registry_routes
 from mesh_capability_runtime_routes import register_capability_runtime_routes
 from mesh_factory_control import factory_relay, register_factory_routes
+from mesh_agent_management import register_management_routes
 from mesh_control_center import control_relay, register_control_center_routes, register_gateway_agents
 from gateway.identity.codeseal import CodeSealIdentityVerifier
 
@@ -177,8 +179,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.1-cc.1"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.1-cc.1.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.2-management.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.2-management.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -1474,6 +1476,7 @@ def create_app() -> Flask:
         user = session.get("mesh_user") or {}
         return str(user.get("id") or "").strip()
 
+    register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
     register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
     register_control_center_routes(app, require_session, current_mesh_user_id,
                                    DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
@@ -1483,7 +1486,7 @@ def create_app() -> Flask:
         parts = request.path.split("/")
         if len(parts) >= 4 and parts[1:3] == ["api", "agents"]:
             record = DEV_AGENT_REGISTRY.get(parts[3], {})
-            if record.get("control_center_gateway") and parts[4:] != ["control-center"]:
+            if record.get("control_center_gateway") and parts[4:] not in (["control-center"], ["management"], ["message"]):
                 return jsonify(ok=False, error="linked_role_uses_host_identity"), 409
 
 
@@ -2657,7 +2660,10 @@ def create_app() -> Flask:
         if verification["state"] in {"invalid", "revoked"}:
             return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 400
 
-        agent_id = secrets.token_hex(6)
+        identity = ((codeseal_evidence or {}).get("manifest") or {}).get("mesh_identity", {}) if isinstance(codeseal_evidence, dict) else {}
+        agent_id = str(identity.get("agent_id") or secrets.token_hex(6))
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", agent_id) or agent_id in DEV_AGENT_REGISTRY:
+            return jsonify(ok=False, error="agent_id_unavailable"), 409
         record = {
             "id": agent_id,
             "owner_id": current_mesh_user_id(),
@@ -2783,6 +2789,10 @@ def create_app() -> Flask:
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
             return jsonify(ok=False, error="agent_not_found"), 404
+
+        if record.get("control_center_gateway"):
+            from mesh_agent_management import linked_message
+            return linked_message(record, current_mesh_user_id(), DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
 
         payload = request.get_json(silent=True) or {}
         text = str(payload.get("text", "")).strip()

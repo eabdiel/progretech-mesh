@@ -98,6 +98,9 @@ class AgentControlProvider:
                 'voice': {'provider': 'kokoro', 'voice': 'am_onyx', 'pitch': 4}, 'permissions': []}
 
     def dispatch(self, agent_id, action, args):
+        from control_center.management import ACTIONS, dispatch
+        if action in ACTIONS:
+            return dispatch(self, agent_id, action, args)
         validate_args(action, args)
         with self.lock:
             path = self._path(agent_id)
@@ -152,6 +155,9 @@ def register_provider_routes(app, provider, token):
         try:
             agents = []
             for aid, runtime in provider.bindings.items():
+                from control_center.management import preferences
+                if not preferences(provider, aid)["enabled"]:
+                    continue
                 item = provider.discover(runtime)
                 agents.append({'id': aid, 'name': item.get('name', runtime), 'role': item.get('role', '')})
             return jsonify(ok=True, agents=agents)

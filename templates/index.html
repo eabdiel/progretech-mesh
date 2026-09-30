@@ -271,9 +271,20 @@
       <form id="agentEnrollmentForm" class="enrollment-form">
         <label>Agent name<input name="name" required placeholder="e.g. Atlas" maxlength="80" /></label>
         <label>Agent role<input name="role" placeholder="Development agent" maxlength="120" /></label>
-        <label>Public identity key<textarea name="public_key" required placeholder="Paste the agent public identity material"></textarea></label>
-        <label>CodeSeal key<input name="codeseal_key" placeholder="CS-..." /></label>
-        <div class="enrollment-help">Only verified identities can connect an agent. Development identity verification is not production CodeSeal verification.</div>
+        <ol class="enrollment-help"><li>Choose a name and role. Each independently running agent needs its own Ed25519 identity.</li><li>Import its PUBLIC key and signed CodeSeal evidence below, or generate a new identity and seal here.</li><li>Save the private key on the agent’s machine, then enroll and use Connect agent to copy its connection instructions.</li></ol>
+        <label>Agent identity ID<input name="agent_id" placeholder="Filled from signed evidence" maxlength="80" /></label>
+        <label>Ed25519 public identity key (PEM)<textarea name="public_key" required placeholder="-----BEGIN PUBLIC KEY-----"></textarea></label>
+        <p class="enrollment-help">This identifies the agent cryptographically. It is public, unlike the matching private key, which stays with your agent and proves possession on connection. Never paste a private key here.</p>
+        <label>Signed CodeSeal evidence JSON<textarea name="codeseal_evidence" placeholder="Paste the manifest, registry_signature and registry_public_key from CodeSeal"></textarea></label>
+        <input name="codeseal_key" type="hidden" />
+        <details><summary>Need an identity or CodeSeal key?</summary>
+          <p>Generate a new identity only for a new agent. Download its private key immediately and place it on that agent. A CodeSeal seal is a registry-signed record bound to the public key, not a password or a made-up CS- string.</p>
+          <button type="button" class="ghost-btn" id="generateAgentIdentity">Generate identity & download private key</button>
+          <label>CodeSeal personal API token<input id="codeSealApiToken" type="password" autocomplete="off" placeholder="ptcs_live_…" /></label>
+          <p><a href="https://codeseal.progretech.com/account/api-tokens" target="_blank" rel="noopener">Create a CodeSeal account and API token</a>. The token is used for this request only and is not saved by Mesh.</p>
+          <button type="button" class="ghost-btn" id="issueAgentSeal">Generate CodeSeal key</button>
+          <p id="agentIdentityStatus" role="status"></p>
+        </details>
         <div class="modal-actions">
           <button type="button" class="ghost-btn" id="cancelAgentEnrollment">Cancel</button>
           <button type="submit" class="primary-btn">Verify & enroll</button>
@@ -455,5 +466,6 @@
     </section>
   </div>
 
+<script src="{{ url_for('static', filename='js/agent-management.js') }}?v={{ build_id }}" defer></script>
 </body>
 </html>

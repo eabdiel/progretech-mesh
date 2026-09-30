@@ -4,6 +4,7 @@ Load this module after factory_host, then call install(factory_host).
 Nothing is started or enabled by importing it.
 """
 import json
+from urllib.request import Request, urlopen
 from pathlib import Path
 
 from control_center.provider import AgentControlProvider, register_provider_routes
@@ -29,6 +30,7 @@ def install(host, home=None):
         models = [m for m in [primary, *fallbacks] if isinstance(m, str)]
         return {'runtime_id': runtime_id, 'name': agent.get('name', runtime_id),
                 'role': agent.get('identity', {}).get('theme', ''), 'models': models,
+                'communication_roles': [runtime_id],
                 'models_meaning': 'Configured primary and fallbacks; installed models are a separate host inventory.',
                 'voice_application': 'Per-agent saved voice is used for preview. The existing voice service remains shared.'}
 
@@ -40,6 +42,39 @@ def install(host, home=None):
     def execute(runtime_id, action, args, profile):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
+        if action.startswith('factory.'):
+            from control_center.factory_jobs import dispatch_factory
+            return dispatch_factory(home, runtime_id, action, args)
+        if action == 'communication.chat':
+            from control_center.management import preferences
+            cfg = json.loads((home / '.openclaw/openclaw.json').read_text())
+            communication = profile['communication']
+            role = communication['role']
+            if role != runtime_id or role not in cfg['agents']['entries']:
+                raise ValueError('communication_role_unavailable')
+            model = communication['model']
+            if model != 'default' and model not in discover(runtime_id)['models']:
+                raise ValueError('communication_model_unavailable')
+            gateway = cfg['gateway']
+            if gateway.get('auth', {}).get('mode') != 'token':
+                raise ValueError('gateway_token_required')
+            port = gateway.get('port', 18789)
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError('gateway_port_invalid')
+            request_body = {'model': 'openclaw/' + role, 'stream': False,
+                            'messages': [{'role': 'user', 'content': args['text']}],
+                            'user': 'mesh-conversation-' + profile['agent_id']}
+            # Runtime model overrides are sent only via the configured gateway;
+            # they do not rewrite the agent's global primary/fallback settings.
+            headers = {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + gateway['auth']['token'],
+                       'x-openclaw-agent-id': role, 'x-openclaw-message-channel': 'mesh',
+                       'x-openclaw-session-key': 'agent:' + role + ':mesh-chat:' + profile['agent_id']}
+            if model != 'default':
+                headers['x-openclaw-model'] = model
+            req = Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=json.dumps(request_body).encode(), headers=headers)
+            with urlopen(req, timeout=35) as response:
+                completion = json.loads(response.read(1048576))
+            return {'reply': completion['choices'][0]['message']['content'], 'role': role, 'model': model}
         mutation = action in {'voice.preview', 'audio.set', 'voice.start', 'voice.stop', 'vision.analyze', 'chatter.settings', 'chatter.test'}
         if mutation and not host.MUTATION_LOCK.acquire(blocking=False):
             raise ValueError('shared_workstation_busy')
