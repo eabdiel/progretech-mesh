@@ -122,6 +122,9 @@ def main():
         QTimer.singleShot(30000, lambda: qt.exit(2))
     result = qt.exec()
     server.shutdown(); server.server_close()
+    # The page must release Chromium resources before its off-record profile.
+    from shiboken6 import delete
+    delete(view.page()); delete(profile); delete(window)
     if smoke: temporary.cleanup()
     return result
 

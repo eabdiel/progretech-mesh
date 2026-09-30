@@ -78,7 +78,7 @@ class OfflineTests(unittest.TestCase):
         worker = next(a['id'] for a in hired.json['result']['snapshot']['agents'] if not a['isDirector'])
         self.assertEqual(self.post('/api/local/settings', {'gguf':str(model),'bindings':{worker:agent['id']}}).status_code, 200)
         config = json.loads((self.home/'.progretech-mesh/factory-runtimes.json').read_text())
-        self.assertEqual(config['crewai']['gguf'], str(model))
+        self.assertEqual(config['crewai']['gguf'], str(model.resolve()))
         self.assertNotIn('api_key', json.dumps(config))
 
 

@@ -77,6 +77,7 @@ def dispatch_factory(home, role, action, args, office_id=None):
                     job.update(state='failed', error='factory_workstation_busy'); return
                 job['state'] = 'running'; _write(path, job)
                 env = os.environ.copy()
+                env['PYTHONUTF8'] = '1'
                 env['MESH_FACTORY_MODEL'] = model
                 env['MESH_FACTORY_BASE_URL'] = str(settings.get('base_url', ''))
                 secret_env = settings.get('api_key_env', 'MESH_FACTORY_API_KEY')
@@ -88,7 +89,7 @@ def dispatch_factory(home, role, action, args, office_id=None):
                 result = subprocess.run(command,
                     input=json.dumps({'task': args['task'], 'workspace': str(workspace), 'office': office, 'home': str(home), 'role': office_role,
                         'local_bindings': settings.get('local_bindings', {})}), text=True,
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=workspace,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8', errors='replace', env=env, cwd=workspace,
                     timeout=1800, check=False)
                 job.update(state='completed' if result.returncode == 0 else 'failed', returncode=result.returncode)
                 # Result text stays host-local. Status never forwards arbitrary logs or credentials.
