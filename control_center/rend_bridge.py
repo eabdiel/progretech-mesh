@@ -28,9 +28,15 @@ def install(host, home=None):
         primary = model if isinstance(model, str) else model.get('primary')
         fallbacks = [] if isinstance(model, str) else model.get('fallbacks', [])
         models = [m for m in [primary, *fallbacks] if isinstance(m, str)]
+        allowlist = cfg.get('agents', {}).get('defaults', {}).get('models', {})
+        configured = [provider + '/' + entry['id']
+                      for provider, data in cfg.get('models', {}).get('providers', {}).items()
+                      for entry in data.get('models', [])
+                      if isinstance(entry, dict) and isinstance(entry.get('id'), str)]
+        communication_models = list(dict.fromkeys([*models, *(allowlist.keys() if isinstance(allowlist, dict) and allowlist else configured)]))
         return {'runtime_id': runtime_id, 'name': agent.get('name', runtime_id),
                 'role': agent.get('identity', {}).get('theme', ''), 'models': models,
-                'communication_roles': [runtime_id],
+                'communication_roles': [runtime_id], 'communication_models': communication_models,
                 'models_meaning': 'Configured primary and fallbacks; installed models are a separate host inventory.',
                 'voice_application': 'Per-agent saved voice is used for preview. The existing voice service remains shared.'}
 
@@ -53,7 +59,7 @@ def install(host, home=None):
             if role != runtime_id or role not in cfg['agents']['entries']:
                 raise ValueError('communication_role_unavailable')
             model = communication['model']
-            if model != 'default' and model not in discover(runtime_id)['models']:
+            if model != 'default' and model not in discover(runtime_id)['communication_models']:
                 raise ValueError('communication_model_unavailable')
             gateway = cfg['gateway']
             if gateway.get('auth', {}).get('mode') != 'token':

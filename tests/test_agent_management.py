@@ -93,3 +93,32 @@ class FactoryJobTests(unittest.TestCase):
             self.assertEqual(dispatch_factory(home,'researcher','factory.job',{'job_id':job})['state'],'completed')
             with self.assertRaisesRegex(ValueError,'not_found'):
                 dispatch_factory(home,'coder','factory.job',{'job_id':job})
+
+class BoundBridgeConversationTests(unittest.TestCase):
+    def test_model_override_and_session_target_exact_local_role(self):
+        import threading
+        from types import SimpleNamespace
+        from flask import Flask
+        from control_center.rend_bridge import install
+        with tempfile.TemporaryDirectory() as home:
+            root=Path(home);(root/'.progretech-mesh').mkdir();(root/'.openclaw').mkdir()
+            (root/'.progretech-mesh/control-center-bindings.json').write_text(json.dumps({'rend--researcher':'researcher'}))
+            cfg={'agents':{'entries':{'researcher':{'model':'local/heavy'}},'defaults':{'models':{'local/heavy':{},'local/light':{}}}},'gateway':{'auth':{'mode':'token','token':'test-only-token'},'port':18789}}
+            (root/'.openclaw/openclaw.json').write_text(json.dumps(cfg))
+            provider=install(SimpleNamespace(app=Flask(__name__),token=lambda:'fixture',MUTATION_LOCK=threading.Lock(),dispatch=lambda *a:{}),home)
+            models=provider.dispatch('rend--researcher','communication.get',{})['models']
+            self.assertIn('local/light',models)
+            provider.dispatch('rend--researcher','communication.save',{'role':'researcher','model':'local/light'})
+            response=SimpleNamespace(read=lambda size:json.dumps({'choices':[{'message':{'content':'reply'}}]}).encode())
+            class Context:
+                def __enter__(self):return response
+                def __exit__(self,*args):pass
+            with patch('control_center.rend_bridge.urlopen',return_value=Context()) as transport:
+                result=provider.dispatch('rend--researcher','communication.chat',{'text':'Hello'})
+                request=transport.call_args.args[0]
+                self.assertEqual(request.get_header('X-openclaw-agent-id'),'researcher')
+                self.assertEqual(request.get_header('X-openclaw-model'),'local/light')
+                self.assertEqual(request.get_header('X-openclaw-session-key'),'agent:researcher:mesh-chat:rend--researcher')
+                self.assertEqual(json.loads(request.data)['model'],'openclaw/researcher')
+                self.assertEqual(result['reply'],'reply')
+            self.assertEqual(json.loads((root/'.openclaw/openclaw.json').read_text()),cfg)

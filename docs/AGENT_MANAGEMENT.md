@@ -14,7 +14,7 @@ Linked roles such as Lyra and Mak share Rend's gateway identity. They have exact
 
 ## Manage
 
-Select an owned agent under **Manage**. The host returns its communication role and configured primary/fallback models. Save a model choice to use an `x-openclaw-model` override for Mesh conversations without rewriting global runtime defaults. The role stays bound to the selected runtime identity; role changes cannot impersonate another agent.
+Select an owned agent under **Manage**. The host returns its communication role and configured primary/fallback and permitted communication models. Save a model choice to use an `x-openclaw-model` override for Mesh conversations without rewriting global runtime defaults. The role stays bound to the selected runtime identity; role changes cannot impersonate another agent.
 
 The gateway must have its authenticated Chat Completions endpoint enabled. Messages are submitted through the selected agent's verified host into a separate `mesh-chat` session, independent of Telegram/IDE sessions. This UI conversation path uses the Mesh host relay; file/direct-monitor transports retain their existing behavior. A timeout does not cause an automatic retry because an agent run may still complete.
 
