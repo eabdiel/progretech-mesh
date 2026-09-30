@@ -81,3 +81,16 @@ This build establishes the integration boundaries but intentionally does not fab
 - revocation endpoint semantics
 
 Those require the actual production provider configuration.
+
+## Production verifier contract (PT-2026-044)
+
+The production adapter now targets the actual CodeSeal Registry API contract:
+
+- `POST https://codeseal.progretech.com/api/v1/verify`
+- evidence fields: `manifest`, `registry_signature`, `registry_public_key`
+- CodeSeal verifies Ed25519 signature validity, known registry key, and exact registry-record match
+- Mesh additionally requires `manifest.mesh_identity` to bind `agent_id`, `agent_name`, and the expected Mesh `public_key`
+- optional `expires_at` and `revoked` fields are enforced locally
+- any network, malformed-response, mismatch, expiry, revocation, unknown-key, or non-matching-record condition fails closed
+
+Installing this adapter does not by itself set `MESH_CODESEAL_READY=1`. A real agent identity evidence record must be issued through CodeSeal and pass live verification before readiness promotion.

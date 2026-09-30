@@ -6,3 +6,4 @@ simple-websocket>=1.1,<2
 websocket-client>=1.8,<2
 psutil>=6,<8
 cryptography>=43,<47
+firebase-admin>=7.6,<8

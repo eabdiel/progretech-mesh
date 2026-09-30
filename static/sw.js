@@ -1,4 +1,4 @@
-const CACHE_NAME = "progretech-mesh-shell-v4";
+const CACHE_NAME = "progretech-mesh-shell-v5-control-center";
 const SHELL_ASSETS = [
   "/",
   "/how-it-works",
@@ -27,6 +27,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" ||
       url.pathname.startsWith("/api/") ||
       url.pathname.startsWith("/ws/") ||
+      url.pathname.startsWith("/agents/") ||
       url.pathname.startsWith("/plugins/") ||
       url.pathname.startsWith("/distribution/")) {
     return;

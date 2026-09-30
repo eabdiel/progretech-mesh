@@ -178,6 +178,15 @@ A successfully enrolled agent receives a durable local reconnect credential so s
 
 ## Current Reference Agent: Rend
 
+### Per-agent ProgreTech Control Center
+
+Linked agents have their own Control Center entry in the fleet tile, with local
+profiles, role/model discovery, manual setup, voice previews and explicit data
+permissions. Shared workstation roles can expose separate profiles through one
+verified host gateway. Setup includes Minimum Requirements and Rend's dated
+ProgreTech stack reference. See [the integration and release guide](docs/PER_AGENT_CONTROL_CENTER.md)
+for provider setup, shared-device behavior and current runtime limitations.
+
 Mesh is currently being developed and acceptance-tested against **Rend**, an independently running OpenClaw-based autonomous agent.
 
 Rend is intentionally treated as an external agent from Mesh's perspective.

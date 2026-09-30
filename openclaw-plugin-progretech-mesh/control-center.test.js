@@ -1,0 +1,39 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {forwardControlCenter, discoverControlAgents} from './control-center.js';
+
+test('gateway targets its own identity by default', async () => {
+  let sent;
+  const result = await forwardControlCenter({action:'profile.get', args:{}}, 'lyra', 'test-token', async (url, options) => {
+    sent = {url, options}; return {ok:true, json:async () => ({ok:true, result:{agent_id:'lyra'}})};
+  });
+  assert.equal(JSON.parse(sent.options.body).agent_id, 'lyra');
+  assert.equal(sent.url, 'http://127.0.0.1:8787/api/mesh/control-center');
+  assert.equal(result.result.agent_id, 'lyra');
+});
+test('linked role is restricted to the gateway namespace', async () => {
+  let sent;
+  await forwardControlCenter({action:'profile.get',agent_id:'rend--researcher'},'rend','test',async (_,options)=>{
+    sent=JSON.parse(options.body);return {ok:true,json:async()=>({ok:true})};
+  });
+  assert.equal(sent.agent_id,'rend--researcher');
+  await assert.rejects(forwardControlCenter({action:'profile.get',agent_id:'someone-else--researcher'},'rend','test'),/agent_binding_required/);
+});
+test('discovery exposes only locally approved roles belonging to this gateway', async () => {
+  const roles=await discoverControlAgents('rend','test',async()=>({ok:true,json:async()=>({agents:[{id:'rend--researcher'},{id:'other--researcher'}]})}));
+  assert.deepEqual(roles,[{id:'rend--researcher'}]);
+  assert.equal(await discoverControlAgents('rend','test',async()=>({ok:false})),null);
+});
+test('global voice mutation and arbitrary actions are rejected', async () => {
+  for (const action of ['voice.settings','voice.select','shell.exec']) {
+    await assert.rejects(forwardControlCenter({action,args:{}},'lyra','test'), /action_not_allowed/);
+  }
+});
+test('missing identity and local credentials fail closed', async () => {
+  await assert.rejects(forwardControlCenter({action:'profile.get'},'','test'), /agent_binding_required/);
+  await assert.rejects(forwardControlCenter({action:'profile.get'},'lyra',''), /local_auth_missing/);
+});
+test('local provider failure is preserved', async () => {
+  const result = await forwardControlCenter({action:'voice.start'},'lyra','test',async () => ({ok:false,json:async () => ({ok:false,error:'permission_required'})}));
+  assert.equal(result.error,'permission_required');
+});
