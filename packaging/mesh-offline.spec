@@ -7,6 +7,9 @@ root = Path(SPECPATH).parent
 datas = [(str(root / p), p) for p in ('templates', 'static', 'office', 'vendor/munder-difflin')]
 datas += [(str(root / 'packaging/runtime-cache'), 'runtimes')]
 datas += [(str(root / 'packaging/THIRD_PARTY_NOTICES.md'), 'licenses'), (str(root / 'LICENSE.md'), 'licenses')]
+datas += [(str(root / 'packaging/licenses'), 'licenses')]
+for package in ('PyInstaller', 'PySide6', 'PySide6_Addons', 'PySide6_Essentials', 'shiboken6'):
+    datas += copy_metadata(package)
 binaries, hiddenimports = [], []
 for package in ('crewai', 'llama_cpp'):
     d, b, h = collect_all(package)
