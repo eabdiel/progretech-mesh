@@ -6,5 +6,17 @@
     </content>
     <orderEntry type="jdk" jdkName="~/PycharmProjects/progretech-mesh/.venv" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="module" module-name="progretech-ai-team" />
+    <orderEntry type="module" module-name="ManabiKobo" />
+    <orderEntry type="module" module-name="CodeSealWebApp" />
+    <orderEntry type="module" module-name="ProgreOS" />
+    <orderEntry type="module" module-name="ManabiKobo-LocalStudio" />
+    <orderEntry type="module" module-name="NexoTori" />
+    <orderEntry type="module" module-name="pAR3D" />
+    <orderEntry type="module" module-name="ProgreTech_WebFlow Studio" />
+    <orderEntry type="module" module-name="progretech-site" />
+    <orderEntry type="module" module-name="PycharmProjects" />
+    <orderEntry type="module" module-name="SAP-Cloud-Debugger" />
+    <orderEntry type="module" module-name="control-center" />
   </component>
 </module>
