@@ -20,6 +20,7 @@ from typing import Any
 
 from flask import (
     Flask,
+    Response,
     abort,
     jsonify,
     redirect,
@@ -39,11 +40,20 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mesh_firebase_auth import register_firebase_auth_routes, firebase_client_ready, firebase_admin_ready
 from mesh_cloud_health import register_cloud_health_routes
-from mesh_control_center import control_relay, register_control_center_routes, register_gateway_agents
+from mesh_ownership import (
+    OWNERSHIP_CLAIM_TTL_SECONDS,
+    can_access as ownership_can_access,
+    consume_claim as consume_ownership_claim,
+    issue_claim as issue_ownership_claim,
+    ownership_mode,
+    visible as ownership_visible,
+)
 
 from mesh_capabilities import register_capability_routes
 from mesh_capability_routes import register_capability_registry_routes
 from mesh_capability_runtime_routes import register_capability_runtime_routes
+from mesh_factory_control import factory_relay, register_factory_routes
+from mesh_control_center import control_relay, register_control_center_routes, register_gateway_agents
 from gateway.identity.codeseal import CodeSealIdentityVerifier
 
 
@@ -167,8 +177,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.8"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.8.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.1-cc.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.1-cc.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -204,6 +214,9 @@ ACTIVE_UPLOAD_TRANSFERS: dict[str, dict[str, Any]] = {}
 ACTION_REQUESTS: dict[str, dict[str, Any]] = {}
 SESSION_FILE_TOTALS: dict[str, int] = {}
 ACTIVATION_CODES: dict[str, dict[str, Any]] = {}
+IDE_PENDING: dict[str, dict[str, Any]] = {}
+IDE_TOKEN_TTL_SECONDS = int(os.environ.get("MESH_IDE_TOKEN_TTL_SECONDS", "604800"))
+IDE_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("MESH_IDE_REQUEST_TIMEOUT_SECONDS", "150"))
 LIVE_LOCK = threading.RLock()
 
 # PT044_IDENTITY_POP_NONCE_V1
@@ -269,6 +282,7 @@ def seed_development_registry() -> None:
     examples = [
         {
             "id": "rend",
+            "owner_id": "local-edwin",
             "name": "Rend",
             "role": "Primary workstation agent",
             "public_key": "mesh-dev-rend-public-key",
@@ -282,6 +296,7 @@ def seed_development_registry() -> None:
         },
         {
             "id": "lyra",
+            "owner_id": "local-edwin",
             "name": "Lyra",
             "role": "Content & coordination agent",
             "public_key": "mesh-dev-lyra-public-key",
@@ -295,6 +310,7 @@ def seed_development_registry() -> None:
         },
         {
             "id": "mak",
+            "owner_id": "local-edwin",
             "name": "Mak",
             "role": "Development agent",
             "public_key": "mesh-dev-mak-public-key",
@@ -312,7 +328,6 @@ def seed_development_registry() -> None:
         verification = verify_codeseal(item["name"], item["public_key"], item["codeseal_key"])
         DEV_AGENT_REGISTRY[item["id"]] = {
             **item,
-            "owner_id": "local-edwin",
             "fingerprint": fingerprint_for(item["name"], item["public_key"], item["codeseal_key"]),
             "trust_state": verification["state"],
             "trust_valid": verification["valid"],
@@ -431,6 +446,10 @@ def broadcast_to_clients(agent_id: str, message: dict[str, Any]) -> None:
 
 
 def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
+    if message.get("type") == "factory_control_response":
+        factory_relay.resolve(agent_id, message)
+        return
+
     record = DEV_AGENT_REGISTRY.get(agent_id)
     if not record:
         return
@@ -686,6 +705,18 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
                 "message": f"Agent cancelled file transfer: {meta['filename']}",
                 "payload": {"severity": "warn"},
             })
+    elif msg_type == "ide_chat_response":
+        resolve_ide_pending(agent_id, message)
+        append_event(agent_id, {
+            "type": "ide_relay",
+            "message": "IDE relay response completed",
+            "payload": {
+                "severity": "info",
+                "request_id": message.get("request_id"),
+                "ok": bool((message.get("payload") or {}).get("ok", True)),
+            },
+        })
+        return
     elif msg_type in {"mesh_direct_signal", "mesh_local_route"}:
         # Ephemeral connection metadata only. Never persist SDP/ICE or local access credentials.
         broadcast_to_clients(agent_id, {"type":"gateway_message","agent_id":agent_id,"message":message,"agent":public_agent(record)})
@@ -749,6 +780,8 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         linked = record["control_center_gateway"] in GATEWAY_SOCKETS and host.get("trust_state") == "verified"
         public["transport"] = "connected" if linked else "not-connected"
         public["control_center_available"] = public["control_center_available"] and host.get("trust_state") == "verified"
+    public["owner_bound"] = bool(str(record.get("owner_id") or "").strip())
+    public["ownership_state"] = "owned" if public["owner_bound"] else "legacy-unowned"
     return public
 
 
@@ -949,7 +982,156 @@ def _b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode((value + padding).encode("ascii"))
 
 
-def issue_device_credential(agent_id: str) -> dict[str, Any]:
+def ide_token_secret() -> bytes:
+    value = os.environ.get("MESH_IDE_TOKEN_SECRET") or os.environ.get(
+        "MESH_DEVICE_CREDENTIAL_SECRET"
+    ) or app_secret_key()
+    return str(value).encode("utf-8")
+
+
+def issue_ide_token(owner_id: str, agent_id: str) -> dict[str, Any]:
+    issued_at = unix_now()
+    expires_at = issued_at + IDE_TOKEN_TTL_SECONDS
+    payload = {
+        "v": 1,
+        "owner_id": str(owner_id or "").strip(),
+        "agent_id": str(agent_id or "").strip(),
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+        "scope": "mesh-ide",
+        "jti": secrets.token_urlsafe(16),
+    }
+    encoded = _b64url_encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signature = hmac.new(
+        ide_token_secret(), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return {
+        "token": f"PTMIDE1.{encoded}.{signature}",
+        "issued_at": issued_at,
+        "expires_at": expires_at,
+        "agent_id": payload["agent_id"],
+    }
+
+
+def validate_ide_token(token: str) -> tuple[bool, str, dict[str, Any] | None]:
+    value = str(token or "").strip()
+    parts = value.split(".")
+    if len(parts) != 3 or parts[0] != "PTMIDE1":
+        return False, "ide_token_invalid", None
+    encoded, supplied = parts[1], parts[2]
+    expected = hmac.new(
+        ide_token_secret(), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(expected, supplied):
+        return False, "ide_token_signature_invalid", None
+    try:
+        payload = json.loads(_b64url_decode(encoded).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return False, "ide_token_payload_invalid", None
+    if payload.get("scope") != "mesh-ide":
+        return False, "ide_token_scope_invalid", None
+    if int(payload.get("expires_at") or 0) < unix_now():
+        return False, "ide_token_expired", None
+    agent_id = str(payload.get("agent_id") or "").strip()
+    owner_id = str(payload.get("owner_id") or "").strip()
+    if not agent_id or not owner_id:
+        return False, "ide_token_binding_invalid", None
+    record = DEV_AGENT_REGISTRY.get(agent_id)
+    if not record:
+        return False, "agent_not_found", None
+    if str(record.get("owner_id") or "").strip() != owner_id:
+        return False, "ide_owner_mismatch", None
+    if record.get("trust_state") != "verified":
+        return False, "verified_agent_required", None
+    return True, "ok", payload
+
+
+def ide_bearer_token() -> str:
+    header = str(request.headers.get("Authorization") or "").strip()
+    if not header.lower().startswith("bearer "):
+        return ""
+    return header[7:].strip()
+
+
+def ide_models(agent_id: str) -> list[str]:
+    models = [agent_id, f"{agent_id}-code", f"{agent_id}-fast"]
+    if agent_id == "rend":
+        models.extend([
+            "rend-llama-review",
+            "rend-architect",
+            "rend-research",
+            "lyra", "mak", "progre", "designer", "architect", "reviewer", "fast",
+        ])
+    return models
+
+
+def resolve_ide_pending(agent_id: str, message: dict[str, Any]) -> bool:
+    request_id = str(message.get("request_id") or (message.get("payload") or {}).get("request_id") or "").strip()
+    if not request_id:
+        return False
+    with LIVE_LOCK:
+        pending = IDE_PENDING.get(request_id)
+        if not pending or pending.get("agent_id") != agent_id:
+            return False
+        pending["response"] = message
+        pending["completed_at"] = utcnow()
+        event = pending.get("event")
+    if event:
+        event.set()
+    return True
+
+
+def dispatch_ide_chat(agent_id: str, body: dict[str, Any]) -> tuple[bool, str, dict[str, Any] | None]:
+    request_id = secrets.token_urlsafe(18)
+    event = threading.Event()
+    pending = {
+        "request_id": request_id,
+        "agent_id": agent_id,
+        "event": event,
+        "response": None,
+        "created_at": utcnow(),
+        "created_epoch": time.time(),
+    }
+    with LIVE_LOCK:
+        IDE_PENDING[request_id] = pending
+
+    ok, error = send_gateway_message(agent_id, {
+        "type": "ide_chat_request",
+        "request_id": request_id,
+        "timestamp": utcnow(),
+        "payload": {
+            "request_id": request_id,
+            "openai": body,
+        },
+    })
+    if not ok:
+        with LIVE_LOCK:
+            IDE_PENDING.pop(request_id, None)
+        return False, error or "gateway_send_failed", None
+
+    completed = event.wait(timeout=IDE_REQUEST_TIMEOUT_SECONDS)
+    with LIVE_LOCK:
+        final = IDE_PENDING.pop(request_id, None) or pending
+    if not completed:
+        return False, "ide_request_timeout", None
+    response = final.get("response")
+    if not isinstance(response, dict):
+        return False, "ide_response_missing", None
+    return True, "ok", response
+
+
+def openai_error(message: str, status: int = 400, error_type: str = "invalid_request_error"):
+    return jsonify(error={
+        "message": message,
+        "type": error_type,
+        "param": None,
+        "code": message,
+    }), status
+
+
+def issue_device_credential(agent_id: str, owner_id: str | None = None) -> dict[str, Any]:
     issued_at = unix_now()
     expires_at = issued_at + DEVICE_CREDENTIAL_TTL_SECONDS
     device_id = secrets.token_urlsafe(18)
@@ -957,6 +1139,7 @@ def issue_device_credential(agent_id: str) -> dict[str, Any]:
     payload = {
         "v": 1,
         "agent_id": agent_id,
+        "owner_id": str(owner_id or "").strip() or None,
         "device_id": device_id,
         "issued_at": issued_at,
         "expires_at": expires_at,
@@ -1026,12 +1209,13 @@ def activation_signature(agent_id: str, code: str, issued_at: int) -> str:
     return hmac.new(activation_secret(), payload, hashlib.sha256).hexdigest()
 
 
-def issue_activation_code(agent_id: str) -> dict[str, Any]:
+def issue_activation_code(agent_id: str, owner_id: str | None = None) -> dict[str, Any]:
     # Reuse an existing active request for this agent. Opening/reloading the PWA must
     # not silently invalidate a user-controlled enrollment session.
     for existing in ACTIVATION_CODES.values():
         if (
             existing.get("agent_id") == agent_id
+            and str(existing.get("owner_id") or "") == str(owner_id or "")
             and not existing.get("used")
             and not existing.get("cancelled")
         ):
@@ -1042,6 +1226,7 @@ def issue_activation_code(agent_id: str) -> dict[str, Any]:
     signature = activation_signature(agent_id, code, issued_at)
     record = {
         "agent_id": agent_id,
+        "owner_id": str(owner_id or "").strip() or None,
         "code": code,
         "issued_at": issued_at,
         "signature": signature,
@@ -1285,7 +1470,12 @@ def create_app() -> Flask:
             return view(*args, **kwargs)
         return wrapped
 
-    register_control_center_routes(app, require_session, session_file_key,
+    def current_mesh_user_id() -> str:
+        user = session.get("mesh_user") or {}
+        return str(user.get("id") or "").strip()
+
+    register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
+    register_control_center_routes(app, require_session, current_mesh_user_id,
                                    DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
 
     @app.before_request
@@ -1295,6 +1485,26 @@ def create_app() -> Flask:
             record = DEV_AGENT_REGISTRY.get(parts[3], {})
             if record.get("control_center_gateway") and parts[4:] != ["control-center"]:
                 return jsonify(ok=False, error="linked_role_uses_host_identity"), 409
+
+
+    @app.before_request
+    def enforce_session_agent_ownership():
+        user = session.get("mesh_user")
+        if not user:
+            return None
+        view_args = request.view_args or {}
+        agent_id = str(view_args.get("agent_id") or "").strip()
+        if not agent_id:
+            return None
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return None
+        allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+        if not allowed:
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, error="agent_not_found"), 404
+            abort(404)
+        return None
 
     @app.after_request
     def apply_headers(response):
@@ -1440,6 +1650,11 @@ def create_app() -> Flask:
             os.environ.get("CODESEAL_VERIFIER_MODE", "unconfigured").strip().lower()
             == "configured"
         )
+        codeseal_ready = os.environ.get("MESH_CODESEAL_READY", "0").strip() == "1"
+        replay_mode = os.environ.get(
+            "MESH_IDENTITY_REPLAY_MODE", "unconfigured"
+        ).strip().lower()
+        replay_qualified = replay_mode == "single-process-bounded"
 
         return jsonify(
             ok=True,
@@ -1451,12 +1666,24 @@ def create_app() -> Flask:
             agent_identity={
                 "mode": agent_identity_mode,
                 "production_ready": (
-                    agent_identity_mode == "codeseal" and codeseal_configured
+                    agent_identity_mode == "codeseal"
+                    and codeseal_configured
+                    and codeseal_ready
+                    and replay_qualified
                 ),
                 "cryptographic_verification": (
                     agent_identity_mode == "codeseal" and codeseal_configured
                 ),
                 "fail_closed": agent_identity_mode == "codeseal",
+                "codeseal_ready": codeseal_ready,
+                "replay_protection": {
+                    "mode": replay_mode,
+                    "qualified": replay_qualified,
+                    "challenge_ttl_seconds": IDENTITY_CHALLENGE_TTL_SECONDS,
+                    "storage": "process-local",
+                    "required_cloud_run_max_instances": 1,
+                    "required_gunicorn_workers": 1,
+                },
             },
             trust_rule=(
                 "Development identity must never be represented as production "
@@ -1518,6 +1745,231 @@ def create_app() -> Flask:
 
 
 
+
+    @app.get("/api/ownership/contract")
+    @require_session
+    def ownership_contract():
+        return jsonify(
+            ok=True,
+            mode=ownership_mode(),
+            explicit_owner_binding=True,
+            legacy_unowned_access=(ownership_mode() == "observe"),
+            claim_ttl_seconds=OWNERSHIP_CLAIM_TTL_SECONDS,
+            claim_delivery="existing-agent-chat",
+            claim_rotation="new owner-bound device credential",
+        )
+
+    @app.post("/api/ownership/claims")
+    @require_session
+    def create_ownership_claim():
+        body = request.get_json(silent=True) or {}
+        agent_id = str(body.get("agent_id") or "").strip()
+        if agent_id:
+            record = DEV_AGENT_REGISTRY.get(agent_id)
+            if record:
+                current_owner = str(record.get("owner_id") or "").strip()
+                if current_owner and current_owner != current_mesh_user_id():
+                    return jsonify(ok=False, error="agent_not_found"), 404
+                if current_owner == current_mesh_user_id():
+                    return jsonify(ok=False, error="ownership_already_bound"), 409
+        claim = issue_ownership_claim(current_mesh_user_id(), agent_id or None)
+        payload = f"PTMOWN1:{claim['code']}"
+        return jsonify(
+            ok=True,
+            claim_code=claim["code"],
+            claim_payload=payload,
+            agent_id=agent_id or None,
+            expires_at=claim["expires_at"],
+            instructions=(
+                "Send the PTMOWN1 payload to the already-enrolled agent. "
+                "The agent must redeem it using its existing Mesh device credential."
+            ),
+        ), 201
+
+    @app.post("/api/ownership/redeem")
+    def redeem_ownership_claim():
+        body = request.get_json(silent=True) or {}
+        agent_id = str(body.get("agent_id") or "").strip()
+        credential = str(body.get("device_credential") or "").strip()
+        claim_code = str(body.get("claim_code") or "").strip()
+        if not agent_id or not credential or not claim_code:
+            return jsonify(ok=False, error="ownership_redeem_fields_required"), 400
+
+        valid, reason, device_payload = validate_device_credential(agent_id, credential)
+        if not valid:
+            return jsonify(ok=False, error=reason), 401
+
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record or record.get("trust_state") != "verified":
+            return jsonify(ok=False, error="verified_agent_required"), 403
+
+        ok, reason, claim = consume_ownership_claim(claim_code, agent_id)
+        if not ok:
+            return jsonify(ok=False, error=reason), 403
+
+        existing_owner = str(record.get("owner_id") or "").strip()
+        new_owner = str((claim or {}).get("owner_id") or "").strip()
+        if existing_owner and existing_owner != new_owner:
+            return jsonify(ok=False, error="ownership_already_bound"), 409
+
+        if existing_owner:
+            return jsonify(ok=False, error="ownership_already_bound"), 409
+
+        old_device_id = str((device_payload or {}).get("device_id") or "").strip()
+        record["owner_id"] = new_owner
+        rotated = issue_device_credential(agent_id, owner_id=new_owner)
+        record["identity_device_id"] = rotated["device_id"]
+        if old_device_id:
+            REVOKED_DEVICE_IDS.add(old_device_id)
+
+        append_event(agent_id, {
+            "type": "ownership_bound",
+            "message": "Agent ownership bound to authenticated Mesh user",
+            "payload": {
+                "severity": "info",
+                "event_class": "identity",
+                "owner_bound": True,
+                "device_rotated": True,
+            },
+        })
+        return jsonify(
+            ok=True,
+            agent_id=agent_id,
+            owner_bound=True,
+            device_credential=rotated["credential"],
+            device_id=rotated["device_id"],
+            device_credential_expires_at=rotated["expires_at"],
+            reconnect_mode="signed-device-credential",
+        )
+
+    @app.get("/api/ide/contract")
+    @require_session
+    def ide_contract():
+        return jsonify(
+            ok=True,
+            protocol="openai-compatible",
+            base_url=f"{mesh_public_origin()}/v1",
+            bearer_scheme="PTMIDE1",
+            token_ttl_seconds=IDE_TOKEN_TTL_SECONDS,
+            request_timeout_seconds=IDE_REQUEST_TIMEOUT_SECONDS,
+            streaming="single-completion SSE compatibility",
+            transport="HTTPS -> owner-scoped Mesh gateway -> OpenClaw role agent",
+        )
+
+    @app.post("/api/agents/<agent_id>/ide/token")
+    @require_session
+    def create_ide_token(agent_id: str):
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+        if not allowed or str(record.get("owner_id") or "").strip() != current_mesh_user_id():
+            return jsonify(ok=False, error="agent_not_found"), 404
+        if record.get("trust_state") != "verified":
+            return jsonify(ok=False, error="verified_agent_required"), 403
+        issued = issue_ide_token(current_mesh_user_id(), agent_id)
+        return jsonify(
+            ok=True,
+            agent_id=agent_id,
+            api_key=issued["token"],
+            base_url=f"{mesh_public_origin()}/v1",
+            expires_at=issued["expires_at"],
+            models=ide_models(agent_id),
+            recommended_model=f"{agent_id}-code",
+        ), 201
+
+    @app.get("/v1/models")
+    def openai_models():
+        valid, reason, payload = validate_ide_token(ide_bearer_token())
+        if not valid:
+            return openai_error(reason, 401, "authentication_error")
+        agent_id = str((payload or {}).get("agent_id") or "")
+        now = unix_now()
+        return jsonify(
+            object="list",
+            data=[
+                {"id": model, "object": "model", "created": now, "owned_by": f"mesh:{agent_id}"}
+                for model in ide_models(agent_id)
+            ],
+        )
+
+    @app.post("/v1/chat/completions")
+    def openai_chat_completions():
+        valid, reason, payload = validate_ide_token(ide_bearer_token())
+        if not valid:
+            return openai_error(reason, 401, "authentication_error")
+        agent_id = str((payload or {}).get("agent_id") or "")
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if not record or record.get("transport") != "connected":
+            return openai_error("gateway_not_connected", 503, "service_unavailable")
+
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return openai_error("invalid_request", 400)
+        model = str(body.get("model") or "").strip()
+        if model not in ide_models(agent_id):
+            return openai_error("model_not_allowed", 400)
+        messages = body.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return openai_error("messages_required", 400)
+
+        requested_stream = bool(body.get("stream"))
+        relay_body = dict(body)
+        relay_body["stream"] = False
+
+        ok, error, response = dispatch_ide_chat(agent_id, relay_body)
+        if not ok:
+            status = 504 if error == "ide_request_timeout" else 502
+            return openai_error(error, status, "upstream_error")
+
+        response_payload = (response or {}).get("payload") or {}
+        if not response_payload.get("ok", True):
+            return openai_error(str(response_payload.get("error") or "agent_ide_relay_failed"), 502, "upstream_error")
+        completion = response_payload.get("completion")
+        if not isinstance(completion, dict):
+            return openai_error("invalid_agent_completion", 502, "upstream_error")
+
+        if not requested_stream:
+            return jsonify(completion)
+
+        try:
+            choice = (completion.get("choices") or [])[0]
+            assistant_message = choice.get("message") or {}
+            delta = {"role": "assistant"}
+            if assistant_message.get("content") is not None:
+                delta["content"] = assistant_message["content"]
+            if assistant_message.get("tool_calls"):
+                delta["tool_calls"] = [{**tool, "index": index} for index, tool in enumerate(assistant_message["tool_calls"])]
+            finish_reason = str(choice.get("finish_reason") or "stop")
+        except (IndexError, TypeError, AttributeError):
+            return openai_error("invalid_agent_completion", 502, "upstream_error")
+
+        chunk_id = str(completion.get("id") or f"chatcmpl-{secrets.token_urlsafe(12)}")
+        created = int(completion.get("created") or unix_now())
+        chunk_model = str(completion.get("model") or model)
+        first = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": chunk_model,
+            "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
+        }
+        last = {
+            "id": chunk_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": chunk_model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+        }
+        data = (
+            f"data: {json.dumps(first, separators=(',', ':'))}\n\n"
+            f"data: {json.dumps(last, separators=(',', ':'))}\n\n"
+            "data: [DONE]\n\n"
+        )
+        return Response(data, status=200, mimetype="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        })
 
     @app.get("/api/enrollment/protocol")
     def universal_agent_enrollment_protocol():
@@ -1631,7 +2083,7 @@ def create_app() -> Flask:
         if record.get("trust_state") != "verified":
             return jsonify(ok=False, error="verified_identity_required"), 403
 
-        activation = issue_activation_code(agent_id)
+        activation = issue_activation_code(agent_id, current_mesh_user_id())
         try:
             mesh_origin = mesh_public_origin()
         except ValueError as exc:
@@ -1777,7 +2229,8 @@ def create_app() -> Flask:
     # noinspection DuplicatedCode
     def cancel_agent_enrollment(agent_id: str, request_id: str):
         activation = ACTIVATION_CODES.get(request_id)
-        if not activation or activation.get("agent_id") != agent_id:
+        if (not activation or activation.get("agent_id") != agent_id
+                or str(activation.get("owner_id") or "") != current_mesh_user_id()):
             return jsonify(ok=False, error="enrollment_not_found"), 404
         if activation.get("used"):
             return jsonify(ok=False, error="enrollment_already_used"), 409
@@ -1795,7 +2248,7 @@ def create_app() -> Flask:
         if record.get("trust_state") != "verified":
             return jsonify(ok=False, error="verified_identity_required"), 403
 
-        activation = issue_activation_code(agent_id)
+        activation = issue_activation_code(agent_id, current_mesh_user_id())
         return jsonify(
             ok=True,
             agent_id=agent_id,
@@ -1817,9 +2270,6 @@ def create_app() -> Flask:
         payload = request.get_json(silent=True) or {}
         credential = str(payload.get("device_credential", "")).strip()
 
-        record = DEV_AGENT_REGISTRY.get(agent_id)
-        if not record:
-            return jsonify(ok=False, error="agent_not_found"), 404
         if not credential:
             return jsonify(ok=False, error="device_credential_required"), 401
 
@@ -1850,9 +2300,6 @@ def create_app() -> Flask:
         challenge_id = str(payload.get("challenge_id", "")).strip()
         signature = str(payload.get("signature", "")).strip()
 
-        record = DEV_AGENT_REGISTRY.get(agent_id)
-        if not record:
-            return jsonify(ok=False, error="agent_not_found"), 404
         if not credential:
             return jsonify(ok=False, error="device_credential_required"), 401
 
@@ -1865,6 +2312,19 @@ def create_app() -> Flask:
             return jsonify(ok=False, error="codeseal_identity_required"), 400
         if not challenge_id or not signature:
             return jsonify(ok=False, error="identity_proof_required"), 400
+
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        identity_binding = (
+            ((codeseal_evidence or {}).get("manifest") or {}).get("mesh_identity")
+            if isinstance(codeseal_evidence, dict) else None
+        )
+        identity_binding = identity_binding if isinstance(identity_binding, dict) else {}
+        asserted_name = str(
+            identity_binding.get("agent_name")
+            or identity_binding.get("name")
+            or agent_id
+        ).strip()
+        agent_name = str((record or {}).get("name") or asserted_name or agent_id).strip()
 
         challenge_ok, challenge_reason, challenge = consume_identity_challenge(
             agent_id, device_id, challenge_id
@@ -1892,7 +2352,7 @@ def create_app() -> Flask:
 
         verification = verify_runtime_agent_identity(
             {"agent_id": agent_id, "codeseal_evidence": codeseal_evidence},
-            record["name"],
+            agent_name,
             public_key,
             "",
         )
@@ -1909,7 +2369,33 @@ def create_app() -> Flask:
             })
             return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 403
 
+        if record is None:
+            record = {
+                "id": agent_id,
+                "name": agent_name,
+                "role": "ProgreTech Agent",
+                "state": "offline",
+                "task": "Awaiting gateway",
+                "phase": "Identity rehydrated; awaiting live transport",
+                "progress": 0,
+                "model": "Unknown",
+                "runtime": "—",
+                "transport": "not-connected",
+                "last_heartbeat": None,
+                "telemetry": {},
+                "enrolled_at": utcnow(),
+                "fingerprint": fingerprint_for(agent_name, public_key, ""),
+            }
+            with LIVE_LOCK:
+                DEV_AGENT_REGISTRY[agent_id] = record
+
+        device_owner = str((device_payload or {}).get("owner_id") or "").strip()
+        existing_owner = str(record.get("owner_id") or "").strip()
+        if existing_owner and device_owner and existing_owner != device_owner:
+            return jsonify(ok=False, error="agent_owner_mismatch"), 403
+
         record.update(
+            owner_id=(device_owner or existing_owner or None),
             public_key=public_key,
             codeseal_key="",
             codeseal_evidence=codeseal_evidence,
@@ -1970,7 +2456,14 @@ def create_app() -> Flask:
         ws_base = websocket_origin_from_http(mesh_origin)
         ws_url = f"{ws_base}/ws/gateway/{agent_id}?token={token}"
 
-        device = issue_device_credential(agent_id)
+        owner_id = str(activation.get("owner_id") or "").strip() or None
+        device = issue_device_credential(agent_id, owner_id=owner_id)
+        record = DEV_AGENT_REGISTRY.get(agent_id)
+        if record is not None and owner_id:
+            existing_owner = str(record.get("owner_id") or "").strip()
+            if existing_owner and existing_owner != owner_id:
+                return jsonify(ok=False, error="ownership_conflict"), 409
+            record["owner_id"] = owner_id
 
         return jsonify(
             ok=True,
@@ -2122,7 +2615,7 @@ def create_app() -> Flask:
     @app.get("/api/status")
     @require_session
     def api_status():
-        agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values()]
+        agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values() if ownership_visible(a, current_mesh_user_id())]
         return jsonify(
             server_time=unix_now(),
             session={
@@ -2143,7 +2636,7 @@ def create_app() -> Flask:
     @app.get("/api/agents")
     @require_session
     def list_agents():
-        agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values()]
+        agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values() if ownership_visible(a, current_mesh_user_id())]
         agents.sort(key=lambda a: (a["name"].lower(), a["id"]))
         return jsonify(ok=True, storage="ephemeral-in-process", agents=agents)
 
@@ -2167,7 +2660,7 @@ def create_app() -> Flask:
         agent_id = secrets.token_hex(6)
         record = {
             "id": agent_id,
-            "owner_id": session_file_key(),
+            "owner_id": current_mesh_user_id(),
             "name": name,
             "role": role,
             "public_key": public_key,
@@ -2360,7 +2853,8 @@ def create_app() -> Flask:
 
         for agent_id in requested_ids:
             record = DEV_AGENT_REGISTRY.get(str(agent_id))
-            if not record:
+            allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+            if not record or not allowed:
                 results.append({"agent_id": agent_id, "ok": False, "error": "agent_not_found"})
                 continue
 
@@ -2417,7 +2911,7 @@ def create_app() -> Flask:
     def list_actions(agent_id: str):
         if agent_id not in DEV_AGENT_REGISTRY:
             return jsonify(ok=False, error="agent_not_found"), 404
-        items = [a for a in ACTION_REQUESTS.values() if a["agent_id"] == agent_id]
+        items = [a for a in ACTION_REQUESTS.values() if a["agent_id"] == agent_id and ownership_can_access(DEV_AGENT_REGISTRY.get(a["agent_id"]), current_mesh_user_id())[0]]
         items.sort(key=lambda x: x["created_at"], reverse=True)
         return jsonify(ok=True, actions=items[:50])
 
@@ -2444,6 +2938,8 @@ def create_app() -> Flask:
     def approve_action(action_id: str):
         action = ACTION_REQUESTS.get(action_id)
         if not action:
+            return jsonify(ok=False, error="action_not_found"), 404
+        if not ownership_can_access(DEV_AGENT_REGISTRY.get(action["agent_id"]), current_mesh_user_id())[0]:
             return jsonify(ok=False, error="action_not_found"), 404
         if action["status"] != "pending":
             return jsonify(ok=False, error="action_not_pending"), 409
@@ -2479,6 +2975,8 @@ def create_app() -> Flask:
     def reject_action(action_id: str):
         action = ACTION_REQUESTS.get(action_id)
         if not action:
+            return jsonify(ok=False, error="action_not_found"), 404
+        if not ownership_can_access(DEV_AGENT_REGISTRY.get(action["agent_id"]), current_mesh_user_id())[0]:
             return jsonify(ok=False, error="action_not_found"), 404
         if action["status"] != "pending":
             return jsonify(ok=False, error="action_not_pending"), 409
@@ -2639,7 +3137,10 @@ def create_app() -> Flask:
     @require_session
     def list_file_offers():
         agent_id = request.args.get("agent_id")
-        items = list(FILE_OFFERS.values())
+        items = [
+            f for f in FILE_OFFERS.values()
+            if ownership_can_access(DEV_AGENT_REGISTRY.get(f["agent_id"]), current_mesh_user_id())[0]
+        ]
         if agent_id:
             items = [f for f in items if f["agent_id"] == agent_id]
         items.sort(key=lambda x: x["created_at"], reverse=True)
@@ -2652,6 +3153,8 @@ def create_app() -> Flask:
         cleanup_expired_transfer_state()
         record = FILE_OFFERS.get(offer_id)
         if not record or record.get("status") != "ready":
+            return jsonify(ok=False, error="file_offer_not_ready"), 404
+        if not ownership_can_access(DEV_AGENT_REGISTRY.get(record["agent_id"]), current_mesh_user_id())[0]:
             return jsonify(ok=False, error="file_offer_not_ready"), 404
 
         temp_path = Path(record["temp_path"])
@@ -2756,6 +3259,11 @@ def create_app() -> Flask:
                 if not valid_device:
                     ws.close(reason=reason)
                     return
+                record_owner = str(record.get("owner_id") or "").strip()
+                credential_owner = str((device_payload or {}).get("owner_id") or "").strip()
+                if record_owner and credential_owner != record_owner:
+                    ws.close(reason="agent_owner_mismatch")
+                    return
                 auth_mode = "device_credential"
             else:
                 token_record = PAIRING_TOKENS.get(token)
@@ -2829,6 +3337,10 @@ def create_app() -> Flask:
 
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
+            ws.close(reason="agent_not_found")
+            return
+        allowed, _reason = ownership_can_access(record, current_mesh_user_id())
+        if not allowed:
             ws.close(reason="agent_not_found")
             return
 

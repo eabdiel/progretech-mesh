@@ -25,10 +25,17 @@ class CodeSealIdentityVerifier(AgentIdentityVerifier):
 
     @staticmethod
     def _evidence(assertion):
+        # Production identity evidence must be explicit. Never reinterpret the
+        # surrounding assertion itself as CodeSeal evidence when the dedicated
+        # evidence field is absent.
         if isinstance(assertion, dict):
-            evidence = assertion.get("codeseal_evidence") or assertion.get("evidence") or assertion
+            evidence = assertion.get("codeseal_evidence")
+            if evidence is None:
+                evidence = assertion.get("evidence")
         else:
-            evidence = getattr(assertion, "codeseal_evidence", None) or getattr(assertion, "evidence", None)
+            evidence = getattr(assertion, "codeseal_evidence", None)
+            if evidence is None:
+                evidence = getattr(assertion, "evidence", None)
         return evidence if isinstance(evidence, dict) else {}
 
     @staticmethod

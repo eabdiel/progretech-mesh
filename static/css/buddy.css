@@ -37,3 +37,15 @@
 .buddy-hero-dock .buddy-tile:not(.is-floating) .buddy-power input{margin:0;width:12px;height:12px;display:block}
 .buddy-hero-dock .buddy-tile:not(.is-floating) .buddy-power span,
 .buddy-hero-dock .buddy-tile:not(.is-floating) #buddyStateLabel{display:none}
+
+
+/* PT-2026-048 remote acceptance buddy corrections */
+.hero-main .buddy-hero-dock{right:18px;bottom:16px}
+.buddy-hero-dock .buddy-anchor-home{overflow:hidden}
+.buddy-tile.is-floating{position:fixed !important;z-index:2200}
+.buddy-tile.is-floating #buddyDragHandle{cursor:grab;touch-action:none}
+.buddy-tile.is-floating #buddyDragHandle:active{cursor:grabbing}
+@media(max-width:760px){
+  .hero-main .buddy-hero-dock{right:10px;bottom:10px}
+  .buddy-tile.is-floating{width:min(360px,calc(100vw - 20px));min-width:260px}
+}

@@ -68,10 +68,14 @@
   let selectedAgentId = null;
   let monitorSocket = null;
   let monitorReconnectTimer = null;
+  let monitorReconnectAttempt = 0;
+  let monitorManualStop = false;
   let directPeer = null;
   let directChannel = null;
   let directPeerId = null;
   let directRouteState = "idle";
+  let directTransientRetryCount = 0;
+  let directTransientRetryTimer = null;
   let currentRoutePolicy = localStorage.getItem("mesh-route-policy") || "direct_preferred";
   let currentIceServers = [];
   const LOCAL_ROUTE_KEY = "mesh-local-routes-v1";
@@ -381,7 +385,6 @@
   function speakAgentReply(text) {
     window.ProgreBuddy?.animateSpeakingForAgent?.(selectedAgentId, text);
     const activeBuddy = buddyAgent();
-    if (buddySettings.enabled && activeBuddy && activeBuddy.id === selectedAgentId) animateBuddySpeaking(text);
     if (!speakRepliesToggle?.checked || !("speechSynthesis" in window) || !text) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
@@ -1016,14 +1019,17 @@
         </div>
 
         <div class="agent-actions three">
-          <button data-pair="${agent.id}" ${agent.trust_state !== "verified" || agent.control_center_gateway ? "disabled" : ""}>Connect agent</button>
+          ${agent.owner_bound === false ? `<button data-claim-owner="${agent.id}">Claim ownership</button>` : `<button data-pair="${agent.id}" ${agent.trust_state !== "verified" || agent.control_center_gateway ? "disabled" : ""}>Connect agent</button>`}
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" || agent.control_center_gateway ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ''}
+        ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
+        ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
     `).join("");
 
+    document.querySelectorAll("[data-claim-owner]").forEach((b) => b.addEventListener("click", () => claimLegacyAgentOwnership(b.dataset.claimOwner)));
+    document.querySelectorAll("[data-ide-access]").forEach((b) => b.addEventListener("click", () => copyIdeRelaySetup(b.dataset.ideAccess)));
     document.querySelectorAll("[data-pair]").forEach((b) => b.addEventListener("click", () => pairGateway(b.dataset.pair)));
     document.querySelectorAll("[data-monitor]").forEach((b) => b.addEventListener("click", () => monitorAgent(b.dataset.monitor)));
     document.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
@@ -1033,6 +1039,54 @@
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
     renderNotificationControls();
+  }
+
+  async function copyIdeRelaySetup(agentId) {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/ide/token`, {
+      method:"POST",
+      headers:{"Accept":"application/json","Content-Type":"application/json"},
+      body:"{}"
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showToast(`IDE relay setup failed: ${data.error || response.status}`);
+      return;
+    }
+    const setup = [
+      "ProgreTech Mesh IDE Relay",
+      `Base URL: ${data.base_url}`,
+      `API key: ${data.api_key}`,
+      `Recommended model: ${data.recommended_model}`,
+      `Models: ${(data.models || []).join(", ")}`,
+      `Expires: ${new Date(Number(data.expires_at || 0) * 1000).toLocaleString()}`,
+    ].join("\n");
+    const copied = await copyTextCompatible(setup);
+    if (copied) {
+      showToast("IDE relay setup copied. Paste the Base URL and API key into PyCharm.");
+      return;
+    }
+    window.prompt("Clipboard access is unavailable. Copy this IDE relay setup manually:", setup);
+  }
+
+  async function claimLegacyAgentOwnership(agentId) {
+    const response = await fetch("/api/ownership/claims", {
+      method:"POST",
+      headers:{"Accept":"application/json","Content-Type":"application/json"},
+      body:JSON.stringify({agent_id:agentId})
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showToast(`Ownership request failed: ${data.error || response.status}`);
+      return;
+    }
+
+    const payload = data.claim_payload || "";
+    try {
+      await navigator.clipboard.writeText(payload);
+      showToast("Ownership payload copied. Send it to the agent through your existing chat.");
+    } catch (_) {
+      window.prompt("Copy this ownership payload and send it to the agent through your existing chat:", payload);
+    }
   }
 
   async function refreshFleet() {
@@ -1048,8 +1102,7 @@
       String(fleet.filter((a) => a.transport === "connected" && a.state === "working").length);
 
     renderFleet();
-    renderBuddyAgentOptions();
-    updateBuddyUi();
+    window.ProgreBuddy?.refreshFleet?.();
 
     if (selectedAgentId) {
       const current = fleet.find((a) => a.id === selectedAgentId);
@@ -1271,6 +1324,10 @@
 
   function directChannelReady() { return directChannel && directChannel.readyState === "open"; }
   function closeDirectTransport(reason="closed") {
+    if (directTransientRetryTimer) {
+      clearTimeout(directTransientRetryTimer);
+      directTransientRetryTimer = null;
+    }
     if (directChannelReady()) { try { directChannel.send(JSON.stringify({type:"close",reason})); } catch (_) {} }
     try { directChannel?.close(); } catch (_) {} try { directPeer?.close(); } catch (_) {}
     directChannel=null; directPeer=null; directPeerId=null; directRouteState="idle";
@@ -1293,7 +1350,7 @@
     const peer = new RTCPeerConnection({iceServers:currentIceServers, iceTransportPolicy:"all"});
     directPeer=peer;
     const channel=peer.createDataChannel("progretech-mesh",{ordered:true}); directChannel=channel;
-    channel.addEventListener("open",()=>{ directRouteState="lan_direct"; channel.send(JSON.stringify({type:"hello",peer_id:peerId,timestamp:new Date().toISOString()})); document.getElementById("eventStreamLabel").textContent=`${fleet.find((a)=>a.id===agentId)?.name || agentId} · direct`; showToast("Direct owner-to-agent connection established."); });
+    channel.addEventListener("open",()=>{ directTransientRetryCount=0; directRouteState="lan_direct"; channel.send(JSON.stringify({type:"hello",peer_id:peerId,timestamp:new Date().toISOString()})); document.getElementById("eventStreamLabel").textContent=`${fleet.find((a)=>a.id===agentId)?.name || agentId} · direct`; showToast("Direct owner-to-agent connection established."); });
     channel.addEventListener("close",()=>{ if (directPeerId===peerId) directRouteState="closed"; });
     channel.addEventListener("message",(event)=>{ let data; try { data=JSON.parse(event.data); } catch (_) { return; }
       if (data.type==="message_response") { pendingDirectMessages.delete(data.request_id); appendLiveEvent({type:"message_response",timestamp:data.timestamp || new Date().toISOString(),message:data.text || "",payload:{transport:"webrtc-direct",cloud_data_path:false}}); return; }
@@ -1351,37 +1408,79 @@
     if (!directPeer || !directPeerId || agentId!==selectedAgentId) return; const payload=signal?.payload || {}; if (payload.peer_id!==directPeerId) return;
     if (signal.type==="answer") { await directPeer.setRemoteDescription({type:"answer",sdp:payload.sdp}); return; }
     if (signal.type==="ice_candidate" && payload.candidate) { await directPeer.addIceCandidate({candidate:payload.candidate,sdpMid:payload.mid || "0"}); return; }
-    if (signal.type==="direct_error") { directRouteState="error"; showToast(`Direct negotiation failed: ${payload.error || "unknown error"}`); }
+    if (signal.type==="direct_error") {
+      const reason = String(payload.error || "unknown error");
+      if (reason === "direct_peer_not_found" && directTransientRetryCount < 2) {
+        directTransientRetryCount += 1;
+        directRouteState = "retrying";
+        setRouteStatus("Direct path retrying");
+        clearTimeout(directTransientRetryTimer);
+        directTransientRetryTimer = setTimeout(() => {
+          directTransientRetryTimer = null;
+          if (selectedAgentId === agentId && monitorSocket?.readyState === WebSocket.OPEN && !directChannelReady()) {
+            void startDirectTransport(agentId).catch(() => {
+              setRouteStatus("Gateway connected · direct path unavailable");
+            });
+          }
+        }, 650);
+        return;
+      }
+      directRouteState="error";
+      setRouteStatus("Gateway connected · direct path unavailable");
+      showToast(`Direct negotiation failed: ${reason}`);
+    }
   }
 
-  function monitorAgent(agentId) {
+  function monitorReconnectDelay(attempt) {
+    const steps = [2500, 5000, 10000, 20000, 30000];
+    return steps[Math.min(Math.max(0, attempt - 1), steps.length - 1)];
+  }
+
+  function monitorAgent(agentId, options={}) {
+    const reconnecting = Boolean(options.reconnecting);
     selectedAgentId = agentId;
+    monitorManualStop = false;
     clearTimeout(monitorReconnectTimer);
 
     if (monitorSocket) {
-      try { monitorSocket.close(); } catch (_) {}
+      try {
+        monitorSocket.__meshIntentionalClose = true;
+        monitorSocket.close();
+      } catch (_) {}
     }
 
-    renderFleet();
     const agent = fleet.find((a) => a.id === agentId);
-    document.getElementById("selectedMonitor").textContent = agent?.name || agentId;
-    document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · connecting`;
-    document.getElementById("telemetryLabel").textContent = agent?.name || agentId;
-    messageInput.placeholder = `Message ${agent?.name || agentId}…`;
-    refreshApprovals();
-    refreshFileOffers();
+    if (!reconnecting) {
+      monitorReconnectAttempt = 0;
+      renderFleet();
+      document.getElementById("selectedMonitor").textContent = agent?.name || agentId;
+      document.getElementById("telemetryLabel").textContent = agent?.name || agentId;
+      messageInput.placeholder = `Message ${agent?.name || agentId}…`;
+      refreshApprovals();
+      refreshFileOffers();
+      eventList.innerHTML = '<div class="empty-stream">Connecting to live conversation/event stream…</div>';
+    }
 
-    eventList.innerHTML = '<div class="empty-stream">Connecting to live conversation/event stream…</div>';
+    document.getElementById("eventStreamLabel").textContent =
+      `${agent?.name || agentId} · ${reconnecting ? "reconnecting" : "connecting"}`;
 
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    monitorSocket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
+    const socket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
+    monitorSocket = socket;
 
-    monitorSocket.addEventListener("open", () => {
+    socket.addEventListener("open", () => {
+      if (monitorSocket !== socket) return;
+      monitorReconnectAttempt = 0;
       document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · signaling`;
-      void startDirectTransport(agentId).catch((error) => { directRouteState="error"; showToast(`Direct transport unavailable: ${error?.message || error}`); });
+      void startDirectTransport(agentId).catch((error) => {
+        directRouteState="error";
+        setRouteStatus("Gateway connected · direct path unavailable");
+        console.warn("Direct transport unavailable:", error);
+      });
     });
 
-    monitorSocket.addEventListener("message", (event) => {
+    socket.addEventListener("message", (event) => {
+      if (monitorSocket !== socket) return;
       const data = JSON.parse(event.data);
       maybeNotifyFromLiveEvent(data);
 
@@ -1394,7 +1493,13 @@
       }
 
       if (data.type === "gateway_message") {
-        if (data.message?.type === "mesh_direct_signal") { void handleDirectSignalFromAgent(agentId,data.message.signal).catch((error)=>{ directRouteState="error"; showToast(`Direct signaling error: ${error?.message || error}`); }); return; }
+        if (data.message?.type === "mesh_direct_signal") {
+          void handleDirectSignalFromAgent(agentId,data.message.signal).catch((error)=>{
+            directRouteState="error";
+            console.warn("Direct signaling error:", error);
+          });
+          return;
+        }
         if (data.message?.type === "mesh_local_route") { saveLocalRouteMessage(data.message); return; }
         fleet = fleet.map((item) => item.id === agentId ? data.agent : item);
         renderFleet();
@@ -1443,12 +1548,31 @@
       }
     });
 
-    monitorSocket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
+      if (monitorSocket !== socket) return;
       closeDirectTransport("signaling_closed");
-      document.getElementById("eventStreamLabel").textContent = `${agent?.name || agentId} · reconnecting`;
+
+      const reason = String(event.reason || "");
+      const terminalReason = ["authentication_required","agent_not_found"].includes(reason);
+      if (socket.__meshIntentionalClose || monitorManualStop) return;
+
+      if (terminalReason) {
+        document.getElementById("eventStreamLabel").textContent =
+          `${agent?.name || agentId} · monitor unavailable`;
+        showToast(`Live monitor unavailable: ${reason}`);
+        return;
+      }
+
+      monitorReconnectAttempt += 1;
+      const delay = monitorReconnectDelay(monitorReconnectAttempt);
+      document.getElementById("eventStreamLabel").textContent =
+        `${agent?.name || agentId} · reconnecting in ${Math.round(delay/1000)}s`;
+
       monitorReconnectTimer = setTimeout(() => {
-        if (selectedAgentId === agentId) monitorAgent(agentId);
-      }, 2500);
+        if (selectedAgentId === agentId && !monitorManualStop) {
+          monitorAgent(agentId,{reconnecting:true});
+        }
+      }, delay);
     });
   }
 
@@ -1982,50 +2106,9 @@
   });
 
 
-  buddyEnabledToggle?.addEventListener("change", () => {
-    buddySettings.enabled = buddyEnabledToggle.checked;
-    saveBuddySettings();
-    updateBuddyUi();
-  });
-  buddySettingsButton?.addEventListener("click", openBuddySettings);
-  document.getElementById("closeBuddySettings")?.addEventListener("click", closeBuddySettings);
-  buddyPopButton?.addEventListener("click", () => setBuddyFloating(!buddySettings.floating));
-  buddyReturnButton?.addEventListener("click", () => setBuddyFloating(false));
-  buddyAnchorHome?.addEventListener("click", () => setBuddyFloating(false));
-  buddySlot?.addEventListener("click", (event) => {
-    if (buddySettings.floating && event.target === buddySlot) setBuddyFloating(false);
-  });
-  document.getElementById("buddySaveSettings")?.addEventListener("click", () => {
-    buddySettings.agentId = buddyAgentSelect.value || "";
-    buddySettings.background = buddyBackgroundColor.value || "#ffffff";
-    saveBuddySettings();
-    closeBuddySettings();
-    updateBuddyUi();
-    showToast("Buddy settings saved.");
-  });
-  document.getElementById("buddyResetDefaults")?.addEventListener("click", () => {
-    buddySettings = {...buddyDefaults, enabled:buddySettings.enabled, floating:buddySettings.floating, agentId:buddySettings.agentId, sprites:{...buddyDefaults.sprites}};
-    saveBuddySettings();
-    renderBuddySpriteSettings();
-    buddyBackgroundColor.value = buddySettings.background;
-    updateBuddyUi();
-    showToast("Buddy sprites reset to Progre.");
-  });
-  buddyComposer?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const text = buddyMessageInput.value.trim();
-    const agent = buddyAgent();
-    if (!buddySettings.enabled) { showToast("Turn Buddy mode on first."); return; }
-    if (!agent) { showToast("Assign Buddy mode to an agent first."); return; }
-    if (agent.transport !== "connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
-    if (!text) return;
-    if (selectedAgentId !== agent.id) monitorAgent(agent.id);
-    buddyMessageInput.value = "";
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    await sendDirectMessage(text);
-  });
+  // Buddy UI/event ownership lives in static/js/buddy.js.
+  // app.js only exposes the Mesh bridge below.
 
-  updateBuddyUi();
     window.MeshBuddyBridge = {
     getFleet: () => Array.isArray(fleet) ? fleet : [],
     getSelectedAgentId: () => selectedAgentId,
@@ -2086,3 +2169,4 @@ configureVoice();
   }
 
 })();
+

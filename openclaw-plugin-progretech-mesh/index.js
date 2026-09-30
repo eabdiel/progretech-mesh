@@ -1,3 +1,4 @@
+import { forwardRoleCompletion } from './ide-client.js';
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -6,6 +7,10 @@ import path from "node:path";
 import { forwardControlCenter, discoverControlAgents } from "./control-center.js";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
+
+import { forwardFactoryControl } from "./factory-control.js";
+import { resolveMeshTarget, meshConversationBody } from "./routing.js";
+import { runGatewayConversation } from "./gateway-client.js";
 
 const PLUGIN_ID = "progretech-mesh";
 const ROUTE = "/plugins/progretech-mesh/message";
@@ -242,6 +247,96 @@ function readJsonIfPresent(target) {
   }
 }
 
+
+function identityMaterialPaths(agentId) {
+  const configured = process.env.PROGRETECH_MESH_IDENTITY_DIR?.trim();
+  const base = configured
+    ? path.resolve(configured.replace(/^~(?=\/|$)/, os.homedir()))
+    : path.join(os.homedir(), ".config", "progretech", "mesh", "identity");
+  const safeAgent = String(agentId || "").trim().replace(/[^A-Za-z0-9._-]/g, "_");
+  return {
+    evidence: path.join(base, `${safeAgent}_codeseal_evidence.json`),
+    privateKey: path.join(base, `${safeAgent}_identity_private.pem`),
+    publicKey: path.join(base, `${safeAgent}_identity_public.pem`),
+  };
+}
+
+function codeSealAssertionRequired(record) {
+  const configured = String(
+    process.env.PROGRETECH_MESH_REQUIRE_CODESEAL_ASSERTION || ""
+  ).trim().toLowerCase();
+  if (["0", "false", "no", "off"].includes(configured)) return false;
+  if (["1", "true", "yes", "on"].includes(configured)) return true;
+
+  const paths = identityMaterialPaths(record?.agent_id);
+  if (fs.existsSync(paths.evidence) || fs.existsSync(paths.privateKey) || fs.existsSync(paths.publicKey)) {
+    return true;
+  }
+
+  try {
+    return new URL(record?.mesh || "").hostname === "mesh.progretech.com";
+  } catch {
+    return false;
+  }
+}
+
+async function postMeshJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {"content-type":"application/json", "accept":"application/json"},
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => ({}));
+  return {response, body};
+}
+
+async function assertCodeSealIdentity(record) {
+  if (!codeSealAssertionRequired(record)) return {required:false, verified:false};
+
+  const paths = identityMaterialPaths(record.agent_id);
+  for (const [kind, target] of Object.entries(paths)) {
+    if (!fs.existsSync(target)) throw new Error(`codeseal_identity_material_missing:${kind}`);
+  }
+
+  const evidence = JSON.parse(fs.readFileSync(paths.evidence, "utf8"));
+  const privateKey = fs.readFileSync(paths.privateKey);
+  const publicKey = fs.readFileSync(paths.publicKey, "utf8");
+
+  const challenge = await postMeshJson(
+    `${record.mesh}/api/agents/${encodeURIComponent(record.agent_id)}/identity/challenge`,
+    {device_credential:record.device_credential},
+  );
+  if (!challenge.response.ok || !challenge.body?.ok) {
+    throw new Error(`identity_challenge_rejected:${challenge.body?.error || challenge.response.status}`);
+  }
+
+  const signingPayload = String(challenge.body.signing_payload || "");
+  if (!signingPayload) throw new Error("identity_challenge_payload_missing");
+
+  const signature = crypto.sign(null, Buffer.from(signingPayload, "utf8"), privateKey).toString("base64");
+  const assertion = await postMeshJson(
+    `${record.mesh}/api/agents/${encodeURIComponent(record.agent_id)}/identity/assert`,
+    {
+      device_credential:record.device_credential,
+      public_key:publicKey,
+      codeseal_evidence:evidence,
+      challenge_id:challenge.body.challenge_id,
+      signature,
+    },
+  );
+  if (!assertion.response.ok || !assertion.body?.ok || assertion.body?.trust_valid !== true) {
+    throw new Error(`identity_assertion_rejected:${assertion.body?.error || assertion.response.status}`);
+  }
+
+  writeLifecycleState({
+    identity_assertion_state:"verified",
+    identity_assertion_provider:assertion.body?.provider || "codeseal",
+    identity_assertion_proof:assertion.body?.identity_proof || "ed25519-challenge",
+    identity_asserted_at:new Date().toISOString(),
+  });
+  return {required:true, verified:true};
+}
+
 function readLifecycleState() {
   return readJsonIfPresent(LIFECYCLE_STATE_PATH) || {};
 }
@@ -349,7 +444,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.8",
+    adapter_version: "0.8.1-cc.1",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -509,7 +604,7 @@ function readOnlyTerminalSnapshot() {
     `host=${os.hostname()}`,
     `platform=${os.platform()} ${os.release()}`,
     `node=${process.version}`,
-    `adapter=@progretech/openclaw-mesh 0.7.8`,
+    `adapter=@progretech/openclaw-mesh 0.7.11`,
     "mode=read-only-snapshot",
     "shell=disabled",
   ];
@@ -573,7 +668,36 @@ async function handleApprovedAction(api, msg) {
   });
 }
 
+const IDE_GATEWAY_ORIGIN = process.env.PROGRETECH_MESH_IDE_GATEWAY_ORIGIN?.trim()
+  || "http://127.0.0.1:8766";
+const IDE_GATEWAY_TOKEN_PATH = process.env.PROGRETECH_MESH_IDE_GATEWAY_TOKEN_PATH?.trim()
+  || path.join(os.homedir(), ".config", "rend", "ide-gateway-token");
+const IDE_GATEWAY_TIMEOUT_MS = Number.parseInt(
+  process.env.PROGRETECH_MESH_IDE_GATEWAY_TIMEOUT_MS || "145000",
+  10,
+);
+
+function readIdeGatewayToken() {
+  const value = fs.readFileSync(IDE_GATEWAY_TOKEN_PATH, "utf8").trim();
+  if (!value) throw new Error("ide_gateway_token_missing");
+  return value;
+}
+
+async function forwardIdeChat(api, body) {
+  return forwardRoleCompletion(api.runtime.config.current(), body);
+}
+
 async function handleGatewayCommand(api, msg) {
+  if (msg?.type === "factory_control_request") {
+    const requestId = trimText(msg.request_id || "", 160);
+    if (!requestId) return true;
+    let payload;
+    try { payload = await forwardFactoryControl(msg.payload, process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token); }
+    catch { payload = {ok:false,error:"factory_host_control_failed"}; }
+    sendMeshGatewayMessage({type:"factory_control_response",request_id:requestId,payload,timestamp:new Date().toISOString()});
+    return true;
+  }
+
   if (["file_transfer_start","file_transfer_chunk","file_transfer_end","file_transfer_cancel"].includes(msg?.type)) {
     try { handleInboundFileTransfer(msg); }
     catch (error) {
@@ -585,11 +709,43 @@ async function handleGatewayCommand(api, msg) {
     return true;
   }
 
+  if (msg?.type === "ide_chat_request") {
+    const requestId = trimText(msg.request_id || msg?.payload?.request_id || crypto.randomUUID(), 160);
+    try {
+      const completion = await forwardIdeChat(api, msg?.payload?.openai || {});
+      sendMeshGatewayMessage({
+        type:"ide_chat_response",
+        request_id:requestId,
+        timestamp:new Date().toISOString(),
+        payload:{request_id:requestId,ok:true,completion},
+      });
+      appendEvent({
+        event_type:"ide_relay",channel:"mesh",state:"completed",direction:null,
+        summary:"IDE relay completion returned",
+        payload:{request_id:requestId,model:completion?.model || null},
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      sendMeshGatewayMessage({
+        type:"ide_chat_response",
+        request_id:requestId,
+        timestamp:new Date().toISOString(),
+        payload:{request_id:requestId,ok:false,error:trimText(detail,500)},
+      });
+      appendEvent({
+        event_type:"ide_relay",channel:"mesh",state:"error",direction:null,
+        summary:"IDE relay request failed",
+        payload:{request_id:requestId,error:trimText(detail,500)},
+      });
+    }
+    return true;
+  }
+
   if (msg?.type === "demo_file_offer_request") {
     const status = [
       "ProgreTech Mesh agent file exchange",
       `agent=${meshIdentity?.agent_id || "unknown"}`,
-      `adapter=@progretech/openclaw-mesh 0.7.8`,
+      `adapter=@progretech/openclaw-mesh 0.7.11`,
       `generated_at=${new Date().toISOString()}`,
       "purpose=RC2 file exchange acceptance artifact",
     ].join("\n") + "\n";
@@ -602,13 +758,7 @@ async function handleGatewayCommand(api, msg) {
     const payload = msg.payload || {};
     sendCommandAck("message_request", { request_id: requestId });
     try {
-      const result = await runMeshConversation(api, {
-        agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
-        text: payload.text,
-        room: payload.room || "direct",
-        sender: payload.sender || "Mesh user",
-        transport: "mesh-websocket",
-      });
+      const result = await runMeshConversation(api, meshConversationBody(payload, meshIdentity?.agent_id, "mesh-websocket"));
       sendMeshGatewayMessage({
         type: "message_response",
         request_id: requestId,
@@ -618,7 +768,7 @@ async function handleGatewayCommand(api, msg) {
           request_id: requestId,
           room: payload.room || "direct",
           agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
-          runtime: { adapter: "openclaw-embedded", session_id: result.session_id, session_key: result.session_key, run_id: result.run_id },
+          runtime: { adapter: "openclaw-gateway", session_id: result.session_id, session_key: result.session_key, run_id: result.run_id },
         },
       });
     } catch (error) {
@@ -808,7 +958,8 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   if (!record?.agent_id || !record?.device_credential || !record?.mesh) return;
 
   if (record.device_credential_expires_at) {
-    const expires = Date.parse(record.device_credential_expires_at);
+    const rawExpiry = record.device_credential_expires_at;
+    const expires = typeof rawExpiry === "number" ? rawExpiry * 1000 : Date.parse(rawExpiry);
     if (Number.isFinite(expires) && Date.now() >= expires) {
       writeConnectionStatus("expired", "Mesh reconnect credential expired; re-enrollment required", {
         agent_id: record.agent_id,
@@ -824,6 +975,26 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   }
 
   meshIdentity = record;
+
+  try {
+    const identity = await assertCodeSealIdentity(record);
+    if (identity.required) {
+      writeConnectionStatus("identity_verified", "CodeSeal identity + Ed25519 proof verified before reconnect", {
+        agent_id:record.agent_id,
+        device_id:record.device_id,
+      });
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    writeConnectionStatus("reconnecting", "Mesh identity assertion failed; reconnect scheduled", {
+      agent_id:record.agent_id,
+      device_id:record.device_id,
+      last_reconnect_error:`identity_assertion:${detail}`,
+    });
+    scheduleReconnect(api, `identity_assertion:${detail}`);
+    return;
+  }
+
   const url = credentialWebSocketUrl(record, preferInitialPairing && justRedeemed);
 
   writeConnectionStatus("connecting", "Connecting outbound to Mesh", {
@@ -1079,8 +1250,8 @@ function isLoopback(req) {
 }
 
 function localTokenOk(req) {
-  const expected = process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim();
-  if (!expected) return true;
+  const expected = process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token;
+  if (!expected) return false;
   const actual = String(req.headers?.["x-progretech-mesh-local-token"] || "");
   if (!actual || actual.length !== expected.length) return false;
   try {
@@ -1115,8 +1286,90 @@ function stableConversationId({ agentId, room, sender }) {
   return `mesh-${agentId}-${digest}`;
 }
 
+function extractOwnershipClaim(value) {
+  const text = String(value || "");
+  const match = text.match(/\bPTMOWN1:([A-Za-z0-9_-]{20,200})\b/);
+  return match ? match[1] : null;
+}
+
+async function redeemOwnershipClaim(api, claimCode) {
+  const record = readJsonIfPresent(DEVICE_CREDENTIAL_PATH);
+  if (!record?.mesh || !record?.agent_id || !record?.device_credential) {
+    throw new Error("ownership_migration_credential_missing");
+  }
+
+  writeLifecycleState({
+    ownership_state:"redeeming",
+    ownership_claim_received_at:new Date().toISOString(),
+  });
+
+  const response = await fetch(`${record.mesh}/api/ownership/redeem`, {
+    method:"POST",
+    headers:{"content-type":"application/json","accept":"application/json"},
+    body:JSON.stringify({
+      agent_id:record.agent_id,
+      device_credential:record.device_credential,
+      claim_code:claimCode,
+    }),
+  });
+  const body = await response.json().catch(()=>({}));
+  if (!response.ok || !body?.ok) {
+    throw new Error(`ownership_redeem_rejected:${body?.error || response.status}`);
+  }
+
+  const rotated = {
+    ...record,
+    device_credential:body.device_credential,
+    device_id:body.device_id,
+    device_credential_expires_at:body.device_credential_expires_at,
+    reconnect_mode:body.reconnect_mode || "signed-device-credential",
+    owner_bound:true,
+    owner_bound_at:new Date().toISOString(),
+  };
+  atomicWriteJson(DEVICE_CREDENTIAL_PATH, rotated);
+  meshIdentity = rotated;
+  clearRevokedMarker();
+  writeLifecycleState({
+    ownership_state:"bound",
+    ownership_bound:true,
+    device_id:rotated.device_id,
+    credential_expires_at:rotated.device_credential_expires_at || null,
+    adapter_version:"0.7.11",
+  });
+  writeConnectionStatus("ownership_bound","Mesh ownership bound; reconnecting with rotated credential",{
+    agent_id:rotated.agent_id,
+    device_id:rotated.device_id,
+  });
+
+  if (meshSocket) {
+    try { meshSocket.close(); } catch {}
+    meshSocket = null;
+  }
+  meshReconnectAttempt = 0;
+  scheduleReconnect(api,"ownership_credential_rotated",250);
+  return true;
+}
+
 function registerObservationHooks(api) {
   api.on("message_received", (event, ctx) => {
+    const ownershipClaim = extractOwnershipClaim(event?.content || event?.text || "");
+    if (ownershipClaim) {
+      void redeemOwnershipClaim(api, ownershipClaim).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        writeLifecycleState({
+          ownership_state:"error",
+          ownership_error:trimText(detail,500),
+        });
+        appendEvent({
+          event_type:"identity",
+          channel:channelFromContext(ctx,event?.channel || "unknown"),
+          state:"error",
+          direction:"input",
+          summary:"Mesh ownership claim failed",
+          payload:{error:trimText(detail,500)},
+        });
+      });
+    }
     appendEvent({
       event_type: "message",
       channel: channelFromContext(ctx, event?.channel || "unknown"),
@@ -1210,8 +1463,8 @@ function registerObservationHooks(api) {
 }
 
 async function runMeshConversation(api, body) {
-  const agentId = trimText(body?.agent_id || meshIdentity?.agent_id || "rend", 80);
-  const text = trimText(body?.text || "", 32000);
+  const cfg = api.runtime.config.current();
+  const { agentId, text } = resolveMeshTarget(body, cfg, meshIdentity?.agent_id || "rend");
   const room = trimText(body?.room || "direct", 120);
   const sender = trimText(body?.sender || "Mesh user", 200);
   if (!text.trim()) throw new Error("empty_message");
@@ -1219,7 +1472,7 @@ async function runMeshConversation(api, body) {
   const sessionKey = `agent:${agentId}:mesh:${sessionId}`;
   const runId = crypto.randomUUID();
   appendEvent({event_type:"message",channel:"mesh",state:"received",direction:"input",summary:text,payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
-  const result = await api.runtime.agent.runEmbeddedAgent({agentId,sessionId,sessionKey,runId,prompt:text});
+  const result = await runGatewayConversation(cfg, {agentId, sessionKey, text});
   const responseText = extractResultText(result);
   appendEvent({event_type:"message",channel:"mesh",state:"sent",direction:"output",summary:responseText || "Mesh agent turn completed",payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
   return {ok:true,text:responseText,session_id:sessionId,session_key:sessionKey,run_id:runId};
@@ -1263,7 +1516,7 @@ function configureDirectDataChannel(api, peerId, channel) {
       if (message?.type === "heartbeat_request") { channel.sendMessage(JSON.stringify(heartbeatPayload())); return; }
       if (message?.type === "message") {
         const requestId=trimText(message.request_id || crypto.randomUUID(),120);
-        const result=await runMeshConversation(api,{agent_id:meshIdentity?.agent_id || message.agent_id || "rend",text:message.text,room:message.room || "direct",sender:message.sender || "Mesh user",transport:"webrtc-direct"});
+        const result=await runMeshConversation(api,meshConversationBody(message,meshIdentity?.agent_id,"webrtc-direct"));
         channel.sendMessage(JSON.stringify({type:"message_response",request_id:requestId,timestamp:new Date().toISOString(),...result})); return;
       }
       if (message?.type === "hello") channel.sendMessage(JSON.stringify({type:"hello_ack",peer_id:peerId,agent_id:meshIdentity?.agent_id || null,path:"direct",cloud_data_path:false}));
@@ -1364,7 +1617,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.8",
+      adapter_version: "0.8.1-cc.1",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",
