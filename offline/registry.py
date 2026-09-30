@@ -43,9 +43,11 @@ class Registry:
         return json.loads(row[0])
 
     def add(self, body):
-        allowed = {'kind', 'name', 'workspace', 'executable', 'runtime_id', 'entrypoint', 'confirmed'}
+        allowed = {'kind', 'name', 'workspace', 'executable', 'runtime_id', 'entrypoint', 'confirmed', 'intermediary'}
         if not isinstance(body, dict) or set(body) - allowed or body.get('confirmed') is not True:
             raise ValueError('confirm_personally_owned_runtime')
+        if body.get('intermediary') is not True:
+            raise ValueError('accept_mesh_intermediary_terms')
         kind = body.get('kind')
         if kind not in KINDS: raise ValueError('unsupported_local_runtime')
         name = body.get('name', '').strip()
@@ -65,7 +67,8 @@ class Registry:
             entrypoint = str(script.resolve())
         row = {'id': 'local-' + uuid.uuid4().hex[:16], 'kind': kind, 'name': name,
             'workspace': str(workspace.resolve()), 'executable': str(executable.resolve()),
-            'runtime_id': runtime_id, 'entrypoint': entrypoint, 'awake': False, 'local': True}
+            'runtime_id': runtime_id, 'entrypoint': entrypoint, 'awake': False, 'local': True,
+            'consent': {'personally_owned':True, 'mesh_intermediary':True}}
         self.save(row)
         return row
 

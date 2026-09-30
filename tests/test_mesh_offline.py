@@ -29,7 +29,7 @@ class OfflineTests(unittest.TestCase):
         script = self.home / 'agent.py'
         script.write_text('import json,sys\nq=json.load(sys.stdin)["question"]\nprint("I am the local Python test agent. " + q)\n')
         response = self.post('/api/local/agents', {'kind':'pycharm', 'name':'Python project', 'executable':sys.executable,
-            'workspace':str(self.home), 'entrypoint':str(script), 'confirmed':True})
+            'workspace':str(self.home), 'entrypoint':str(script), 'confirmed':True, 'intermediary':True})
         self.assertEqual(response.status_code, 200)
         return response.json['agent']
 
@@ -51,7 +51,7 @@ class OfflineTests(unittest.TestCase):
 
     def test_import_requires_personal_ownership_and_real_paths(self):
         self.assertEqual(self.post('/api/local/agents', {'kind':'claude'}).status_code, 400)
-        self.assertEqual(self.post('/api/local/agents', {'kind':'claude','name':'x','confirmed':True,
+        self.assertEqual(self.post('/api/local/agents', {'kind':'claude','name':'x','confirmed':True,'intermediary':True,
             'workspace':str(self.home),'executable':'not-an-absolute-path'}).status_code, 400)
 
     def test_same_local_runtime_cannot_run_two_turns_at_once(self):

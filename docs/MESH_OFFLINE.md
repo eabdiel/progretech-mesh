@@ -17,7 +17,7 @@ The application uses an embedded, private loopback UI engine while its window is
 ## Bring your agents
 
 1. Click the **Agent onboarding** plus tile in Mission Control.
-2. Find installed OpenClaw, Hermes or Claude runtimes, or enter their executable and workspace. Discovery reads only public identity and workspace fields. Nothing is added until you confirm ownership and click Add.
+2. Find installed OpenClaw, Hermes or Claude runtimes, or enter their executable and workspace. Discovery reads only public identity and workspace fields. Nothing is added until you confirm ownership, acknowledge Mesh’s intermediary role and click Add.
 3. For a PyCharm project, select its Python executable, workspace and runnable agent entry point. The Files menu provides native file and folder pickers. The entry point receives one JSON object with a `question` on stdin, prints its answer on stdout, and exits with zero on success. PyCharm itself is an IDE and does not provide this runtime protocol.
 4. Ask the agent to identify itself. Its pulse turns green only after it actually returns a successful answer.
 
