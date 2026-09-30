@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import hashlib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -52,6 +53,19 @@ class OfflineTests(unittest.TestCase):
         self.assertEqual(self.post('/api/local/agents', {'kind':'claude'}).status_code, 400)
         self.assertEqual(self.post('/api/local/agents', {'kind':'claude','name':'x','confirmed':True,
             'workspace':str(self.home),'executable':'not-an-absolute-path'}).status_code, 400)
+
+    def test_same_local_runtime_cannot_run_two_turns_at_once(self):
+        from control_center.file_lock import lock, unlock
+        agent = self.add_python()
+        identity = '|'.join([agent['kind'], agent['executable'], agent['runtime_id'], agent['workspace']])
+        locks = self.home / '.progretech-mesh/offline/runtime-locks'; locks.mkdir()
+        with (locks/(hashlib.sha256(identity.encode()).hexdigest()+'.lock')).open('a+') as guard:
+            lock(guard, blocking=False)
+            try:
+                response = self.post('/api/local/agents/'+agent['id']+'/ask', {'question':'Identity'})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json['error'], 'local_agent_is_busy')
+            finally: unlock(guard)
 
     def test_office_works_without_model_or_cloud(self):
         with patch('socket.create_connection', side_effect=AssertionError('offline test attempted networking')):

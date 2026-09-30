@@ -7,6 +7,7 @@ import subprocess
 import uuid
 import re
 import tempfile
+import hashlib
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -108,6 +109,19 @@ class Registry:
         return candidates
 
     def ask(self, aid, question):
+        from control_center.file_lock import lock, unlock
+        row = self.get(aid)
+        identity = '|'.join([row['kind'], row['executable'], row['runtime_id'],
+            row['workspace'] if row['kind'] in {'claude','pycharm'} else ''])
+        locks = self.root / 'runtime-locks'; locks.mkdir(exist_ok=True, mode=0o700)
+        path = locks / (hashlib.sha256(identity.encode()).hexdigest() + '.lock')
+        with path.open('a+') as guard:
+            try: lock(guard, blocking=False)
+            except BlockingIOError: raise ValueError('local_agent_is_busy') from None
+            try: return self._ask(aid, question)
+            finally: unlock(guard)
+
+    def _ask(self, aid, question):
         if not isinstance(question, str) or not question.strip() or len(question) > 8000:
             raise ValueError('question_required')
         row = self.get(aid)

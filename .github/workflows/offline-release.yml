@@ -6,6 +6,9 @@ on:
     tags: ['mesh-offline-v*']
 permissions:
   contents: write
+concurrency:
+  group: mesh-offline-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     strategy:
