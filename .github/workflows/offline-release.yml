@@ -21,6 +21,7 @@ jobs:
       OTEL_SDK_DISABLED: 'true'
       CMAKE_ARGS: '-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF'
       CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      PIP_CACHE_DIR: ${{ runner.temp }}/mesh-offline-pip-cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,8 +29,17 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-offline.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PIP_CACHE_DIR }}
+          key: mesh-offline-deps-${{ runner.os }}-${{ hashFiles('requirements-offline.txt') }}
       - name: Build dependencies
         run: python -m pip install -r requirements-offline.txt
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ${{ env.PIP_CACHE_DIR }}
+          key: mesh-offline-deps-${{ runner.os }}-${{ hashFiles('requirements-offline.txt') }}
       - name: Ubuntu desktop libraries
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb

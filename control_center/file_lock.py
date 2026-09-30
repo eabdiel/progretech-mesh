@@ -6,7 +6,9 @@ def lock(stream, blocking=True):
     if os.name == 'nt':
         import msvcrt
         stream.seek(0)
-        if not stream.read(1):
+        # Windows forbids even reading another handle's locked byte. Checking
+        # file size avoids touching that range before the lock attempt.
+        if os.fstat(stream.fileno()).st_size == 0:
             stream.write('0'); stream.flush()
         stream.seek(0)
         try:
