@@ -69,7 +69,11 @@ def main():
         home = Path(temporary.name)
     home.mkdir(parents=True, exist_ok=True)
     app = create_app(home)
-    try: server = make_server('127.0.0.1', 0, app, threaded=True)
+    try:
+        server = make_server('127.0.0.1', 0, app, threaded=True)
+        # Drain active local requests before releasing their workspaces. A
+        # Windows child process can keep its current directory open until exit.
+        server.daemon_threads = False
     except OSError as exc:
         QMessageBox.critical(None, 'Mesh Offline', 'The local engine could not start: ' + str(exc)); return 1
     origin = 'http://127.0.0.1:' + str(server.server_port)

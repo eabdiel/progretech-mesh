@@ -92,7 +92,7 @@ def build():
         (deb / 'DEBIAN/control').write_text(f'Package: mesh-offline\nVersion: {VERSION}\nArchitecture: amd64\nMaintainer: ProgreTech\nSection: utils\nPriority: optional\nDepends: libc6 (>= 2.35), libgl1, libegl1, libxkbcommon0, libnss3, libasound2 | libasound2t64\nDescription: Mesh Offline agent orchestration desktop\n Bundled Python, Qt, CrewAI, local inference, Node and Git.\n')
         applications = deb / 'usr/share/applications'; applications.mkdir(parents=True, exist_ok=True)
         (applications / 'mesh-offline.desktop').write_text('[Desktop Entry]\nType=Application\nName=Mesh Offline\nComment=Local agent orchestration\nExec=/opt/progretech/mesh-offline/MeshOffline\nTerminal=false\nCategories=Development;Utility;\n')
-        subprocess.run(['dpkg-deb', '--root-owner-group', '--build', str(deb), str(out / f'mesh-offline-{VERSION}-ubuntu-amd64.deb')], check=True)
+        subprocess.run(['dpkg-deb', '-Zgzip', '-z1', '--root-owner-group', '--build', str(deb), str(out / f'mesh-offline-{VERSION}-ubuntu-amd64.deb')], check=True)
     sums = []
     for path in sorted(out.iterdir()):
         if path.is_file() and path.name != 'SHA256SUMS.txt': sums.append(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name)
