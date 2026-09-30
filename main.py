@@ -52,6 +52,8 @@ from mesh_ownership import (
 from mesh_capabilities import register_capability_routes
 from mesh_capability_routes import register_capability_registry_routes
 from mesh_capability_runtime_routes import register_capability_runtime_routes
+from mesh_factory_control import factory_relay, register_factory_routes
+from mesh_control_center import control_relay, register_control_center_routes, register_gateway_agents
 from gateway.identity.codeseal import CodeSealIdentityVerifier
 
 
@@ -175,8 +177,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.7.11"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.7.11.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.1-cc.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.1-cc.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -444,11 +446,21 @@ def broadcast_to_clients(agent_id: str, message: dict[str, Any]) -> None:
 
 
 def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
+    if message.get("type") == "factory_control_response":
+        factory_relay.resolve(agent_id, message)
+        return
+
     record = DEV_AGENT_REGISTRY.get(agent_id)
     if not record:
         return
 
     msg_type = message.get("type", "event")
+    if msg_type == "control_center_response":
+        control_relay.resolve(agent_id, message)
+        return
+    if msg_type == "control_center_roster":
+        register_gateway_agents(agent_id, message.get("payload"), DEV_AGENT_REGISTRY)
+        return
     now = utcnow()
 
     if msg_type == "heartbeat":
@@ -762,6 +774,12 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         for key, value in record.items()
         if key not in {"codeseal_key", "owner_id"}
     }
+    public["control_center_available"] = bool(record.get("owner_id")) and record.get("trust_state") == "verified"
+    if record.get("control_center_gateway"):
+        host = DEV_AGENT_REGISTRY.get(record["control_center_gateway"], {})
+        linked = record["control_center_gateway"] in GATEWAY_SOCKETS and host.get("trust_state") == "verified"
+        public["transport"] = "connected" if linked else "not-connected"
+        public["control_center_available"] = public["control_center_available"] and host.get("trust_state") == "verified"
     public["owner_bound"] = bool(str(record.get("owner_id") or "").strip())
     public["ownership_state"] = "owned" if public["owner_bound"] else "legacy-unowned"
     return public
@@ -1044,6 +1062,7 @@ def ide_models(agent_id: str) -> list[str]:
             "rend-llama-review",
             "rend-architect",
             "rend-research",
+            "lyra", "mak", "progre", "designer", "architect", "reviewer", "fast",
         ])
     return models
 
@@ -1455,6 +1474,19 @@ def create_app() -> Flask:
         user = session.get("mesh_user") or {}
         return str(user.get("id") or "").strip()
 
+    register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
+    register_control_center_routes(app, require_session, current_mesh_user_id,
+                                   DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
+
+    @app.before_request
+    def restrict_linked_role_credentials():
+        parts = request.path.split("/")
+        if len(parts) >= 4 and parts[1:3] == ["api", "agents"]:
+            record = DEV_AGENT_REGISTRY.get(parts[3], {})
+            if record.get("control_center_gateway") and parts[4:] != ["control-center"]:
+                return jsonify(ok=False, error="linked_role_uses_host_identity"), 409
+
+
     @app.before_request
     def enforce_session_agent_ownership():
         user = session.get("mesh_user")
@@ -1821,7 +1853,7 @@ def create_app() -> Flask:
             token_ttl_seconds=IDE_TOKEN_TTL_SECONDS,
             request_timeout_seconds=IDE_REQUEST_TIMEOUT_SECONDS,
             streaming="single-completion SSE compatibility",
-            transport="HTTPS -> owner-scoped Mesh gateway -> agent-local IDE gateway",
+            transport="HTTPS -> owner-scoped Mesh gateway -> OpenClaw role agent",
         )
 
     @app.post("/api/agents/<agent_id>/ide/token")
@@ -1871,7 +1903,9 @@ def create_app() -> Flask:
         if not record or record.get("transport") != "connected":
             return openai_error("gateway_not_connected", 503, "service_unavailable")
 
-        body = request.get_json(silent=True) or {}
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return openai_error("invalid_request", 400)
         model = str(body.get("model") or "").strip()
         if model not in ide_models(agent_id):
             return openai_error("model_not_allowed", 400)
@@ -1900,7 +1934,12 @@ def create_app() -> Flask:
 
         try:
             choice = (completion.get("choices") or [])[0]
-            text = str(((choice.get("message") or {}).get("content")) or "")
+            assistant_message = choice.get("message") or {}
+            delta = {"role": "assistant"}
+            if assistant_message.get("content") is not None:
+                delta["content"] = assistant_message["content"]
+            if assistant_message.get("tool_calls"):
+                delta["tool_calls"] = [{**tool, "index": index} for index, tool in enumerate(assistant_message["tool_calls"])]
             finish_reason = str(choice.get("finish_reason") or "stop")
         except (IndexError, TypeError, AttributeError):
             return openai_error("invalid_agent_completion", 502, "upstream_error")
@@ -1913,7 +1952,7 @@ def create_app() -> Flask:
             "object": "chat.completion.chunk",
             "created": created,
             "model": chunk_model,
-            "choices": [{"index": 0, "delta": {"role": "assistant", "content": text}, "finish_reason": None}],
+            "choices": [{"index": 0, "delta": delta, "finish_reason": None}],
         }
         last = {
             "id": chunk_id,
@@ -2585,8 +2624,10 @@ def create_app() -> Flask:
                 "transport": "live-gateway",
             },
             fleet={
-                "connected": sum(1 for a in agents if a["transport"] == "connected"),
-                "verified": sum(1 for a in agents if a["trust_state"] == "verified"),
+                "connected": sum(1 for a in agents if a["transport"] == "connected" and not a.get("control_center_gateway")),
+                "verified": sum(1 for a in agents if a["trust_state"] == "verified" and not a.get("control_center_gateway")),
+                "signed_total": sum(1 for a in agents if not a.get("control_center_gateway")),
+                "linked": sum(1 for a in agents if a.get("control_center_gateway")),
                 "total": len(agents),
             },
             agents=agents,

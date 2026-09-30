@@ -1,0 +1,189 @@
+import copy
+import tempfile
+import unittest
+from functools import wraps
+from pathlib import Path
+
+from flask import Flask, jsonify, session
+
+import mesh_control_center as cloud
+from control_center.provider import AgentControlProvider, register_provider_routes
+
+
+def profile(**changes):
+    return {'role': 'Research', 'models': ['ollama/example'], 'workstation': 'yes', 'stack': 'custom',
+            'voice': {'provider': 'kokoro', 'voice': 'af_heart', 'pitch': 1},
+            'permissions': ['profile', 'inventory', 'speaker'], **changes}
+
+
+class ProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.calls = []
+        self.reads = []
+        def discover(runtime):
+            self.reads.append(runtime)
+            return {'models': [f'local/{runtime}']}
+        def execute(runtime, action, args, saved):
+            self.calls.append((runtime, action, args, copy.deepcopy(saved)))
+            return {'played': True}
+        self.provider = AgentControlProvider(self.temp.name, {'lyra': 'researcher', 'rend': 'main'},
+            discover, execute, ['voice.preview', 'voice.start', 'models.list'])
+    def tearDown(self):
+        self.temp.cleanup()
+    def test_profiles_persist_and_do_not_change_other_agents(self):
+        self.provider.dispatch('lyra', 'profile.save', profile())
+        same_disk = AgentControlProvider(self.temp.name, self.provider.bindings, lambda _: {}, lambda *a: {})
+        self.assertEqual(same_disk.dispatch('lyra', 'profile.get', {})['profile']['voice']['voice'], 'af_heart')
+        self.assertEqual(self.provider.dispatch('rend', 'profile.get', {})['profile']['permissions'], [])
+        self.assertEqual(self.provider.dispatch('rend', 'profile.get', {})['profile']['voice']['voice'], 'am_onyx')
+        self.assertEqual(Path(self.temp.name, 'lyra.json').stat().st_mode & 0o777, 0o600)
+    def test_inventory_requires_consent_and_correct_runtime(self):
+        self.provider.dispatch('lyra', 'profile.get', {})
+        self.assertEqual(self.reads, [])
+        self.provider.dispatch('lyra', 'profile.save', profile())
+        data = self.provider.dispatch('lyra', 'profile.get', {})
+        self.assertEqual(data['discovered']['models'], ['local/researcher'])
+        self.assertEqual(self.reads, ['researcher'])
+    def test_saved_voice_is_selected_agent_only(self):
+        self.provider.dispatch('lyra', 'profile.save', profile())
+        self.provider.dispatch('lyra', 'voice.preview', {'text': 'Hello'})
+        self.assertEqual(self.calls[0][0], 'researcher')
+        self.assertEqual(self.calls[0][3]['voice']['voice'], 'af_heart')
+        with self.assertRaisesRegex(ValueError, 'permission_required'):
+            self.provider.dispatch('rend', 'voice.preview', {'text': 'Hello'})
+    def test_host_controls_require_both_grants_and_workstation(self):
+        for changes, error in [({}, 'permission_required'),
+            ({'permissions': ['profile','microphone']}, 'workstation_permission_required'),
+            ({'permissions': ['profile','microphone','workstation'], 'workstation': 'no'}, 'workstation_permission_required')]:
+            self.provider.dispatch('lyra','profile.save',profile(**changes))
+            with self.assertRaisesRegex(ValueError,error):
+                self.provider.dispatch('lyra','voice.start',{})
+        self.assertEqual(self.calls, [])
+    def test_revocation_blocks_future_preview(self):
+        p = profile()
+        self.provider.dispatch('lyra','profile.save',p)
+        self.provider.dispatch('lyra','profile.save',{**p,'permissions':[]})
+        with self.assertRaisesRegex(ValueError,'permission_required'):
+            self.provider.dispatch('lyra','voice.preview',{'text':'Hello'})
+    def test_cannot_store_new_details_without_consent(self):
+        with self.assertRaisesRegex(ValueError,'profile_permission_required'):
+            self.provider.dispatch('lyra','profile.save',profile(permissions=[]))
+        self.assertFalse(Path(self.temp.name,'lyra.json').exists())
+    def test_unbound_and_path_traversal_are_rejected(self):
+        for agent in ['mak', '../lyra', '', 'rend/../../lyra']:
+            with self.assertRaisesRegex(ValueError,'agent_binding_required'):
+                self.provider.dispatch(agent,'profile.get',{})
+    def test_invalid_profile_is_never_saved(self):
+        for pitch in [True, float('nan'), float('inf'), 7]:
+            p = profile(); p['voice']['pitch'] = pitch
+            with self.assertRaises(ValueError):self.provider.dispatch('lyra','profile.save',p)
+        with self.assertRaises(ValueError):self.provider.dispatch('lyra','profile.save',profile(permissions=['shell']))
+        self.assertFalse(Path(self.temp.name,'lyra.json').exists())
+    def test_provider_auth_and_target_binding(self):
+        app = Flask(__name__)
+        register_provider_routes(app, self.provider, lambda:'test-token')
+        client = app.test_client()
+        body = {'agent_id':'lyra','action':'profile.get','args':{}}
+        self.assertEqual(client.post('/api/mesh/control-center',json=body).status_code,401)
+        headers = {'X-ProgreTech-Mesh-Local-Token':'test-token'}
+        self.assertEqual(client.post('/api/mesh/control-center',json=body,headers=headers).json['result']['agent_id'],'lyra')
+        body['agent_id'] = 'mak'
+        self.assertEqual(client.post('/api/mesh/control-center',json=body,headers=headers).status_code,400)
+    def test_outside_stack_details_do_not_claim_voice_readiness(self):
+        p=profile();p['voice']={'provider':'my-tts','voice':'lyra-custom','pitch':0}
+        self.provider.dispatch('lyra','profile.save',p)
+        data=self.provider.dispatch('lyra','profile.get',{})
+        self.assertEqual(data['profile']['voice']['voice'],'lyra-custom')
+        self.assertNotIn('voice.preview',data['capabilities'])
+        with self.assertRaisesRegex(ValueError,'voice_provider_unavailable'):
+            self.provider.dispatch('lyra','voice.preview',{'text':'Hello'})
+
+
+class CloudTests(unittest.TestCase):
+    def setUp(self):
+        self.app = Flask(__name__, template_folder='../templates', static_folder='../static')
+        self.app.secret_key = 'test'
+        self.registry = {'lyra':{'id':'lyra','name':'Lyra','owner_id':'owner','trust_state':'verified'}}
+        self.gateways = {'lyra':object()}
+        self.sent = []
+        self.old = cloud.control_relay
+        cloud.control_relay = cloud.ControlRelay(timeout=.005)
+        def auth(view):
+            @wraps(view)
+            def wrapped(*args, **kwargs):
+                if not session.get('uid'):return jsonify(ok=False),401
+                return view(*args,**kwargs)
+            return wrapped
+        def send(agent, msg):
+            self.sent.append((agent,msg))
+            cloud.control_relay.resolve(agent,{'type':'control_center_response','request_id':msg['request_id'],
+                'payload':{'ok':True,'result':{'agent_id':agent}}})
+            return True,None
+        cloud.register_control_center_routes(self.app,auth,lambda:session.get('uid'),self.registry,self.gateways,send)
+        self.client = self.app.test_client()
+    def tearDown(self):cloud.control_relay = self.old
+    def login(self, uid='owner'):
+        with self.client.session_transaction() as s:s['uid']=uid
+    def post(self, action='profile.get', args=None, origin='http://localhost'):
+        return self.client.post('/api/agents/lyra/control-center',json={'action':action,'args':args or {}},headers={'Origin':origin})
+    def test_auth_and_cross_owner(self):
+        self.assertEqual(self.post().status_code,401)
+        self.login('someone-else')
+        self.assertEqual(self.post().status_code,404)
+        self.assertEqual(self.client.get('/agents/lyra/control-center').status_code,404)
+        self.assertFalse(self.sent)
+    def test_unbound_unverified_offline(self):
+        self.login()
+        for field,value,expected in [('owner_id','',404),('trust_state','unsigned',403)]:
+            old = self.registry['lyra'][field];self.registry['lyra'][field]=value
+            self.assertEqual(self.post().status_code,expected)
+            self.registry['lyra'][field]=old
+        self.gateways.clear();self.assertEqual(self.post().status_code,503)
+        self.assertFalse(self.sent)
+    def test_csrf_and_bad_actions(self):
+        self.login()
+        self.assertEqual(self.post(origin='https://evil.example').status_code,403)
+        self.assertEqual(self.post(origin='').status_code,403)
+        self.assertEqual(self.post('voice.settings').status_code,400)
+        self.assertEqual(self.post(args={'agent_id':'rend'}).status_code,400)
+        self.assertFalse(self.sent)
+    def test_selected_agent_roundtrip(self):
+        self.login();self.assertEqual(self.post().json['result']['agent_id'],'lyra')
+        self.assertEqual(self.sent[0][0],'lyra');self.assertEqual(cloud.control_relay.pending,{})
+    def test_offline_page_has_early_requirements_and_permissions(self):
+        self.login();self.gateways.clear()
+        response = self.client.get('/agents/lyra/control-center')
+        self.assertEqual(response.status_code,200)
+        for text in [b'Minimum Requirements',b'Permissions &amp; data',b'Use Progretech',b'Gateway offline']:
+            self.assertIn(text,response.data)
+        self.assertFalse(self.sent)
+    def test_wrong_agent_response_cannot_resolve(self):
+        relay = cloud.ControlRelay(timeout=.001)
+        def send(agent,msg):
+            self.assertFalse(relay.resolve('rend',{'type':'control_center_response','request_id':msg['request_id'],'payload':{'ok':True}}))
+            return True,None
+        self.assertEqual(relay.dispatch('lyra','profile.get',{},send)[1],504)
+        self.assertEqual(relay.pending,{})
+    def test_linked_role_uses_parent_gateway_and_its_own_profile(self):
+        self.login()
+        cloud.register_gateway_agents('lyra',{'agents':[{'id':'lyra--worker','name':'Worker','role':'Research'}]},self.registry)
+        response=self.client.post('/api/agents/lyra--worker/control-center',json={'action':'profile.get','args':{}},headers={'Origin':'http://localhost'})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(self.sent[0][0],'lyra')
+        self.assertEqual(self.sent[0][1]['payload']['agent_id'],'lyra--worker')
+        self.registry['lyra']['trust_state']='revoked'
+        self.assertEqual(self.client.post('/api/agents/lyra--worker/control-center',json={'action':'profile.get'},headers={'Origin':'http://localhost'}).status_code,403)
+    def test_roster_cannot_adopt_other_owners_or_outside_namespace(self):
+        self.registry['lyra--taken']={'owner_id':'other'}
+        for aid in ['lyra--taken','rend--worker','../../worker']:
+            self.assertFalse(cloud.register_gateway_agents('lyra',{'agents':[{'id':aid,'name':'Worker'}]},self.registry))
+        self.assertEqual(self.registry['lyra--taken']['owner_id'],'other')
+    def test_retiring_binding_removes_only_host_roles(self):
+        cloud.register_gateway_agents('lyra',{'agents':[{'id':'lyra--worker','name':'Worker'}]},self.registry)
+        cloud.register_gateway_agents('lyra',{'agents':[]},self.registry)
+        self.assertNotIn('lyra--worker',self.registry)
+        self.assertIn('lyra',self.registry)
+
+
+if __name__ == '__main__':unittest.main()

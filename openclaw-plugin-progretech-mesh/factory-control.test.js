@@ -1,0 +1,3 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {forwardFactoryControl} from './factory-control.js';
+test('reject arbitrary commands and malformed args',async()=>{await assert.rejects(forwardFactoryControl({action:'exec'},'token'));await assert.rejects(forwardFactoryControl({action:'factory.status',args:[]},'token'));});
+test('fixed loopback authenticated destination',async()=>{const result=await forwardFactoryControl({action:'factory.status'},'token',async(url,opts)=>{assert.equal(url,'http://127.0.0.1:8787/api/factory/control');assert.equal(opts.redirect,'error');assert.equal(opts.headers['X-ProgreTech-Mesh-Local-Token'],'token');return {ok:true,json:async()=>({ok:true})}});assert.equal(result.ok,true);});

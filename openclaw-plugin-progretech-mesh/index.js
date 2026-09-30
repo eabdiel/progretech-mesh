@@ -1,10 +1,16 @@
+import { forwardRoleCompletion } from './ide-client.js';
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { forwardControlCenter, discoverControlAgents } from "./control-center.js";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
+
+import { forwardFactoryControl } from "./factory-control.js";
+import { resolveMeshTarget, meshConversationBody } from "./routing.js";
+import { runGatewayConversation } from "./gateway-client.js";
 
 const PLUGIN_ID = "progretech-mesh";
 const ROUTE = "/plugins/progretech-mesh/message";
@@ -438,7 +444,7 @@ async function redeemPendingEnrollment() {
     agent_id: record.agent_id,
     device_id: record.device_id,
     credential_expires_at: record.device_credential_expires_at || null,
-    adapter_version: "0.7.11",
+    adapter_version: "0.8.1-cc.1",
   });
 
   try { fs.unlinkSync(PENDING_ENROLLMENT_PATH); } catch {}
@@ -677,32 +683,21 @@ function readIdeGatewayToken() {
   return value;
 }
 
-async function forwardIdeChat(body) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), IDE_GATEWAY_TIMEOUT_MS);
-  try {
-    const token = readIdeGatewayToken();
-    const response = await fetch(`${IDE_GATEWAY_ORIGIN}/v1/chat/completions`, {
-      method:"POST",
-      headers:{
-        "authorization":`Bearer ${token}`,
-        "content-type":"application/json",
-        "accept":"application/json",
-      },
-      body:JSON.stringify({...body, stream:false}),
-      signal:controller.signal,
-    });
-    const payload = await response.json().catch(()=>({}));
-    if (!response.ok) {
-      throw new Error(`ide_gateway_http_${response.status}:${payload?.error?.message || payload?.error || "request_failed"}`);
-    }
-    return payload;
-  } finally {
-    clearTimeout(timer);
-  }
+async function forwardIdeChat(api, body) {
+  return forwardRoleCompletion(api.runtime.config.current(), body);
 }
 
 async function handleGatewayCommand(api, msg) {
+  if (msg?.type === "factory_control_request") {
+    const requestId = trimText(msg.request_id || "", 160);
+    if (!requestId) return true;
+    let payload;
+    try { payload = await forwardFactoryControl(msg.payload, process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token); }
+    catch { payload = {ok:false,error:"factory_host_control_failed"}; }
+    sendMeshGatewayMessage({type:"factory_control_response",request_id:requestId,payload,timestamp:new Date().toISOString()});
+    return true;
+  }
+
   if (["file_transfer_start","file_transfer_chunk","file_transfer_end","file_transfer_cancel"].includes(msg?.type)) {
     try { handleInboundFileTransfer(msg); }
     catch (error) {
@@ -717,7 +712,7 @@ async function handleGatewayCommand(api, msg) {
   if (msg?.type === "ide_chat_request") {
     const requestId = trimText(msg.request_id || msg?.payload?.request_id || crypto.randomUUID(), 160);
     try {
-      const completion = await forwardIdeChat(msg?.payload?.openai || {});
+      const completion = await forwardIdeChat(api, msg?.payload?.openai || {});
       sendMeshGatewayMessage({
         type:"ide_chat_response",
         request_id:requestId,
@@ -763,13 +758,7 @@ async function handleGatewayCommand(api, msg) {
     const payload = msg.payload || {};
     sendCommandAck("message_request", { request_id: requestId });
     try {
-      const result = await runMeshConversation(api, {
-        agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
-        text: payload.text,
-        room: payload.room || "direct",
-        sender: payload.sender || "Mesh user",
-        transport: "mesh-websocket",
-      });
+      const result = await runMeshConversation(api, meshConversationBody(payload, meshIdentity?.agent_id, "mesh-websocket"));
       sendMeshGatewayMessage({
         type: "message_response",
         request_id: requestId,
@@ -779,7 +768,7 @@ async function handleGatewayCommand(api, msg) {
           request_id: requestId,
           room: payload.room || "direct",
           agent_id: meshIdentity?.agent_id || payload.agent_id || "rend",
-          runtime: { adapter: "openclaw-embedded", session_id: result.session_id, session_key: result.session_key, run_id: result.run_id },
+          runtime: { adapter: "openclaw-gateway", session_id: result.session_id, session_key: result.session_key, run_id: result.run_id },
         },
       });
     } catch (error) {
@@ -969,7 +958,8 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   if (!record?.agent_id || !record?.device_credential || !record?.mesh) return;
 
   if (record.device_credential_expires_at) {
-    const expires = Date.parse(record.device_credential_expires_at);
+    const rawExpiry = record.device_credential_expires_at;
+    const expires = typeof rawExpiry === "number" ? rawExpiry * 1000 : Date.parse(rawExpiry);
     if (Number.isFinite(expires) && Date.now() >= expires) {
       writeConnectionStatus("expired", "Mesh reconnect credential expired; re-enrollment required", {
         agent_id: record.agent_id,
@@ -1078,6 +1068,9 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       sendMeshGatewayMessage(heartbeatPayload());
     });
     sendMeshGatewayMessage(localRouteMessage());
+    void discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token).then((agents) => {
+      if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents}});
+    }).catch(() => {});
     appendEvent({
       event_type: "gateway",
       channel: "mesh",
@@ -1092,11 +1085,25 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
     void (async () => {
       try {
         const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+        if (msg?.type === "control_center_request") {
+          let payload;
+          try {
+            payload = await forwardControlCenter(msg.payload, record.agent_id, ensureLocalAccessCredential().token);
+          } catch (error) {
+            payload = {ok: false, error: error instanceof Error ? error.message : String(error)};
+          }
+          sendMeshGatewayMessage({type: "control_center_response", request_id: msg.request_id, payload});
+          return;
+        }
         if (await handleGatewayCommand(api, msg)) return;
         if (msg?.type === "heartbeat_request") {
           sendCommandAck("heartbeat_request", {});
           await refreshCapabilityProviderSnapshot();
           sendMeshGatewayMessage(heartbeatPayload());
+          try {
+            const agents = await discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token);
+            if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents}});
+          } catch {}
           return;
         }
         if (msg?.type === "mesh_direct_signal") {
@@ -1243,8 +1250,8 @@ function isLoopback(req) {
 }
 
 function localTokenOk(req) {
-  const expected = process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim();
-  if (!expected) return true;
+  const expected = process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token;
+  if (!expected) return false;
   const actual = String(req.headers?.["x-progretech-mesh-local-token"] || "");
   if (!actual || actual.length !== expected.length) return false;
   try {
@@ -1456,8 +1463,8 @@ function registerObservationHooks(api) {
 }
 
 async function runMeshConversation(api, body) {
-  const agentId = trimText(body?.agent_id || meshIdentity?.agent_id || "rend", 80);
-  const text = trimText(body?.text || "", 32000);
+  const cfg = api.runtime.config.current();
+  const { agentId, text } = resolveMeshTarget(body, cfg, meshIdentity?.agent_id || "rend");
   const room = trimText(body?.room || "direct", 120);
   const sender = trimText(body?.sender || "Mesh user", 200);
   if (!text.trim()) throw new Error("empty_message");
@@ -1465,7 +1472,7 @@ async function runMeshConversation(api, body) {
   const sessionKey = `agent:${agentId}:mesh:${sessionId}`;
   const runId = crypto.randomUUID();
   appendEvent({event_type:"message",channel:"mesh",state:"received",direction:"input",summary:text,payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
-  const result = await api.runtime.agent.runEmbeddedAgent({agentId,sessionId,sessionKey,runId,prompt:text});
+  const result = await runGatewayConversation(cfg, {agentId, sessionKey, text});
   const responseText = extractResultText(result);
   appendEvent({event_type:"message",channel:"mesh",state:"sent",direction:"output",summary:responseText || "Mesh agent turn completed",payload:{session_key:sessionKey,run_id:runId,transport:body?.transport || "mesh"}});
   return {ok:true,text:responseText,session_id:sessionId,session_key:sessionKey,run_id:runId};
@@ -1509,7 +1516,7 @@ function configureDirectDataChannel(api, peerId, channel) {
       if (message?.type === "heartbeat_request") { channel.sendMessage(JSON.stringify(heartbeatPayload())); return; }
       if (message?.type === "message") {
         const requestId=trimText(message.request_id || crypto.randomUUID(),120);
-        const result=await runMeshConversation(api,{agent_id:meshIdentity?.agent_id || message.agent_id || "rend",text:message.text,room:message.room || "direct",sender:message.sender || "Mesh user",transport:"webrtc-direct"});
+        const result=await runMeshConversation(api,meshConversationBody(message,meshIdentity?.agent_id,"webrtc-direct"));
         channel.sendMessage(JSON.stringify({type:"message_response",request_id:requestId,timestamp:new Date().toISOString(),...result})); return;
       }
       if (message?.type === "hello") channel.sendMessage(JSON.stringify({type:"hello_ack",peer_id:peerId,agent_id:meshIdentity?.agent_id || null,path:"direct",cloud_data_path:false}));
@@ -1610,7 +1617,7 @@ export default definePluginEntry({
     registerConversationBridge(api);
     startLocalSignalServer(api);
     writeLifecycleState({
-      adapter_version: "0.7.11",
+      adapter_version: "0.8.1-cc.1",
       runtime: "openclaw",
       observation_mode: "read-only",
       conversation_scope: "mesh-independent",

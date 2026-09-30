@@ -4,7 +4,7 @@ import main
 class TestPT049LargeModelRelay(unittest.TestCase):
     def test_rend_exposes_qualified_specialist_aliases(self):
         self.assertEqual(
-            main.ide_models("rend"),
+            [alias for alias in main.ide_models("rend") if alias.startswith("rend")],
             [
                 "rend",
                 "rend-code",

@@ -1013,17 +1013,18 @@
         </div>
 
         <div class="agent-identity-row">
-          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${trustLabel(agent.trust_state)}</span>
+          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${agent.control_center_gateway ? "Linked through verified host" : trustLabel(agent.trust_state)}</span>
           <span class="transport-pill ${escapeHtml(agent.transport)}">${agent.transport === "connected" ? "Gateway live" : "Gateway offline"}</span>
           <button class="identity-link" data-identity="${agent.id}">Identity</button>
         </div>
 
         <div class="agent-actions three">
-          ${agent.owner_bound === false ? `<button data-claim-owner="${agent.id}">Claim ownership</button>` : `<button data-pair="${agent.id}" ${agent.trust_state !== "verified" ? "disabled" : ""}>Connect agent</button>`}
-          <button data-monitor="${agent.id}" class="monitor">Monitor live</button>
-          <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
+          ${agent.owner_bound === false ? `<button data-claim-owner="${agent.id}">Claim ownership</button>` : `<button data-pair="${agent.id}" ${agent.trust_state !== "verified" || agent.control_center_gateway ? "disabled" : ""}>Connect agent</button>`}
+          <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
+          <button data-message="${agent.id}" ${agent.transport !== "connected" || agent.control_center_gateway ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.owner_bound ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
+        ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
+        ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
     `).join("");
 
@@ -1095,10 +1096,10 @@
     fleet = data.agents || [];
 
     document.getElementById("connectedCount").textContent = `${data.fleet.connected} gateways`;
-    document.getElementById("signedCount").textContent = `${data.fleet.verified} / ${data.fleet.total}`;
+    document.getElementById("signedCount").textContent = `${data.fleet.verified} / ${data.fleet.signed_total ?? data.fleet.total}${data.fleet.linked ? ` · ${data.fleet.linked} linked` : ''}`;
     document.getElementById("gatewayCount").textContent = String(data.fleet.connected);
     document.getElementById("workingCount").textContent =
-      String(fleet.filter((a) => a.transport === "connected").length);
+      String(fleet.filter((a) => a.transport === "connected" && a.state === "working").length);
 
     renderFleet();
     window.ProgreBuddy?.refreshFleet?.();
@@ -1690,7 +1691,7 @@
   }
 
   function openGroupRoom() {
-    const connected = fleet.filter((a) => a.transport === "connected");
+    const connected = fleet.filter((a) => a.transport === "connected" && !a.control_center_gateway);
     groupAgentChoices.innerHTML = connected.length ? connected.map((a) => `
       <div class="group-choice">
         <label>

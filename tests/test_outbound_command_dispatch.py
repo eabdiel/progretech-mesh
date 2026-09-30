@@ -12,7 +12,7 @@ class TestOutboundCommandDispatch(unittest.TestCase):
         self.assertIn('msg?.type === "message_request"', PLUGIN)
         self.assertIn('runMeshConversation(api', PLUGIN)
         self.assertIn('type: "message_response"', PLUGIN)
-        self.assertIn('transport: "mesh-websocket"', PLUGIN)
+        self.assertIn('meshConversationBody(payload, meshIdentity?.agent_id, "mesh-websocket")', PLUGIN)
 
     def test_plugin_handles_approved_safe_actions(self):
         self.assertIn('msg?.type === "approved_action"', PLUGIN)
