@@ -5,6 +5,8 @@ import sys
 
 
 def main():
+    os.environ.setdefault('CREWAI_TELEMETRY_DISABLED', 'true')
+    os.environ.setdefault('OTEL_SDK_DISABLED', 'true')
     body = json.load(sys.stdin)
     model = os.environ['MESH_FACTORY_MODEL']
     key = os.environ.get('MESH_FACTORY_API_KEY') or 'local'
@@ -12,6 +14,10 @@ def main():
     if sys.argv[1] == 'crewai':
         from crewai import Agent, Crew, LLM, Process, Task
         llm = LLM(model=model, api_key=key, base_url=base)
+        if body.get('office'):
+            from office_crew import kickoff
+            print(kickoff(body, llm))
+            return
         planner = Agent(role='Factory planner', goal='Produce a concrete bounded plan for the supplied task',
                         backstory='You clarify acceptance criteria and implementation steps.', llm=llm, allow_delegation=False, max_iter=8)
         reviewer = Agent(role='Factory reviewer', goal='Review the plan and provide an actionable final result',

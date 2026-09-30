@@ -12,6 +12,21 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def request_codeseal_identity(identity, signature, api_token=None):
+    token = api_token or os.environ.get('CODESEAL_MESH_ISSUER_TOKEN', '')
+    if not isinstance(token, str) or not token.startswith('ptcs_live_'):
+        raise ValueError('codeseal_issuer_not_configured')
+    base = os.environ.get('CODESEAL_API_URL', 'https://codeseal.progretech.com/api/v1').rstrip('/')
+    target = urlsplit(base)
+    local = os.environ.get('APP_ENV') != 'production' and target.hostname in {'127.0.0.1', 'localhost', '::1'}
+    if target.scheme != 'https' and not (target.scheme == 'http' and local):
+        raise ValueError('codeseal_url_invalid')
+    payload = json.dumps({'identity': identity, 'signature': signature}).encode()
+    req = Request(base + '/mesh/identities', data=payload, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token})
+    with build_opener(NoRedirect).open(req, timeout=20) as response:
+        return json.loads(response.read(65536))
+
+
 def same_origin():
     a, b = urlsplit(request.headers.get('Origin', '')), urlsplit(request.host_url)
     return (a.scheme, a.netloc) == (b.scheme, b.netloc) and request.headers.get('Sec-Fetch-Site') != 'cross-site'

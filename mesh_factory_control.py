@@ -98,13 +98,21 @@ def register_factory_routes(app, require_session, user_id, registry, gateways, s
             return {'ok': False, 'error': 'gateway_not_connected'}, 503
         return None
 
-    @app.get('/factory')
+    @app.get('/mission-control')
     @require_session
     def factory_page():
         agents = [{'id': key, 'name': value.get('name', key), 'connected': key in gateways,
                    'verified': value.get('trust_state') == 'verified'} for key, value in registry.items()
                   if str(value.get('owner_id') or '').strip() == user_id()]
-        return render_template('factory.html', hosts=agents)
+        return render_template('mission_control.html', hosts=agents)
+
+    @app.get('/factory')
+    @require_session
+    def office_page():
+        agents = [{'id': key, 'name': value.get('name', key), 'connected': key in gateways,
+                   'verified': value.get('trust_state') == 'verified'} for key, value in registry.items()
+                  if str(value.get('owner_id') or '').strip() == user_id() and not value.get('control_center_gateway')]
+        return render_template('office.html', hosts=agents)
 
     @app.get('/api/agents/<agent_id>/factory')
     @require_session

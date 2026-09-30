@@ -3,10 +3,13 @@ import json
 import os
 import re
 
-ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}
+ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
 
 
 def validate_management(action, args):
+    if action == 'factory.office':
+        from control_center.office import validate_office
+        return validate_office(args)
     if not isinstance(args, dict) or len(json.dumps(args)) > 8192:
         raise ValueError('invalid_args')
     fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())

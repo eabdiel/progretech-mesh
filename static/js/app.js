@@ -981,11 +981,6 @@
   }
 
   function renderFleet() {
-    if (!fleet.length) {
-      agentGrid.innerHTML = '<div class="empty-fleet">No agents enrolled.</div>';
-      return;
-    }
-
     agentGrid.innerHTML = fleet.map((agent) => `
       <article class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
@@ -1026,7 +1021,8 @@
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
-    `).join("");
+    `).join("") + '<button type="button" class="agent-card onboarding-tile" data-onboarding><span aria-hidden="true">+</span><strong>Agent onboarding</strong><small>Connect your personally hosted agent</small></button>';
+    agentGrid.querySelector('[data-onboarding]').addEventListener('click', () => window.MeshOnboarding.open());
 
     document.querySelectorAll("[data-claim-owner]").forEach((b) => b.addEventListener("click", () => claimLegacyAgentOwnership(b.dataset.claimOwner)));
     document.querySelectorAll("[data-ide-access]").forEach((b) => b.addEventListener("click", () => copyIdeRelaySetup(b.dataset.ideAccess)));

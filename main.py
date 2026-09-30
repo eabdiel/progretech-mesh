@@ -1476,6 +1476,8 @@ def create_app() -> Flask:
         user = session.get("mesh_user") or {}
         return str(user.get("id") or "").strip()
 
+    from mesh_office import register_office_routes
+    register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
     register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
     register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
     register_control_center_routes(app, require_session, current_mesh_user_id,
@@ -2082,6 +2084,8 @@ def create_app() -> Flask:
     def create_agent_enrollment_message(agent_id: str):
         record = DEV_AGENT_REGISTRY.get(agent_id)
         if not record:
+            return jsonify(ok=False, error="agent_not_found"), 404
+        if str(record.get("owner_id") or "").strip() != current_mesh_user_id():
             return jsonify(ok=False, error="agent_not_found"), 404
         if record.get("trust_state") != "verified":
             return jsonify(ok=False, error="verified_identity_required"), 403
@@ -3402,6 +3406,11 @@ def create_app() -> Flask:
         )
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         return response
+
+    from mesh_onboarding import register_onboarding_routes
+    register_onboarding_routes(app, require_session, current_mesh_user_id,
+        DEV_AGENT_REGISTRY, mesh_public_origin, verify_runtime_agent_identity,
+        create_agent_enrollment_message, utcnow, fingerprint_for)
 
     return app
 

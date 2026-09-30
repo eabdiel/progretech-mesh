@@ -23,9 +23,14 @@ def _write(path, value):
     tmp.replace(path)
 
 
-def dispatch_factory(home, role, action, args):
+def dispatch_factory(home, role, action, args, office_id=None):
+    if action == 'factory.office':
+        from control_center.office import dispatch_office
+        return dispatch_office(home, role, args, office_id)
     cfg = _config(home)
-    root = Path(home) / '.progretech-mesh/factory-jobs' / role
+    from control_center.office import namespace
+    office_role = namespace(role, office_id)
+    root = Path(home) / '.progretech-mesh/factory-jobs' / office_role
     if action == 'factory.providers':
         return {'providers': [{'id': name, 'configured': bool(cfg.get(name, {}).get('enabled')),
                                'setup': 'docs/AGENT_MANAGEMENT.md'} for name in ('crewai', 'openhands')]}
@@ -48,11 +53,20 @@ def dispatch_factory(home, role, action, args):
     model = settings.get('model')
     if not isinstance(model, str) or not model: raise ValueError('factory_model_required')
     if not _LOCK.acquire(blocking=False): raise ValueError('factory_workstation_busy')
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    job_id = uuid.uuid4().hex
-    path = root / (job_id + '.json')
-    job = {'job_id': job_id, 'provider': provider, 'role': role, 'state': 'queued', 'created_at': time.time()}
-    _write(path, job)
+    try:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        job_id = uuid.uuid4().hex
+        path = root / (job_id + '.json')
+        job = {'job_id': job_id, 'provider': provider, 'role': role, 'state': 'queued', 'created_at': time.time()}
+        office = None
+        if args.get('office_task'):
+            from control_center.office import engine
+            office = engine(home, office_role, 'begin', {'id': args['office_task']})['result']
+            job['office_task'] = args['office_task']
+        _write(path, job)
+    except Exception:
+        _LOCK.release()
+        raise
     def run():
         try:
             lockpath = Path(home) / '.progretech-mesh/factory-admission.lock'
@@ -67,7 +81,7 @@ def dispatch_factory(home, role, action, args):
                 secret_env = settings.get('api_key_env', 'MESH_FACTORY_API_KEY')
                 env['MESH_FACTORY_API_KEY'] = os.environ.get(secret_env, '')
                 result = subprocess.run([str(python), str(Path(__file__).with_name('factory_worker.py')), provider],
-                    input=json.dumps({'task': args['task'], 'workspace': str(workspace)}), text=True,
+                    input=json.dumps({'task': args['task'], 'workspace': str(workspace), 'office': office, 'home': str(home), 'role': office_role}), text=True,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=workspace,
                     timeout=1800, check=False)
                 job.update(state='completed' if result.returncode == 0 else 'failed', returncode=result.returncode)
@@ -79,6 +93,17 @@ def dispatch_factory(home, role, action, args):
         except subprocess.TimeoutExpired: job.update(state='failed', error='factory_timeout')
         except Exception: job.update(state='failed', error='factory_runtime_unavailable')
         finally:
-            job['finished_at'] = time.time(); _write(path, job); _LOCK.release()
+            if office:
+                from control_center.office import engine
+                try:
+                    output_path = root / (job_id + '.output.txt')
+                    summary = output_path.read_text()[-6000:] if output_path.exists() and job.get('state') == 'completed' else job.get('error', 'Mission interrupted')
+                    engine(home, office_role, 'finish', {'id': args['office_task'], 'ok': job.get('state') == 'completed', 'result': summary})
+                except Exception:
+                    job['office_error'] = 'office_result_update_failed'
+            try:
+                job['finished_at'] = time.time(); _write(path, job)
+            finally:
+                _LOCK.release()
     threading.Thread(target=run, daemon=True).start()
     return {'job_id': job_id, 'state': 'queued'}

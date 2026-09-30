@@ -50,7 +50,7 @@ def install(host, home=None):
         discover(runtime_id)
         if action.startswith('factory.'):
             from control_center.factory_jobs import dispatch_factory
-            return dispatch_factory(home, runtime_id, action, args)
+            return dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
         if action == 'communication.chat':
             from control_center.management import preferences
             cfg = json.loads((home / '.openclaw/openclaw.json').read_text())
