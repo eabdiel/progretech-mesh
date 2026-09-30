@@ -10,6 +10,8 @@ Use the Ubuntu `.deb` from the Mesh Offline release on Ubuntu 22.04 or newer, x8
 sudo apt install ./mesh-offline-0.1.0-ubuntu-amd64.deb
 ```
 
+On a standard Ubuntu desktop, installation can be performed without network access using `sudo dpkg -i ./mesh-offline-0.1.0-ubuntu-amd64.deb`. Qt's additional xcb libraries are bundled. A minimal/server Ubuntu installation still needs its operating-system graphics and audio stack before running a desktop application.
+
 Launch **Mesh Offline** from the applications menu. The tar archive is a portable alternative: extract it and run `MeshOffline/MeshOffline`. Keep the `_internal` directory beside the executable. Windows users run the `windows-setup.exe` installer; the portable zip also contains `MeshOffline.exe` and all its dependencies. Neither platform needs a separately installed Python.
 
 The application uses an embedded, private loopback UI engine while its window is open. It binds only to 127.0.0.1 on a random port and requires a per-launch desktop cookie. It is not an externally hosted server or a service users need to administer. The native browser blocks nonlocal requests. Closing the app closes this engine.
