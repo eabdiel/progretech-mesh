@@ -4,6 +4,7 @@ const SHELL_ASSETS = [
   "/how-it-works",
   "/static/css/app.css",
   "/static/js/app.js",
+  "/static/js/agent-management.js",
   "/manifest.webmanifest"
 ];
 
