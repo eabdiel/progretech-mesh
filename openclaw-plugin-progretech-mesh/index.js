@@ -1093,6 +1093,13 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
             payload = {ok: false, error: error instanceof Error ? error.message : String(error)};
           }
           sendMeshGatewayMessage({type: "control_center_response", request_id: msg.request_id, payload});
+          if (payload.ok && msg.payload?.action === 'enrollment.remove') {
+            if (msg.payload?.agent_id === record.agent_id) {
+              markRevoked('owner_removed_from_mesh', record);
+            }
+            const agents = await discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token);
+            if (Array.isArray(agents)) sendMeshGatewayMessage({type:'control_center_roster',payload:{agents}});
+          }
           return;
         }
         if (await handleGatewayCommand(api, msg)) return;

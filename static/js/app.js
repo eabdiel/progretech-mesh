@@ -1021,7 +1021,7 @@
         <div class="agent-actions three">
           ${agent.owner_bound === false ? `<button data-claim-owner="${agent.id}">Claim ownership</button>` : `<button data-pair="${agent.id}" ${agent.trust_state !== "verified" || agent.control_center_gateway ? "disabled" : ""}>Connect agent</button>`}
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
-          <button data-message="${agent.id}" ${agent.transport !== "connected" || agent.control_center_gateway ? "disabled" : ""}>Message</button>
+          <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
@@ -1465,6 +1465,12 @@
       `${agent?.name || agentId} · ${reconnecting ? "reconnecting" : "connecting"}`;
 
     const scheme = location.protocol === "https:" ? "wss" : "ws";
+    if (agent?.control_center_gateway) {
+      closeDirectTransport();
+      document.getElementById("eventStreamLabel").textContent = `${agent.name} · conversation through verified host`;
+      eventList.innerHTML = '<div class="empty-stream">Messages go to this role in its own Mesh conversation. Host monitoring stays on the gateway tile.</div>';
+      return;
+    }
     const socket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
     monitorSocket = socket;
 
@@ -1681,13 +1687,15 @@
     const agent=fleet.find((a)=>a.id===selectedAgentId);
     if (!agent) { showToast("Select an agent first."); return; }
     if (agent.transport!=="connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
-    if (directChannelReady()) {
-      const requestId=crypto?.randomUUID?.() || `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`; pendingDirectMessages.set(requestId,Date.now());
-      directChannel.send(JSON.stringify({type:"message",request_id:requestId,agent_id:agent.id,room:"direct",sender:"Mesh user",text}));
-      appendLiveEvent({type:"user_message",timestamp:new Date().toISOString(),message:text,payload:{sender:"You",transport:"webrtc-direct",cloud_data_path:false}}); messageInput.value=""; return;
-    }
-    const response=await fetch(`/api/agents/${encodeURIComponent(agent.id)}/message`,{method:"POST",headers:{"Accept":"application/json","Content-Type":"application/json"},body:JSON.stringify({text})});
-    const data=await response.json(); if (!response.ok) { showToast(`Message failed: ${data.error || response.status}`); return; } messageInput.value="";
+    appendLiveEvent({type:'user_message',message:text,payload:{sender:'You'}});
+    messageInput.value='';
+    try {
+      const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/management`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'communication.chat',args:{text}})});
+      const data=await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || response.status);
+      appendLiveEvent({type:'message_response',message:data.result.reply,payload:{sender:agent.name}});
+    } catch(error) { showToast(`Message failed: ${error.message}. No automatic retry was sent.`); }
+
   }
 
   function openGroupRoom() {
@@ -1836,6 +1844,10 @@
   enrollmentForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(enrollmentForm);
+    let evidence;
+    try { evidence = JSON.parse(form.get("codeseal_evidence") || "null"); }
+    catch { showToast("Paste valid signed CodeSeal evidence JSON before enrolling."); return; }
+    if (!evidence) { showToast("Import signed CodeSeal evidence or generate a CodeSeal key first."); return; }
     const response = await fetch("/api/agents/enroll", {
       method:"POST",
       headers:{"Accept":"application/json","Content-Type":"application/json"},
@@ -1843,7 +1855,9 @@
         name:form.get("name"),
         role:form.get("role"),
         public_key:form.get("public_key"),
-        codeseal_key:form.get("codeseal_key")
+        codeseal_key:form.get("codeseal_key"),
+        agent_id:form.get("agent_id"),
+        codeseal_evidence:evidence
       })
     });
     const data = await response.json();
@@ -1884,7 +1898,7 @@
 
   document.getElementById("openFleetButton")?.addEventListener("click", () => document.getElementById("agents")?.scrollIntoView({behavior:"smooth"}));
   document.getElementById("mobileAgentsButton")?.addEventListener("click", () => document.getElementById("agents")?.scrollIntoView({behavior:"smooth"}));
-  document.getElementById("manageAgentsButton")?.addEventListener("click", () => showToast("Lifecycle management is not available in this build."));
+  document.getElementById("manageAgentsButton")?.addEventListener("click", () => window.MeshAgentManagement.open(fleet));
   document.querySelectorAll("[data-later]").forEach((b) => b.addEventListener("click", () => showToast("This capability is not currently available.")));
 
   [agentModal,pairModal,identityModal,groupModal,buddySettingsModal].forEach((modal) => modal?.addEventListener("click", (event) => {

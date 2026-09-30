@@ -478,3 +478,12 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
 .top-actions .factory-nav{display:inline-flex!important}
 
 .agent-actions button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Enrollment and host management dialogs share the existing dark form controls. */
+#agentModal select,#agentModal textarea,#agentModal input,#manageAgentsModal select,#manageAgentsModal textarea{width:100%;padding:10px 12px;border:1px solid var(--line,#273440);border-radius:10px;background:#0c141b;color:#e4edf5;font:inherit;color-scheme:dark}
+#manageAgentsModal label{display:grid;gap:8px;font-size:13px;color:#c1ccd8}
+#manageAgentsModal .modal-card{max-height:calc(100dvh - 32px);overflow-y:auto}
+#manageAgentsModal details,#agentModal details{margin-top:16px;padding-top:12px;border-top:1px solid #273440}
+#manageAgentsModal summary,#agentModal summary{cursor:pointer}
+#manageAgentsModal p,#agentModal .enrollment-help{font-size:13px;line-height:1.6;color:#b1c2d1}
+#manageAgentsModal button{margin-top:8px}

@@ -1,0 +1,54 @@
+"""Host-local persisted communication preferences and explicit Mesh opt-out."""
+import json
+import os
+import re
+
+ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}
+
+
+def validate_management(action, args):
+    if not isinstance(args, dict) or len(json.dumps(args)) > 8192:
+        raise ValueError('invalid_args')
+    fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())
+    if set(args) != fields or any(not isinstance(v, str) or not v.strip() or '\x00' in v for v in args.values()):
+        raise ValueError('invalid_args')
+    for key, value in args.items():
+        if len(value) > (4000 if key in {'text', 'task'} else 160):
+            raise ValueError('invalid_args')
+    if action == 'factory.run' and args['provider'] not in {'crewai', 'openhands'}:
+        raise ValueError('invalid_provider')
+    if action == 'factory.job' and not re.fullmatch('[a-f0-9]{32}', args['job_id']):
+        raise ValueError('invalid_job_id')
+
+
+def preferences(provider, agent_id):
+    path = provider._path(agent_id).with_suffix('.communication.json')
+    return json.loads(path.read_text()) if path.exists() else {'role': provider.bindings[agent_id], 'model': 'default', 'enabled': True}
+
+
+def dispatch(provider, agent_id, action, args):
+    validate_management(action, args)
+    with provider.lock:
+        provider._path(agent_id)
+        runtime = provider.bindings[agent_id]
+        current = preferences(provider, agent_id)
+        if not current['enabled']:
+            raise ValueError('mesh_enrollment_removed')
+        inventory = provider.discover(runtime)
+        if action == 'communication.get':
+            return {'settings': current, 'roles': inventory.get('communication_roles', [runtime]), 'models': ['default', *inventory.get('communication_models', inventory.get('models', []))], 'runtime_id': runtime}
+        if action in {'communication.save', 'enrollment.remove'}:
+            if action == 'communication.save':
+                if args['role'] not in inventory.get('communication_roles', [runtime]) or args['model'] not in ['default', *inventory.get('communication_models', inventory.get('models', []))]:
+                    raise ValueError('communication_selection_unavailable')
+                current.update(args)
+            else:
+                current['enabled'] = False
+            provider.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            path = provider._path(agent_id).with_suffix('.communication.json')
+            fd = os.open(path.with_suffix('.tmp'), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as stream: json.dump(current, stream)
+            path.with_suffix('.tmp').replace(path)
+            return {'saved': True, 'settings': current, 'scope': 'agent-local'}
+    # Never hold the profile lock during a model call or a factory job.
+    return provider.execute(runtime, action, args, {'communication': current, 'agent_id': agent_id})

@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 from .base import AgentIdentityVerifier, IdentityVerification
 
@@ -59,7 +60,9 @@ class CodeSealIdentityVerifier(AgentIdentityVerifier):
             "CODESEAL_VERIFY_URL",
             "https://codeseal.progretech.com/api/v1/verify",
         ).strip()
-        if not verify_url.startswith("https://"):
+        parsed_url = urlsplit(verify_url)
+        local_registry = os.environ.get('APP_ENV') != 'production' and parsed_url.hostname in {'localhost', '127.0.0.1', '::1'}
+        if parsed_url.scheme != 'https' and not (parsed_url.scheme == 'http' and local_registry):
             return self._fail("CodeSeal verifier URL must use HTTPS")
 
         evidence = self._evidence(assertion)
