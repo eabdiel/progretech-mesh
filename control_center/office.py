@@ -1,11 +1,12 @@
 """Host-local Mesh office; upstream HiveManager is the coordination authority."""
-import fcntl
+import os
 import hashlib
 import json
 import re
 import shutil
 import subprocess
 from pathlib import Path
+from control_center.file_lock import lock, unlock
 
 PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run'}
 
@@ -43,13 +44,17 @@ def engine(home, role, operation, args=None):
     root = office_root(home, role)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     root.chmod(0o700)
-    node = shutil.which('node')
+    node = os.environ.get('MESH_OFFICE_NODE') or shutil.which('node')
     if not node: raise ValueError('office_node_runtime_required')
     script = Path(__file__).resolve().parent.parent / 'office/engine.mjs'
-    with (root / 'mesh-engine.lock').open('a') as guard:
-        fcntl.flock(guard, fcntl.LOCK_EX)
-        result = subprocess.run([node, str(script)], input=json.dumps({'home': str(root), 'operation': operation, 'args': args or {}}),
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
+    with (root / 'mesh-engine.lock').open('a+') as guard:
+        lock(guard)
+        try:
+            result = subprocess.run([node, str(script)], input=json.dumps({'home': str(root), 'operation': operation, 'args': args or {}}),
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        finally:
+            unlock(guard)
     if result.returncode:
         # Only known machine codes cross the relay; full runtime diagnostics stay local.
         for code in ('task_not_ready', 'office_paused', 'office_capacity', 'agent_has_open_tasks', 'director_required', 'office_agent_not_found', 'dependency_not_found', 'approval_not_pending', 'office_role_already_exists'):

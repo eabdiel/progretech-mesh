@@ -1,6 +1,6 @@
 // office/engine.ts
 import { readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { join as join3 } from "node:path";
+import { join as join3, isAbsolute as isAbsolute3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
 // vendor/munder-difflin/src/main/hive.ts
@@ -3973,7 +3973,7 @@ var ControlRegistry = class {
 // office/engine.ts
 var body = JSON.parse(readFileSync2(0, "utf8"));
 var home = body.home;
-if (typeof home !== "string" || !home.startsWith("/")) throw Error("office_path_invalid");
+if (typeof home !== "string" || !isAbsolute3(home)) throw Error("office_path_invalid");
 var hive = new HiveManager(() => home);
 var controls = new ControlRegistry();
 hive.ensureHive();

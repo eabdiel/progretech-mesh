@@ -328,7 +328,7 @@ https://github.com/chaitanyagiri/munder-difflin
 
 Munder Difflin is not a ProgreTech product and is not maintained or owned by ProgreTech.
 
-The project is distributed under the MIT License. Any use or redistribution of Munder Difflin source within or alongside Mesh must preserve the applicable copyright and MIT license notice.
+Mesh is distributed under the ProgreTech Public Source License in LICENSE.md. Munder Difflin source retains its own MIT license; redistribution must preserve its copyright and license notice.
 
 The intended integration boundary is:
 
@@ -460,6 +460,8 @@ progretech-mesh/
 ---
 
 ## Running Locally
+
+For the fully local desktop edition, see [Mesh Offline](docs/MESH_OFFLINE.md). Its Ubuntu and Windows installers bundle the application runtimes, inference engine and a starter model. Local agent onboarding requires no CodeSeal or signing keys.
 
 Mesh is currently an RC/development project.
 

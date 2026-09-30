@@ -1,0 +1,25 @@
+(() => {
+  const $ = id => document.getElementById(id), form=$('localImport');
+  const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let agents=[], candidates=[], chatId=null;
+  async function api(path,body){const r=await fetch('/api/'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Local engine unavailable');return d;}
+  function status(s){$('localStatus').textContent=s;}
+  async function refresh(){
+    agents=(await api('local/agents')).agents;
+    $('localFleet').innerHTML=agents.map(a=>`<article class="local-tile"><span class="local-dot ${a.awake?'awake':''}"></span>${a.awake?'Answered':'Not checked'}<h2>${escape(a.name)}</h2><p>${escape(a.kind)} · ${escape(a.runtime_id)}</p><p>${escape(a.workspace)}</p><button data-chat="${escape(a.id)}">Ask agent</button><button data-remove="${escape(a.id)}">Unlink</button></article>`).join('')+'<button class="local-add" id="openLocalOnboarding"><span>+</span>Agent onboarding</button>';
+    $('openLocalOnboarding').onclick=()=>$('localOnboarding').showModal();
+    $('localFleet').querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{chatId=b.dataset.chat;$('chatName').textContent=agents.find(a=>a.id===chatId).name;$('chatAnswer').textContent='';$('localChat').showModal();});
+    $('localFleet').querySelectorAll('[data-remove]').forEach(b=>b.onclick=async()=>{try{await api(`local/agents/${b.dataset.remove}/remove`,{});await refresh();}catch(e){status(e.message);}});
+    const cfg=await api('local/settings');if(!$('modelForm').elements.gguf.value)$('modelForm').elements.gguf.value=cfg.gguf;
+    const office=await api('agents/desktop/office',{operation:'snapshot',args:{}});
+    $('runtimeBindings').innerHTML=office.result.snapshot.agents.filter(a=>!a.isDirector).map(a=>`<label>${escape(a.name)} · local agent<select data-worker="${escape(a.id)}"><option value="">CrewAI worker only</option>${agents.map(r=>`<option value="${escape(r.id)}" ${cfg.bindings[a.id]===r.id?'selected':''}>${escape(r.name)} · ${escape(r.kind)}</option>`).join('')}</select></label>`).join('');
+  }
+  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
+  form.elements.kind.onchange=()=>{const python=form.elements.kind.value==='pycharm';$('entrypointLabel').hidden=!python;$('pythonHelp').hidden=!python;form.elements.entrypoint.required=python;};
+  $('discoverAgents').onclick=async()=>{try{candidates=(await api('local/discover')).candidates;$('discoveredAgents').innerHTML='<option value="">Choose an installed agent</option>'+candidates.map((a,i)=>`<option value="${i}">${escape(a.name)} · ${escape(a.kind)}</option>`).join('');if(!candidates.length)form.querySelector('.local-error').textContent='No runtimes found on PATH. Enter the installed executable and workspace below.';}catch(e){form.querySelector('.local-error').textContent=e.message;}};
+  $('discoveredAgents').onchange=e=>{if(e.target.value==='')return;const a=candidates[Number(e.target.value)];for(const [k,v] of Object.entries(a))if(form.elements[k])form.elements[k].value=v;form.elements.kind.onchange();};
+  form.onsubmit=async e=>{e.preventDefault();try{const body=Object.fromEntries(new FormData(form));body.confirmed=form.elements.confirmed.checked;await api('local/agents',body);$('localOnboarding').close();form.reset();form.elements.kind.onchange();await refresh();status('Local agent linked. Ask it to identify itself to check that it is awake.');}catch(err){form.querySelector('.local-error').textContent=err.message;}};
+  $('chatForm').onsubmit=async e=>{e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;$('chatAnswer').textContent='Waiting for your local agent…';try{const d=await api(`local/agents/${chatId}/ask`,{question:e.target.elements.question.value});$('chatAnswer').textContent=d.answer;await refresh();}catch(err){$('chatAnswer').textContent=err.message;}finally{button.disabled=false;}};
+  $('modelForm').onsubmit=async e=>{e.preventDefault();try{const bindings={};$('runtimeBindings').querySelectorAll('select').forEach(s=>{if(s.value)bindings[s.dataset.worker]=s.value;});await api('local/settings',{gguf:e.target.elements.gguf.value,bindings});status('Local model and worker links saved. Open Factory to start a mission.');}catch(err){status(err.message);}};
+  refresh().catch(e=>status(e.message));
+})();

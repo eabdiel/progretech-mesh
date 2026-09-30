@@ -1,5 +1,5 @@
 """Explicit host-configured CrewAI/OpenHands jobs; cloud cannot choose commands or paths."""
-import fcntl
+import sys
 import json
 import os
 import subprocess
@@ -7,6 +7,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from control_center.file_lock import lock
 
 _LOCK = threading.Lock()
 
@@ -70,8 +71,8 @@ def dispatch_factory(home, role, action, args, office_id=None):
     def run():
         try:
             lockpath = Path(home) / '.progretech-mesh/factory-admission.lock'
-            with lockpath.open('a') as admission:
-                try: fcntl.flock(admission, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with lockpath.open('a+') as admission:
+                try: lock(admission, blocking=False)
                 except BlockingIOError:
                     job.update(state='failed', error='factory_workstation_busy'); return
                 job['state'] = 'running'; _write(path, job)
@@ -80,8 +81,13 @@ def dispatch_factory(home, role, action, args, office_id=None):
                 env['MESH_FACTORY_BASE_URL'] = str(settings.get('base_url', ''))
                 secret_env = settings.get('api_key_env', 'MESH_FACTORY_API_KEY')
                 env['MESH_FACTORY_API_KEY'] = os.environ.get(secret_env, '')
-                result = subprocess.run([str(python), str(Path(__file__).with_name('factory_worker.py')), provider],
-                    input=json.dumps({'task': args['task'], 'workspace': str(workspace), 'office': office, 'home': str(home), 'role': office_role}), text=True,
+                env['MESH_FACTORY_GGUF'] = str(settings.get('gguf', ''))
+                command = [str(python), str(Path(__file__).with_name('factory_worker.py')), provider]
+                if getattr(sys, 'frozen', False) and settings.get('bundled_worker'):
+                    command = [sys.executable, '--factory-worker', provider]
+                result = subprocess.run(command,
+                    input=json.dumps({'task': args['task'], 'workspace': str(workspace), 'office': office, 'home': str(home), 'role': office_role,
+                        'local_bindings': settings.get('local_bindings', {})}), text=True,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=workspace,
                     timeout=1800, check=False)
                 job.update(state='completed' if result.returncode == 0 else 'failed', returncode=result.returncode)
@@ -89,6 +95,8 @@ def dispatch_factory(home, role, action, args, office_id=None):
                 output = root / (job_id + '.output.txt')
                 output.write_text(result.stdout[-65536:])
                 output.chmod(0o600)
+                diagnostic = root / (job_id + '.stderr.txt')
+                diagnostic.write_text(result.stderr[-65536:]); diagnostic.chmod(0o600)
                 if result.returncode: job['error'] = 'factory_runtime_failed; inspect host-local runtime logs'
         except subprocess.TimeoutExpired: job.update(state='failed', error='factory_timeout')
         except Exception: job.update(state='failed', error='factory_runtime_unavailable')

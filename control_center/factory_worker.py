@@ -2,6 +2,8 @@
 import json
 import os
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def main():
@@ -13,9 +15,13 @@ def main():
     base = os.environ.get('MESH_FACTORY_BASE_URL') or None
     if sys.argv[1] == 'crewai':
         from crewai import Agent, Crew, LLM, Process, Task
-        llm = LLM(model=model, api_key=key, base_url=base)
+        if os.environ.get('MESH_FACTORY_GGUF'):
+            from offline.local_llm import LocalGGUF
+            llm = LocalGGUF(os.environ['MESH_FACTORY_GGUF'])
+        else:
+            llm = LLM(model=model, api_key=key, base_url=base)
         if body.get('office'):
-            from office_crew import kickoff
+            from control_center.office_crew import kickoff
             print(kickoff(body, llm))
             return
         planner = Agent(role='Factory planner', goal='Produce a concrete bounded plan for the supplied task',

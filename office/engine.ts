@@ -1,6 +1,6 @@
 /** Mesh adapter over the complete upstream HiveManager coordination component. */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, isAbsolute } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { HiveManager } from '../vendor/munder-difflin/src/main/hive';
 import { CircuitBreaker } from '../vendor/munder-difflin/src/main/breaker';
@@ -8,7 +8,7 @@ import { ControlRegistry } from '../vendor/munder-difflin/src/main/control';
 
 const body = JSON.parse(readFileSync(0, 'utf8'));
 const home = body.home;
-if (typeof home !== 'string' || !home.startsWith('/')) throw Error('office_path_invalid');
+if (typeof home !== 'string' || !isAbsolute(home)) throw Error('office_path_invalid');
 const hive = new HiveManager(() => home);
 const controls = new ControlRegistry();
 hive.ensureHive();

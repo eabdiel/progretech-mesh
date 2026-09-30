@@ -1,0 +1,56 @@
+name: Mesh Offline installers
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/mesh-offline-*']
+    tags: ['mesh-offline-v*']
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CREWAI_TELEMETRY_DISABLED: 'true'
+      OTEL_SDK_DISABLED: 'true'
+      CMAKE_ARGS: '-DGGML_NATIVE=OFF -DGGML_AVX=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_F16C=OFF'
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-offline.txt
+      - name: Build dependencies
+        run: python -m pip install -r requirements-offline.txt
+      - name: Ubuntu desktop libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb
+      - name: Local security and migration tests
+        run: python -m unittest discover -s tests -p test_mesh_offline.py
+      - name: Build installers and exercise bundled engine
+        run: python packaging/build.py
+      - name: Native desktop smoke (Ubuntu)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a dist/MeshOffline/MeshOffline --desktop-smoke
+      - name: Native desktop smoke (Windows)
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: dist/MeshOffline/MeshOffline.exe --desktop-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mesh-offline-${{ matrix.os }}
+          path: dist/releases/*
+      - name: Add installers to requested release
+        if: startsWith(github.ref, 'refs/tags/mesh-offline-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mv dist/releases/SHA256SUMS.txt "dist/releases/SHA256SUMS-${{ runner.os }}.txt"
+          gh release upload "$GITHUB_REF_NAME" dist/releases/* --clobber

@@ -87,7 +87,7 @@
     $('officeAgentCount').textContent=snapshot.agents.length;
     $('officeTaskCount').textContent=snapshot.tasks.filter(t=>t.status!=='done').length;
     $('officeMessageCount').textContent=snapshot.messages.length;
-    $('officeRuntimeNotice').textContent=snapshot.runtimeReady?'CrewAI is configured on this host. Missions use its model and approved workspace. Pausing stops work at the next agent step.':'CrewAI execution needs setup on this host. Office coordination is available; see docs/FACTORY_OFFICE.md.';
+    $('officeRuntimeNotice').textContent=document.body.dataset.offline?snapshot.runtimeReady?'Your local GGUF model runs through the bundled inference engine. Linked workers can delegate to your imported agents. Pausing stops work at the next agent step.':'Choose a GGUF model in Mission Control to execute missions. You can hire workers and organize missions now.':snapshot.runtimeReady?'CrewAI is configured on this host. Missions use its model and approved workspace. Pausing stops work at the next agent step.':'CrewAI execution needs setup on this host. Office coordination is available; see docs/FACTORY_OFFICE.md.';
     if(document.activeElement!==$('maxIterations'))$('maxIterations').value=snapshot.maxIterations;
     renderFloor();renderBoard();renderInspector();
   }

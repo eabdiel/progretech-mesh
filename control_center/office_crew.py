@@ -60,6 +60,18 @@ def kickoff(body, llm):
     def step(step):
         ensure_running()
 
+    def runtime_tool(aid):
+        binding = body.get('local_bindings', {}).get(aid)
+        if not binding: return []
+        class LocalRuntime(BaseTool):
+            name: str = 'Personally owned local agent'
+            description: str = 'Ask the personally owned local runtime assigned to you to perform the supplied bounded question or task. Return its actual answer.'
+            def _run(self, question: str) -> str:
+                ensure_running()
+                from offline.registry import Registry
+                return Registry(home).ask(binding, question)['answer']
+        return [LocalRuntime()]
+
     agents = []
     manager = None
     for item in roster:
@@ -68,7 +80,7 @@ def kickoff(body, llm):
             backstory=f"You are {item['name']}, office agent {item['id']}. Other workers: " +
                 ', '.join(f"{a['role']} ({a['id']})" for a in roster if a['id'] != item['id']) +
                 '\nUse only approved tools. Escalate spend, destructive operations and changes of scope to the owner.\nReviewed memory and inbox context:\n' + context,
-            llm=llm, allow_delegation=True, max_iter=office['maxIterations'], tools=[] if item['id'] == 'orchestrator' else [mail_tool(item['id'])],
+            llm=llm, allow_delegation=True, max_iter=office['maxIterations'], tools=[] if item['id'] == 'orchestrator' else [mail_tool(item['id']), *runtime_tool(item['id'])],
             step_callback=step, verbose=False)
         if item['id'] == 'orchestrator': manager = agent
         else: agents.append(agent)
