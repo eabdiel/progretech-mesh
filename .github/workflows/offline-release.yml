@@ -42,13 +42,15 @@ jobs:
           key: mesh-offline-deps-${{ runner.os }}-${{ hashFiles('requirements-offline.txt') }}
       - name: Ubuntu desktop libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb
+        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb
       - name: Local security and migration tests
         run: python -m unittest discover -s tests -p test_mesh_offline.py
       - name: Build installers and exercise bundled engine
         run: python packaging/build.py
       - name: Native desktop smoke (Ubuntu)
         if: runner.os == 'Linux'
+        env:
+          QT_DEBUG_PLUGINS: '1'
         run: xvfb-run -a dist/MeshOffline/MeshOffline --desktop-smoke
       - name: Native desktop smoke (Windows)
         if: runner.os == 'Windows'

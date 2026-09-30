@@ -69,6 +69,22 @@ def main():
         home = Path(temporary.name)
     home.mkdir(parents=True, exist_ok=True)
     app = create_app(home)
+    # Track WSGI work explicitly: GUI shutdown must not remove workspaces while
+    # an accepted request is still launching or waiting for a native child.
+    requests = threading.Condition()
+    active = [0]
+    original_wsgi = app.wsgi_app
+    def tracked_wsgi(environ, start_response):
+        with requests: active[0] += 1
+        try:
+            response = original_wsgi(environ, start_response)
+            yield from response
+        finally:
+            if 'response' in locals() and hasattr(response, 'close'): response.close()
+            with requests:
+                active[0] -= 1
+                requests.notify_all()
+    app.wsgi_app = tracked_wsgi
     try:
         server = make_server('127.0.0.1', 0, app, threaded=True)
         # Drain active local requests before releasing their workspaces. A
@@ -126,6 +142,7 @@ def main():
         QTimer.singleShot(30000, lambda: qt.exit(2))
     result = qt.exec()
     server.shutdown(); server.server_close()
+    with requests: requests.wait_for(lambda: active[0] == 0)
     # The page must release Chromium resources before its off-record profile.
     from shiboken6 import delete
     delete(view.page()); delete(profile); delete(window)
