@@ -39,7 +39,7 @@ def dispatch(provider, agent_id, action, args):
             return {'settings': current, 'roles': inventory.get('communication_roles', [runtime]), 'models': ['default', *inventory.get('communication_models', inventory.get('models', []))], 'runtime_id': runtime}
         if action in {'communication.save', 'enrollment.remove'}:
             if action == 'communication.save':
-                if args['role'] not in inventory.get('communication_roles', [runtime]) or args['model'] not in ['default', *inventory.get('models', [])]:
+                if args['role'] not in inventory.get('communication_roles', [runtime]) or args['model'] not in ['default', *inventory.get('communication_models', inventory.get('models', []))]:
                     raise ValueError('communication_selection_unavailable')
                 current.update(args)
             else:
