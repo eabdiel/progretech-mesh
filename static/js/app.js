@@ -1762,7 +1762,42 @@
     document.body.style.overflow = "";
   }
 
-  document.getElementById("addAgentButton")?.addEventListener("click", () => { agentModal.hidden=false; document.body.style.overflow="hidden"; });
+  let gatewayCandidates = [];
+  const gatewayPicker = document.getElementById("gatewayAgentPicker");
+  async function loadGatewayCandidates() {
+    gatewayPicker.disabled = true;
+    gatewayCandidates = [];
+    gatewayPicker.replaceChildren(new Option('Refreshing gateway agents…', ''));
+    try {
+      const response = await fetch('/api/gateways/identified-agents');
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || 'Gateway discovery unavailable');
+      gatewayCandidates = data.candidates;
+      gatewayPicker.replaceChildren(new Option('Add an independent agent', ''));
+      gatewayCandidates.forEach((candidate, i) => gatewayPicker.add(new Option(`${candidate.name} · ${candidate.gateway_name}`, String(i))));
+      if (enrollmentForm.dataset.gatewayCandidate) {
+        const index = gatewayCandidates.findIndex(candidate => candidate.id === enrollmentForm.dataset.gatewayCandidate);
+        gatewayPicker.value = index < 0 ? '' : String(index);
+        if (index < 0) gatewayPicker.dispatchEvent(new Event('change'));
+      }
+      document.getElementById('gatewayPickerStatus').textContent = gatewayCandidates.length ? 'Choose one identified agent, then generate its own identity and CodeSeal.' : 'No unenrolled agents identified by a connected verified gateway.';
+    } catch (error) { document.getElementById('gatewayPickerStatus').textContent = error.message; }
+    finally { gatewayPicker.disabled = false; }
+  }
+  gatewayPicker?.addEventListener('change', () => {
+    const candidate = gatewayPicker.value === '' ? null : gatewayCandidates[Number(gatewayPicker.value)];
+    enrollmentForm.elements.gateway_id.value = candidate?.gateway_id || '';
+    enrollmentForm.elements.gateway_candidate_id.value = candidate?.id || '';
+    enrollmentForm.dataset.gatewayCandidate = candidate?.id || '';
+    enrollmentForm.elements.agent_id.value = candidate?.id || '';
+    enrollmentForm.elements.name.value = candidate?.name || '';
+    enrollmentForm.elements.role.value = candidate?.role || '';
+    enrollmentForm.elements.public_key.value = '';
+    enrollmentForm.elements.codeseal_evidence.value = '';
+    enrollmentForm.elements.codeseal_key.value = '';
+    enrollmentForm.dispatchEvent(new Event('mesh-candidate-change'));
+  });
+  document.getElementById("addAgentButton")?.addEventListener("click", () => { agentModal.hidden=false; document.body.style.overflow="hidden"; loadGatewayCandidates(); });
   document.getElementById("closeAgentModal")?.addEventListener("click", () => closeModal(agentModal));
   document.getElementById("cancelAgentEnrollment")?.addEventListener("click", () => closeModal(agentModal));
   document.getElementById("closePairModal")?.addEventListener("click", () => closeModal(pairModal));
@@ -1853,12 +1888,16 @@
         public_key:form.get("public_key"),
         codeseal_key:form.get("codeseal_key"),
         agent_id:form.get("agent_id"),
-        codeseal_evidence:evidence
+        codeseal_evidence:evidence,
+        gateway_id:form.get("gateway_id"),
+        gateway_candidate_id:form.get("gateway_candidate_id")
       })
     });
     const data = await response.json();
     if (!response.ok) { showToast(`Enrollment rejected: ${data.error || response.status}`); return; }
     enrollmentForm.reset();
+    enrollmentForm.dataset.gatewayCandidate = '';
+    enrollmentForm.dispatchEvent(new Event('mesh-candidate-change'));
     closeModal(agentModal);
     showToast(`${data.agent.name} enrolled.`);
     refreshFleet();

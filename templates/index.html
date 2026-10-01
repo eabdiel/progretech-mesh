@@ -271,6 +271,9 @@
       </div>
 
       <form id="agentEnrollmentForm" class="enrollment-form">
+        <label>Select identified agents from gateway<select id="gatewayAgentPicker"><option value="">Add an independent agent</option></select></label>
+        <p id="gatewayPickerStatus" role="status">Choose one agent at a time. Each receives its own PEM and CodeSeal identity.</p>
+        <input name="gateway_id" type="hidden"><input name="gateway_candidate_id" type="hidden">
         <label>Agent name<input name="name" required placeholder="e.g. Atlas" maxlength="80" /></label>
         <label>Agent role<input name="role" placeholder="Development agent" maxlength="120" /></label>
         <ol class="enrollment-help"><li>Choose a name and role. Each independently running agent needs its own Ed25519 identity.</li><li>Import its PUBLIC key and signed CodeSeal evidence below, or generate a new identity and seal here.</li><li>Save the private key on the agent’s machine, then enroll and use Connect agent to copy its connection instructions.</li></ol>

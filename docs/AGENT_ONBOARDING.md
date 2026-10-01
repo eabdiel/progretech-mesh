@@ -52,3 +52,11 @@ enrollment within its existing local authority.
 Tests cover consent, cross-owner access, replay, cancellation, invalid key proofs,
 question/answer signatures, confirmation gating and CodeSeal failures. A live
 production enrollment has not been implied by fixture-based browser validation.
+
+## Add agents identified by a gateway
+
+Open **Add signed agent**, then **Select identified agents from gateway**. The list contains public role identities announced by your connected, verified gateway and excludes individually enrolled roles. Choose one, generate its own PEM identity and obtain its own CodeSeal evidence, then submit. Each role retains its own owner binding, public key, seal and fingerprint; it does not inherit the host identity. Repeat for the remaining agents. The private PEM download and public evidence bundle must be installed on the intended agent by its owner. Mesh never stores private PEM files.
+
+The host bridge must run the updated `control_center/rend_bridge.py` and Mesh OpenClaw plugin. Its administrator-owned gateway binding is required. It queries the authenticated loopback OpenClaw gateway for public agent identities, creates exact local runtime bindings within that gateway namespace, and refreshes the roster without automatically enrolling agents. Newly added runtime roles can appear without editing each child binding. Unavailable or removed roles cannot be controlled through an old selection. Per-role local permissions and removal preferences remain authoritative. Up to 256 identified agents are supported.
+
+Offline Mesh offers the same one-at-a-time gateway selection in **Agent onboarding**, with ownership and intermediary acknowledgments and unsigned local runtime references. It does not require a hosted Mesh connection or account.

@@ -69,7 +69,18 @@ class Registry:
             'workspace': str(workspace.resolve()), 'executable': str(executable.resolve()),
             'runtime_id': runtime_id, 'entrypoint': entrypoint, 'awake': False, 'local': True,
             'consent': {'personally_owned':True, 'mesh_intermediary':True}}
-        self.save(row)
+        # Serialize selection and insertion so two windows cannot import the same
+        # local runtime twice. Different Python scripts remain distinct agents.
+        def binding(agent):
+            return (agent['kind'], agent['executable'], agent['runtime_id'],
+                agent['workspace'] if agent['kind'] in {'claude', 'pycharm'} else '',
+                agent.get('entrypoint', '') if agent['kind'] == 'pycharm' else '')
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if any(binding(json.loads(existing[0])) == binding(row)
+                   for existing in db.execute('SELECT body FROM agents')):
+                raise ValueError('local_runtime_already_added')
+            db.execute('INSERT INTO agents VALUES (?,?)', (row['id'], json.dumps(row)))
         return row
 
     def save(self, row):
@@ -110,6 +121,44 @@ class Registry:
                                 candidates.append({'kind':'hermes','name':profile.name,'runtime_id':profile.name,
                                     'workspace':str(source_home),'executable':executable})
         return candidates
+
+    def discover_gateway(self, source_home=None, run=subprocess.run):
+        executable = shutil.which('openclaw')
+        if not executable: return {'available':False, 'candidates':[], 'error':'openclaw_runtime_not_found'}
+        source_home = Path(source_home or Path.home())
+        port = 18789
+        config = source_home / '.openclaw/openclaw.json'
+        if config.is_file():
+            try:
+                configured = json.loads(config.read_text()).get('gateway', {}).get('port', port)
+                if type(configured) is int and 1 <= configured <= 65535: port = configured
+            except (OSError, ValueError, TypeError, AttributeError): pass
+        try:
+            response = run([executable, 'gateway', 'call', 'agents.list', '--expect-url',
+                'ws://127.0.0.1:' + str(port), '--json'], capture_output=True, text=True,
+                encoding='utf-8', errors='replace', timeout=15, check=False,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+            if response.returncode or len(response.stdout) > 262144: raise ValueError()
+            payload = json.loads(response.stdout)
+            agents = payload.get('agents')
+            if not isinstance(agents, list) or len(agents) > 256: raise ValueError()
+            linked = {(a['kind'], a['runtime_id'], a['executable']) for a in self.all()}
+            candidates, seen = [], set()
+            for agent in agents:
+                if not isinstance(agent, dict): raise ValueError()
+                rid, workspace = agent.get('id'), agent.get('workspace')
+                if not isinstance(rid, str) or not re.fullmatch('[A-Za-z0-9_][A-Za-z0-9_.-]{0,79}', rid): raise ValueError()
+                if not isinstance(workspace, str) or not Path(workspace).is_absolute(): raise ValueError()
+                if rid in seen: raise ValueError()
+                seen.add(rid)
+                if ('openclaw', rid, str(Path(executable).resolve())) in linked: continue
+                name = agent.get('name') or rid
+                if not isinstance(name, str) or not 1 <= len(name) <= 80: raise ValueError()
+                candidates.append({'kind':'openclaw', 'name':name, 'runtime_id':rid,
+                    'workspace':workspace, 'executable':executable, 'source':'gateway'})
+            return {'available':True, 'candidates':candidates}
+        except (OSError, ValueError, TypeError, AttributeError, subprocess.SubprocessError):
+            return {'available':False, 'candidates':[], 'error':'local_gateway_unavailable'}
 
     def ask(self, aid, question):
         from control_center.file_lock import lock, unlock
