@@ -268,18 +268,19 @@
     try {
       const fleetResponse=await fetch('/api/status');const fleetData=await fleetResponse.json();if(epoch!==hostEpoch)return;fleet=fleetData.agents||[];
       const r=await MeshRuntime.request(aid,'handoff.list');if(epoch!==hostEpoch)return;
-      handoffs=r.rules||[];chatter=r.chatter;$('officeChatter').checked=Boolean(chatter?.enabled);renderShared();
+      handoffs=r.rules||[];chatter=r.chatter;$('officeChatter').checked=Boolean(chatter?.enabled);if(document.activeElement!==$('chatterMinutes'))$('chatterMinutes').value=chatter?.session_minutes||15;$('chatterMinutes').readOnly=!chatter?.enabled;renderShared();
     } catch(e) {if(epoch===hostEpoch)$('chatterNotice').textContent=e.message;}
     finally {sharedPending=false;}
   }
   function renderShared() {
     if(snapshot)$('officeMessageCount').textContent=snapshot.messages.length+(chatter?.conversations||[]).reduce((n,c)=>n+c.messages.length,0);
-    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · serial conversations · repeating 15-minute sessions · '+(chatter.admission||'Waiting for idle agents and capacity')+'.':'Chatter off. Enable to discuss shared projects with idle agents.';
+    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · serial conversations · repeating '+(chatter.session_minutes||15)+'-minute sessions · '+(chatter.admission||'Waiting for idle agents and capacity')+'.':'Chatter off. Enable to discuss shared projects with idle agents.';
     $('chatterFeed').innerHTML=(chatter?.conversations||[]).slice().reverse().map(c=>`<li><strong>${escape(c.a_role)} ↔ ${escape(c.b_role)} · ${escape(c.topic)}</strong><p>${escape(c.state)}${c.note?' · '+escape(c.note):''}</p>${(c.memory||[]).map(m=>`<small>${escape(m.agent)} · ${escape(m.status)}${m.ids?.length?' · '+escape(m.ids.join(', ')):''}</small>`).join('')}${c.messages.map(m=>`<p><strong>${escape(m.agent)}</strong><br>${escape(m.text)}</p>`).join('')}<small>${escape(new Date(c.created*1000).toLocaleString())}</small></li>`).join('')||'<li>No office conversations recorded.</li>';
     $('handoffItems').innerHTML=handoffs.filter(r=>!selected || !selected.startsWith('factory-') || r.target===selectedRuntime()).map(r=>`<li><strong>${escape(r.source)} → ${escape(r.target_role)}</strong><p>${escape(r.text)}</p><p>${escape(r.state)} · ${escape(r.note||'')}</p>${r.artifact?'<p>Artifact: '+escape(r.artifact.name)+'</p>':''}${['waiting','paused'].includes(r.state)?`<button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="${r.state==='paused'?'waiting':'paused'}">${r.state==='paused'?'Resume':'Pause'}</button><button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="cancelled">Cancel</button>`:''}</li>`).join('')||'<li>No conditional instructions.</li>';
     $('handoffItems').querySelectorAll('[data-rule]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await MeshRuntime.request(b.dataset.target,'handoff.control',{id:b.dataset.rule,state:b.dataset.state});loadShared();}catch(e){say(e.message);b.disabled=false;}});
   }
   $('officeChatter').onchange=async()=>{const b=$('officeChatter'),enabled=b.checked;b.disabled=true;try{await MeshRuntime.request(host(),'chatter.configure',{enabled});await loadShared();}catch(e){b.checked=!enabled;say(e.message);}finally{b.disabled=false;}};
+  $('chatterMinutes').onchange=async()=>{const input=$('chatterMinutes');if(!chatter?.enabled)return;if(!input.reportValidity())return;input.disabled=true;try{await MeshRuntime.request(host(),'chatter.configure',{enabled:true,session_minutes:Number(input.value)});await loadShared();}catch(e){input.value=chatter?.session_minutes||15;say(e.message);}finally{input.disabled=false;}};
   async function loadArtifacts() {
     const epoch=hostEpoch,aid=host();$('artifactStatus').textContent='Loading host files…';
     try{const r=await MeshRuntime.request(aid,'files.list');if(epoch!==hostEpoch)return;artifacts=r.files;renderArtifacts();$('artifactStatus').textContent=`${artifacts.length} files · attachments/downloads up to 10 MB. Publish new files under ~/Rend/artifacts/<agent>/ or a job’s deliverables folder.`;}

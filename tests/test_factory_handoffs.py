@@ -67,6 +67,23 @@ class HandoffTests(unittest.TestCase):
         self.h.chatter_tick();ch=self.h.data['chatter'];ch['next_at']=0
         self.h.chatter_tick();self.assertEqual(len(ch['conversations']),2)
         old=ch['window_ends'];ch['window_ends']=0;self.h.chatter_tick();self.assertGreater(ch['window_ends'],old-1)
+    def test_configurable_session_duration_persists_repeats_and_requires_enabled(self):
+        self.assertEqual(self.h.data['chatter']['session_minutes'],15)
+        with patch('control_center.handoffs.time.time',return_value=100):
+            self.h.dispatch('host','chatter.configure',{'enabled':True,'session_minutes':7})
+        ch=self.h.data['chatter'];self.assertEqual(ch['window_ends'],520)
+        self.mesh.native_idle=False
+        with patch('control_center.handoffs.time.time',return_value=521):self.h.chatter_tick()
+        self.assertEqual(ch['window_ends'],941);self.assertFalse(self.mesh.calls)
+        restored=Handoffs(self.provider,self.home,self.mesh)
+        self.assertEqual(restored.data['chatter']['session_minutes'],7)
+        self.h.dispatch('host','chatter.configure',{'enabled':False})
+        for value in [0,121,True,1.5,'7']:
+            with self.assertRaises(ValueError):self.h.dispatch('host','chatter.configure',{'enabled':True,'session_minutes':value})
+        with self.assertRaises(ValueError):self.h.dispatch('host','chatter.configure',{'enabled':False,'session_minutes':20})
+        self.h.dispatch('host','chatter.configure',{'enabled':True})
+        self.assertEqual(ch['session_minutes'],7)
+
     def test_pair_topic_and_resource_wait_preserve_request(self):
         self.h.dispatch('host','chatter.configure',{'enabled':True})
         c=self.h.dispatch('host','chatter.pair',{'a':'host--designer','b':'host--reviewer','topic':''})

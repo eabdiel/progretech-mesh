@@ -24,3 +24,6 @@
 .office-chatter .office-feed{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
 .office-inspector{display:block;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 @media(max-width:650px){.office-layout{--office-panel-height:950px}}
+
+#chatterMinutes { width: 4.5rem; padding: .35rem .5rem; }
+#chatterMinutes[readonly] { opacity: .65; cursor: default; }
