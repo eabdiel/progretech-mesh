@@ -13,7 +13,8 @@ from control_center.artifacts import catalog, public, write, ROLES
 def validate(action,args):
     fields={'handoff.create':{'source','text'},'handoff.list':set(),'handoff.control':{'id','state'},'chatter.configure':{'enabled'},'chatter.history':set(),'chatter.pair':{'a','b','topic'},'chatter.topic':{'id','topic'}}[action]
     if action=='chatter.configure':
-        if not isinstance(args,dict) or set(args)!=fields or type(args['enabled']) is not bool:raise ValueError('invalid_chatter_settings')
+        if not isinstance(args,dict) or not {'enabled'} <= set(args) <= {'enabled','session_minutes'} or type(args['enabled']) is not bool:raise ValueError('invalid_chatter_settings')
+        if 'session_minutes' in args and (not args['enabled'] or type(args['session_minutes']) is not int or not 1 <= args['session_minutes'] <= 120):raise ValueError('invalid_chatter_duration')
         return
     if not isinstance(args,dict) or set(args)!=fields or any(not isinstance(v,str) or '\x00' in v for v in args.values()):raise ValueError('invalid_handoff_args')
     if action in {'chatter.pair','chatter.topic'} and (len(args['topic'])>200 or any(len(v)>200 for v in args.values())):raise ValueError('invalid_chatter_args')
@@ -30,6 +31,9 @@ class Handoffs:
         try:self.data=json.loads(self.path.read_text())
         except (OSError,ValueError):self.data={'rules':[],'seen':[],'notifications':[]}
         self.data.setdefault('chatter',{'enabled':False,'next_at':0,'conversations':[]})
+        self.data['chatter'].setdefault('session_minutes',15)
+        if self.data['chatter']['enabled'] and not self.data['chatter'].get('window_started'):
+            self.data['chatter']['next_at']=0  # Migrate the legacy one-pair cooldown.
         for chat in self.data['chatter']['conversations']:
             if chat['state'] in {'approaching','dispatching','first','second','reply_wait'}:chat.update(state='unconfirmed',note='Host restarted; conversation was not replayed.')
         for row in self.data['rules']:
@@ -42,7 +46,9 @@ class Handoffs:
         with self.lock:
             if action=='chatter.configure':
                 chatter=self.data['chatter'];chatter['enabled']=args['enabled']
-                if args['enabled']:chatter.update(window_started=time.time(),window_ends=time.time()+900,next_at=0)
+                if args['enabled']:
+                    chatter['session_minutes']=args.get('session_minutes',chatter['session_minutes'])
+                    now=time.time();chatter.update(window_started=now,window_ends=now+chatter['session_minutes']*60,next_at=0)
                 else:
                     for row in chatter['conversations']:
                         if row['state'] in {'queued','approaching','reply_wait'}:row.update(state='stopped',note='Chatter disabled before the next turn.')
@@ -119,7 +125,7 @@ class Handoffs:
                 row.update(state='dispatching',artifact=public(match));self.save()
                 text=row['text']+'\nDependency delivered by '+row['source']+': '+match['path']+'\nRead this published artifact before answering. Report what you actually reviewed. If producing files, save them under '+str(self.home/'Rend/artifacts'/row['target_role'])+'.'
                 try:
-                    job=self.mesh.chat(row['target'],text);row.update(state='running',job_id=job['job_id'],note='Dependency received; follow-up admitted to the runtime queue.')
+                    job=self.mesh.chat(row['target'],text,**({'image_paths':[match['path']]} if Path(match['path']).suffix.lower() in {'.png','.jpg','.jpeg','.webp'} else {}));row.update(state='running',job_id=job['job_id'],note='Dependency received; follow-up admitted to the runtime queue.')
                 except ValueError as e:
                     if str(e) in {'mesh_agent_busy','mesh_agent_sleeping'}:row.update(state='waiting',note='Waiting for target availability.')
                     else:row.update(state='failed',note=str(e))
@@ -176,7 +182,7 @@ class Handoffs:
             if not chatter['enabled']:
                 if active:active.update(state='stopped',note='Chatter disabled before the next turn.');self.save()
                 return
-            if now>=chatter.get('window_ends',0):chatter.update(window_started=now,window_ends=now+900,session_number=chatter.get('session_number',0)+1)
+            if now>=chatter.get('window_ends',0):chatter.update(window_started=now,window_ends=now+chatter['session_minutes']*60,session_number=chatter.get('session_number',0)+1)
             if not active:
                 if now<chatter.get('next_at',0):return
                 active=next((c for c in chatter['conversations'] if c['state']=='queued'),None)

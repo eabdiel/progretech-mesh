@@ -176,7 +176,7 @@ class MeshRuntime:
             if not job or job['agent_id'] != agent: raise ValueError('mesh_job_not_found')
             return copy.deepcopy(job)
 
-    def start(self, agent, kind, worker, track=False):
+    def start(self, agent, kind, worker, background=False, queue_timeout=600, capability=None, track=False):
         if kind=='chat' and self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
         with self.lock:
             now=time.time()
@@ -187,14 +187,17 @@ class MeshRuntime:
             ident=secrets.token_hex(16)
             self.jobs[ident]={'job_id':ident,'agent_id':agent,'kind':kind,'done':False,'phase':'queued',
                 'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[], 'specklet':track}
+            if capability:self.jobs[ident]['capability']=capability
         def run():
             try:
                 self.mark(ident,'queued','Waiting for the shared model slot')
-                deadline=time.monotonic()+600
+                deadline=time.monotonic()+queue_timeout
                 while kind=='chat' and not self.inference.acquire(timeout=1):
+                    if background:raise ValueError('mesh_chatter_deferred')
                     if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                 try:
                     while kind == 'chat' and not self.idle():
+                        if background:raise ValueError('mesh_chatter_deferred')
                         self.mark(ident,'queued','Waiting for other runtime work to finish')
                         if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                         time.sleep(2)
@@ -217,8 +220,8 @@ class MeshRuntime:
         threading.Thread(target=run,daemon=True,name='mesh-'+kind).start()
         return self.get(agent,ident)
 
-    def prepare(self, agent, ident):
-        model=self.model(agent)
+    def prepare(self, agent, ident, model=None):
+        model=model or self.model(agent)
         resident={m['name'] for m in self.api('ps').get('models',[])}
         if model not in resident:
             tags=self.api('tags').get('models',[])
@@ -346,10 +349,12 @@ class MeshRuntime:
         except (OSError,subprocess.TimeoutExpired,json.JSONDecodeError):raise ValueError('mesh_context_delivery_unconfirmed')
         return {'scope':'agent','accepted':True,'delivery':receipt['status'],'note':'Runtime accepted this instruction for the observed work session. Processing or completion is not yet confirmed.'}
 
-    def chat(self, agent, text, admission=None, background=None):
+    def chat(self, agent, text, admission=None, background=None, image_paths=None):
         from control_center.artifacts import ROLES, safe
         role=ROLES.get(self.provider.bindings[agent])
-        if role and not background:
+        from control_center.media_jobs import image_request
+        media=not background and not image_paths and image_request(text)
+        if role and not background and not media:
             output=safe(self.home,self.home/'Rend/artifacts'/role)
             output.mkdir(parents=True,exist_ok=True,mode=0o700)
             text+='\nIf generating a deliverable for the owner, publish a non-secret copy under '+str(output)+'. Report the actual path; a reply alone is not a published file. Keep private memory and credentials out of shared artifacts.'
@@ -358,7 +363,15 @@ class MeshRuntime:
             cfg,role,chosen=self.config(agent)
             if not self.settings(agent).get('enabled',True):raise ValueError('mesh_enrollment_removed')
             if self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
-            if chosen.startswith('ollama/'):self.prepare(agent,ident)
+            if media:
+                from control_center.media_jobs import generate
+                return generate(self,agent,text,ident)
+            image_content=None
+            if image_paths:
+                from control_center.media_jobs import review_input
+                chosen,image_content=review_input(self,image_paths)
+                self.prepare(agent,ident,model=chosen.split('/',1)[1])
+            elif chosen.startswith('ollama/'):self.prepare(agent,ident)
             port=cfg['gateway'].get('port',18789)
             if type(port) is not int or not 1<=port<=65535:raise ValueError('runtime_port_invalid')
             headers={'Content-Type':'application/json','Authorization':'Bearer '+cfg['gateway']['auth']['token'],
@@ -367,9 +380,9 @@ class MeshRuntime:
             if background:headers['x-openclaw-session-key']='agent:'+role+':mesh-chatter:'+background
             nonce=None if background else self.settings(agent).get('conversation_nonce')
             if nonce:headers['x-openclaw-session-key']+=':'+nonce
-            if self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
+            if image_paths or self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
             req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':False,
-                'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
+                'messages':[{'role':'user','content':[{'type':'text','text':text},*image_content] if image_content else text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
             self.mark(ident,'processing','Processing your request; waiting for reply text')
             # OpenClaw postprocessing can replace output after its token events.
             # Retrieve one final response; progress remains an asynchronous host job.
@@ -387,7 +400,7 @@ class MeshRuntime:
             self.mark(ident,'writing','Reply generated; preparing delivery')
             if answer.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):raise ValueError('mesh_provider_rejected')
             return {'reply':answer,'role':role,'model':chosen}
-        return self.start(agent,'chat',worker,track=not background)
+        return self.start(agent,'chat',worker,background=bool(background),queue_timeout=1200 if media else 600,capability='image_generation' if media else None,track=not background)
 
     def snapshot(self, agent, kind):
         state=self.status(agent)
