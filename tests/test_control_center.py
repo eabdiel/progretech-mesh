@@ -194,6 +194,23 @@ class CloudTests(unittest.TestCase):
         cloud.register_gateway_agents('lyra',{'agents':[]},self.registry)
         self.assertIn('lyra--worker',self.registry)
 
+    def test_roster_relays_only_memory_receipt_metadata_for_host_and_signed_role(self):
+        self.registry['lyra--worker']={'id':'lyra--worker','owner_id':'owner',
+            'control_center_gateway':'lyra','gateway_enrollment':True}
+        receipt={'latest_status':'recorded','memory_id':'87ee2d66-92ef-492d-878f-dd374ba1e6a4',
+            'recall_verified':True,'activity_kind':'runtime_activity','project':'ProgreTech',
+            'private_body':'excluded','last_verified':{'activity_recall_verified':True,
+                'activity_memory_id':'87ee2d66-92ef-492d-878f-dd374ba1e6a4','raw_output':'excluded'}}
+        payload={'agents':[{'id':aid,'name':'Lyra','mesh_runtime':{'memory':receipt}}
+            for aid in ('lyra','lyra--worker')]}
+        self.assertTrue(cloud.register_gateway_agents('lyra',payload,self.registry))
+        for aid in ('lyra','lyra--worker'):
+            observed=self.registry[aid]['mesh_runtime']['memory']
+            self.assertTrue(observed['recall_verified'])
+            self.assertEqual(observed['memory_id'],receipt['memory_id'])
+            self.assertNotIn('private_body',observed)
+            self.assertNotIn('raw_output',observed['last_verified'])
+
     def test_gateway_candidates_are_owner_scoped_and_require_connection(self):
         self.login();self.registry['lyra']['owner_id']='other'
         self.registry['lyra']['identified_agents']=[{'id':'lyra--worker','name':'Worker'}]

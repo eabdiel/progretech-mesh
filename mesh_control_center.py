@@ -60,6 +60,24 @@ class ControlRelay:
 control_relay = ControlRelay()
 
 
+def public_runtime_status(status):
+    """Relay receipt metadata without exposing memory bodies or audit payloads."""
+    result = {k: status[k] for k in ('scope', 'sleeping', 'model', 'resident',
+        'preload_available', 'controls_available', 'last_result') if k in status}
+    memory = status.get('memory')
+    if isinstance(memory, dict):
+        result['memory'] = {k: memory[k] for k in ('latest_status', 'at',
+            'activity_kind', 'project', 'memory_id', 'recall_verified')
+            if k in memory and isinstance(memory[k], (str, bool, type(None)))}
+        verified = memory.get('last_verified')
+        if isinstance(verified, dict):
+            result['memory']['last_verified'] = {k: verified[k] for k in
+                ('status', 'at', 'project', 'activity_memory_id',
+                 'activity_recall_verified', 'activity_kind')
+                if k in verified and isinstance(verified[k], (str, bool, type(None)))}
+    return result
+
+
 def register_gateway_agents(gateway_id, payload, registry):
     """Accept a bounded role roster only from an authenticated, owned gateway.
 
@@ -112,7 +130,7 @@ def register_gateway_agents(gateway_id, payload, registry):
         record['transport'] = 'connected'
         status=item.get('mesh_runtime')
         if isinstance(status,dict):
-            record['mesh_runtime']={k:status[k] for k in ('scope','sleeping','model','resident','preload_available','controls_available','last_result') if k in status}
+            record['mesh_runtime']=public_runtime_status(status)
     if host_activity is not None:
         activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
         observed = activity.get('state', host_activity.get('state', 'unknown'))
@@ -120,7 +138,7 @@ def register_gateway_agents(gateway_id, payload, registry):
                          'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         status=host_activity.get('mesh_runtime')
-        if isinstance(status,dict):host['mesh_runtime']={k:status[k] for k in ('scope','sleeping','model','resident','preload_available','controls_available','last_result') if k in status}
+        if isinstance(status,dict):host['mesh_runtime']=public_runtime_status(status)
 
     return True
 
