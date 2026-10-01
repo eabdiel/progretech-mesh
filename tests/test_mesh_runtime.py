@@ -74,6 +74,26 @@ class RuntimeTests(unittest.TestCase):
             run.assert_not_called()
         file.write_text(json.dumps({'agents':{'architect':{'state':'idle'}}}))
         with self.assertRaisesRegex(ValueError,'no_active_work'):self.runtime.context('host--architect','Owner context')
+    def test_recovery_defers_busy_work_and_never_replays_a_chat(self):
+        self.runtime.signal('host','error','mesh_context_limit')
+        self.runtime.chat=lambda *a:self.fail('Recovery must not replay a task')
+        self.runtime.prepare=lambda *a:self.fail('Busy gateway must not prepare a model')
+        status={'shutdownBudget':{'activeWork':{'rootRequests':1}},'tasks':{'active':1}}
+        with patch('control_center.mesh_runtime.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(status))):
+            result=self.done('host',self.runtime.recover('host'))
+        self.assertEqual(result['result']['outcome'],'deferred');self.assertNotIn('conversation_nonce',self.runtime.settings('host'))
+        self.assertEqual(self.runtime.status('host')['last_result']['severity'],'error')
+    def test_recovery_can_reset_context_without_clearing_error_or_old_history(self):
+        self.runtime.signal('host','error','mesh_context_limit')
+        self.runtime.model=lambda a:'fixture'
+        self.runtime.api=lambda *a,**k:{'models':[{'name':'fixture'}]}
+        self.runtime.prepare=lambda *a:'fixture'
+        status={'shutdownBudget':{'activeWork':{'rootRequests':0}},'tasks':{'active':0}}
+        with patch('control_center.mesh_runtime.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(status))):
+            result=self.done('host',self.runtime.recover('host'))
+        self.assertEqual(result['result']['outcome'],'checks_passed');self.assertIn('conversation_nonce',self.runtime.settings('host'))
+        self.assertEqual(self.runtime.status('host')['last_result']['severity'],'error')
+        self.assertNotIn('conversation_nonce',self.runtime.settings('host--architect'))
     def test_shared_model_is_retained_on_sleep(self):
         self.runtime.model=lambda a:'shared'
         self.runtime.control=lambda a,awake:self.rows['rend'].update(mode='paused')

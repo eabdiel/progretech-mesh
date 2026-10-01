@@ -56,6 +56,7 @@ def install(host, home=None):
         if action=='communication.job':return mesh.get(agent,args['job_id'])
         if action=='runtime.status':return mesh.status(agent)
         if action in {'runtime.wake','runtime.sleep'}:return mesh.power(agent,action=='runtime.wake')
+        if action=='runtime.recover':return mesh.recover(agent)
         if action=='runtime.context':return mesh.context(agent,args['text'])
         if action=='runtime.snapshot':return mesh.snapshot(agent,args['kind'])
         if action.startswith('factory.'):

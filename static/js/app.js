@@ -996,7 +996,7 @@
     if(!detail){detail=document.createElement('div');detail.id='agentStatusDetail';detail.className='agent-status-detail';detail.setAttribute('role','status');eventList.before(detail);}
     const agent=fleet.find(a=>a.id===selectedAgentId);
     detail.hidden=!agent;
-    if(agent)detail.textContent=MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail;
+    if(agent)detail.textContent=MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail+' '+MeshRuntime.memoryLabel(agent.mesh_runtime?.memory);
   }
   function renderFleet() {
     renderAgentStatus();
@@ -1038,6 +1038,7 @@
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
         ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
+        ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state === "error" ? `<div class="agent-actions"><button data-recover="${escapeHtml(agent.id)}">Try to resolve</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
@@ -1062,6 +1063,11 @@
       const a=fleet.find(a=>a.id===b.dataset.power);b.disabled=true;
       try{a.mesh_runtime=await MeshRuntime.run(a.id,a.mesh_runtime.sleeping?'runtime.wake':'runtime.sleep',{},j=>{b.textContent=j.detail;});renderFleet();}
       catch(e){showToast(e.message);b.disabled=false;}
+    });
+    agentGrid.querySelectorAll('[data-recover]').forEach(b=>b.onclick=async()=>{
+      const id=b.dataset.recover;b.disabled=true;
+      try{const text=await MeshRuntime.recover(id,j=>{b.textContent=j.detail;});const messages=roleConversations.get(id)||[];roleConversations.set(id,messages);messages.push({type:'recovery_report',timestamp:new Date().toISOString(),message:text,payload:{sender:'Host',severity:'info'}});monitorAgent(id);}
+      catch(e){showToast(e.message);}finally{b.disabled=false;}
     });
     agentGrid.querySelectorAll('[data-new-conversation]').forEach(b=>b.onclick=async()=>{
       try{await MeshRuntime.request(b.dataset.newConversation,'communication.new');showToast('New conversation ready. Previous runtime history is preserved.');}

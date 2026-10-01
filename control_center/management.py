@@ -4,7 +4,7 @@ import os
 import re
 
 ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
-ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.snapshot'}
+ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot'}
 ACTIONS.add('communication.new')
 
 

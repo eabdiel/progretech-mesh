@@ -1,6 +1,6 @@
 {
   "name": "@progretech/openclaw-mesh",
-  "version": "0.9.2-controls.1",
+  "version": "0.9.3-recovery.1",
   "private": true,
   "type": "module",
   "description": "ProgreTech Mesh direct-first transport with offline same-LAN reconnect support.",

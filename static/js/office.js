@@ -99,7 +99,7 @@
     const a=live ? {...live,name:live.id[0].toUpperCase()+live.id.slice(1),role:'Local agent'} : snapshot?.agents.find(a=>a.id===selected);
     $('factoryChat').hidden=!live;
     $('officeMailbox').hidden=!a || Boolean(live);
-    if(live)renderConversation();
+    if(live){renderConversation();$('factoryRecovery').hidden=MeshRuntime.indicator(live).state!=='error';$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
     $('inspectorActions').hidden=!a || Boolean(live);
     $('inspectorName').textContent=a?.name || 'Choose an agent';
     $('inspectorRole').textContent=a ? `${a.role} · ${a.state} · ${live ? (live.sleeping?'asleep':'awake') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
@@ -113,7 +113,7 @@
       $('agentPartners').innerHTML=links.map(l=>`<li>${escape(l.kind)} · ${escape((l.from===selected?l.to:l.from).replace('factory-',''))}<br>${escape(l.title)}${l.parts?.[selected]?'<br>My part: '+escape(l.parts[selected]):''}</li>`).join('')+delegations.slice(-8).map(e=>`<li>Delegation · ${escape(e.agentId)} → ${escape(e.to)}<br>${escape(e.summary||e.taskId||'')}</li>`).join('') || '<li>No recorded collaboration or delegation.</li>';
     }
     $('archiveWorker').disabled=!a || a.isDirector || Boolean(live) || !online;
-    $('officeActivity').innerHTML=(snapshot?.events || []).filter(e=>!selected||e.agentId===selected||e.from===selected||e.to===selected).slice(-10).reverse().map(e=>`<li>${escape(e.kind)}${e.summary?'<br>'+escape(e.summary):''}${e.taskId?'<br>'+escape(e.taskId):''}</li>`).join('') || (live ? `<li>${escape(live.state)}${live.task_id?'<br>'+escape(live.task_id):''}${live.last_result?.severity==='error'?'<br>Last reply failed: '+escape(live.last_result.code):''}</li>` : '<li>No recent activity.</li>');
+    $('officeActivity').innerHTML=(snapshot?.events || []).filter(e=>!selected||e.agentId===selected||e.from===selected||e.to===selected).slice(-10).reverse().map(e=>`<li>${escape(e.kind)}${e.summary?'<br>'+escape(e.summary):''}${e.taskId?'<br>'+escape(e.taskId):''}</li>`).join('') || (live ? `<li>${escape(live.state)}${live.task_id?'<br>'+escape(live.task_id):''}${live.last_result?.severity==='error'?'<br>Recorded failure: '+escape(live.last_result.code):''}</li>` : '<li>No recent activity.</li>');
     if(live)$('officeActivity').insertAdjacentHTML('afterbegin',`<li>${escape(MeshRuntime.indicator(live).detail)}</li>`);
     if(live && !powerBusy) {if(runtimeState)runtimeState.sleeping=live.sleeping;const asleep=live.sleeping;$('factoryPower').textContent=asleep?'Wake up':'Sleep';$('factoryPower').disabled=asleep===null || !online;$('factoryPowerStatus').textContent=asleep===null?'Availability unknown':asleep?'Asleep in Mesh and Factory':'Awake in Mesh and Factory';}
   }
@@ -160,6 +160,12 @@
     try{const result=await MeshRuntime.run(aid,'communication.start',{text},job=>{reply.text=job.detail;if(selected===id)renderConversation();});reply.text=result.reply;}
     catch(e){reply.text=e.message;reply.error=true;}
     if(selected===id)renderConversation();refresh();
+  };
+  $('factoryRecovery').onclick=async()=>{
+    const id=selected,aid=selectedRuntime();if(!aid)return;
+    const rows=conversations.get(id)||[];conversations.set(id,rows);const report={sender:'Host recovery',text:'Checking recovery options…'};rows.push(report);const button=$('factoryRecovery');button.disabled=true;renderConversation();
+    try{report.text=await MeshRuntime.recover(aid,job=>{report.text=job.detail;if(selected===id)renderConversation();});}
+    catch(e){report.text=e.message;report.error=true;}finally{button.disabled=false;if(selected===id)renderConversation();refresh();}
   };
   $('factoryActiveContext').onclick=async()=>{
     const id=selected,aid=selectedRuntime(),input=$('factoryMessage').elements.text,text=input.value.trim();if(!aid || !text){say('Enter the context to add to this agent’s active work.');return;}

@@ -118,3 +118,24 @@ Lights explain their source and timestamp in the selected inspector. Current
 monitoring is purple, work blue, sleep amber, idle gray, completed turns green,
 and recorded errors red. Native failures outside a Mesh chat are identified as
 such without exposing private session transcripts or provider payloads.
+
+## Error recovery and memory receipts
+
+Red native roles expose Try to resolve in the Factory inspector and signed fleet
+cards. Recovery checks canonical controls and gateway availability. It preserves
+active work, defers model preparation when busy, and never replays the failed
+task or restarts the gateway. When idle, it checks the configured local model and
+attempts its supported preload. A recorded Mesh context-limit error prepares a
+fresh conversation while retaining earlier runtime history. Unsupported request
+format failures and generic native failures receive explicit next steps rather
+than a fabricated repair. Passing diagnostics does not clear a failed turn; a
+later successful agent result replaces the error signal.
+
+The selected agent's MemPalace label reads bounded completion receipt metadata.
+It distinguishes a failed write, a verified continuity checkpoint, an automatic
+runtime activity receipt and a reviewed technical activity. Metadata-only capture
+is not evidence of reviewed learning. Memory content, private transcripts, tool
+arguments and provider payloads never cross this status endpoint. The local
+MemPalace hook 1.2.1 provides explicitly enabled, host-scoped automatic completion
+logging for registered unsandboxed roles; model-requested lesson writes retain
+their separate permission and invocation checks.

@@ -104,6 +104,8 @@ def dispatch_office(home, role, args, agent_id=None):
         ctrl=controls.get(row['id'])
         row['sleeping']=is_sleeping(ctrl) if ctrl else None
         row['last_result']=signals.get(row.get('runtime_id'),{})
+        from control_center.memory_status import memory_status
+        row['memory']=memory_status(home,row['id'])
         if row['sleeping']:row['state']='sleeping'
     from control_center.office_relations import interactions
     result['snapshot']['interactions']=interactions(result['snapshot'],home)

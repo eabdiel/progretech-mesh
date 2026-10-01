@@ -91,16 +91,18 @@ class MeshRuntime:
         return chosen.split('/',1)[1]
 
     def status(self, agent):
+        from control_center.memory_status import memory_status
+        memory=memory_status(self.home,ROLE_NAMES.get(self.provider.bindings[agent],self.provider.bindings[agent]))
         try:asleep = self.sleeping(agent)
         except (ValueError,KeyError,OSError,subprocess.SubprocessError):
-            return {'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False}
+            return {'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False}
         try:
             model = self.model(agent)
             names = {m['name'] for m in self.api('ps').get('models',[])}
             resident = model in names
-            return {'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
         except (ValueError, KeyError, OSError, URLError):
-            return {'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
 
     def signal(self, agent, severity, code):
         with self.lock:
@@ -191,7 +193,7 @@ class MeshRuntime:
                     result=worker(ident)
                 finally:
                     if kind=='chat':self.inference.release()
-                self.mark(ident,'complete','Reply ready' if kind=='chat' else 'Agent availability updated')
+                self.mark(ident,'complete','Reply ready' if kind=='chat' else 'Recovery checks complete' if kind=='recovery' else 'Agent availability updated')
                 if kind=='chat':
                     try:self.signal(agent,'success','reply_received')
                     except OSError:pass
@@ -268,6 +270,49 @@ class MeshRuntime:
             status['note']='Model retained for other roles or channels' if status.get('resident') else 'Local model released'
             return status
         return self.start(agent,'wake' if awake else 'sleep',worker)
+
+    def recover(self, agent):
+        def worker(ident):
+            before=self.status(agent);code=before.get('last_result',{}).get('code');steps=[]
+            def add(name,state,detail):steps.append({'name':name,'state':state,'detail':detail});self.mark(ident,'checking',detail)
+            if before.get('last_result',{}).get('severity')!='error':
+                return {'outcome':'not_needed','steps':[],'note':'No recorded error needs recovery.'}
+            add('availability','passed' if before.get('controls_available') else 'needs_attention','Shared availability controls are reachable' if before.get('controls_available') else 'Shared controls are unavailable; inspect the host service')
+            try:
+                cfg,role,_=self.config(agent)
+                result=subprocess.run(['openclaw','gateway','call','status','--json'],capture_output=True,text=True,timeout=15)
+                if result.returncode:raise ValueError('gateway_unavailable')
+                data=json.loads(result.stdout);counts=data.get('shutdownBudget',{}).get('activeWork',{})
+                busy=not counts or any(type(v) is not int or v!=0 for v in counts.values()) or data.get('tasks',{}).get('active',1)!=0
+                add('gateway','passed','Gateway is reachable; active work will be preserved')
+            except (OSError,ValueError,subprocess.SubprocessError):
+                return {'outcome':'needs_attention','steps':steps+[{'name':'gateway','state':'needs_attention','detail':'Gateway check failed. Inspect the local OpenClaw service; no restart was attempted.'}],'note':'Recovery needs host attention. No task was replayed.'}
+            if busy or not self.inference.acquire(blocking=False):
+                return {'outcome':'deferred','steps':steps,'note':'Other work is active. Model preparation and conversation changes were deferred; no task was interrupted.'}
+            try:
+                # Do not apply a repair to a superseded failure.
+                current=self.status(agent).get('last_result',{})
+                if current!=before.get('last_result',{}):return {'outcome':'deferred','steps':steps,'note':'The last result changed during checks. Refresh the status before trying recovery again.'}
+                if code=='mesh_context_limit':
+                    from control_center.management import save_preferences
+                    save_preferences(self.provider,agent,{'conversation_nonce':secrets.token_hex(8)})
+                    add('conversation','applied','A fresh Mesh conversation is ready; previous history is preserved')
+                try:
+                    model=self.model(agent)
+                    installed={m['name'] for m in self.api('tags').get('models',[])}
+                    if model not in installed:add('model','needs_attention','Configured model is not installed. Select an installed model in Control Center; no download was attempted.')
+                    else:
+                        add('model','passed','Configured local model is installed')
+                        self.prepare(agent,ident);add('preload','passed','Local model preload confirmed')
+                except (OSError,URLError,ValueError) as exc:
+                    error=str(exc) if isinstance(exc,ValueError) else 'mesh_provider_unavailable'
+                    add('preload','needs_attention',{'local_preload_unavailable':'This provider has no supported local preload check. Inspect its configuration.','model_memory_headroom_required':'Model preparation needs more free memory; other agents and models were left running.'}.get(error,'Local model preparation failed. Inspect provider availability and configuration.'))
+                if code in {'mesh_provider_rejected','native_agent_failed'}:
+                    add('provider_request','needs_attention','The previous failure has no confirmed request-level repair. Check provider format/context settings or send a new bounded request when ready.')
+            finally:self.inference.release()
+            outcome='needs_attention' if any(s['state']=='needs_attention' for s in steps) else 'checks_passed'
+            return {'outcome':outcome,'steps':steps,'note':'These are recovery checks, not a retried task. The red status remains until a later successful agent turn.'}
+        return self.start(agent,'recovery',worker)
 
     def context(self, agent, text):
         """Owner instruction to an observed active session; no transcript reads."""

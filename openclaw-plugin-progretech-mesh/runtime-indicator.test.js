@@ -13,3 +13,11 @@ test('lights explain actual errors, neutral status and current monitoring',()=>{
  a.state='idle';a.mesh_runtime.last_result={};assert.equal(indicator(a).state,'idle');
  a.mesh_runtime.last_result={severity:'success',code:'native_turn_complete'};assert.equal(indicator(a).state,'success');
 });
+
+test('memory indicator never turns unavailable logging into verified activity',()=>{
+ const label=sandbox.window.MeshRuntime.memoryLabel;
+ assert.match(label({latest_status:'activity_write_unavailable'}),/write failed/);
+ assert.match(label({latest_status:'runtime_activity',recall_verified:true,memory_id:'fixture',activity_kind:'runtime_activity'}),/reviewed summary missing/);
+ assert.match(label({latest_status:'no_change',recall_verified:true,memory_id:'fixture',activity_kind:'reviewed_activity'}),/reviewed activity/);
+ assert.match(label({recall_verified:false,memory_id:'fixture'}),/no verified/);
+});

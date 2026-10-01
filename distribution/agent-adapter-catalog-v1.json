@@ -28,8 +28,8 @@
       },
       "package": {
         "package_id": "progretech-mesh-openclaw",
-        "version": "0.9.2-controls.1",
-        "sha256": "71f628556d03d7f912b80f78b08581e3907336dcd1964b49ab3f8498249c3cd3",
+        "version": "0.9.3-recovery.1",
+        "sha256": "f4d6143778e68337ecda2db227aa082c1d4a841b0393cb6aa0b06c633902cd09",
         "format": "tgz"
       },
       "installation": {

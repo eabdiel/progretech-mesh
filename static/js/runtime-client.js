@@ -45,5 +45,14 @@
     if(result.severity==='success')return {state:'success',label:'Last action completed',detail:'Green: '+(last || 'The last reply completed.')};
     return {state:'idle',label:'Idle',detail:'Gray: no current work or recorded result is reported.'};
   }
-  window.MeshRuntime={request,run,errors,indicator};
+  function memoryLabel(memory={}) {
+    if(memory.latest_status==='activity_write_unavailable')return 'MemPalace: last activity write failed'+(memory.at?' · '+new Date(memory.at).toLocaleString():'')+'.';
+    if(memory.recall_verified && memory.memory_id)return 'MemPalace: saved and recall verified · '+(memory.activity_kind==='reviewed_activity'?'reviewed activity':memory.activity_kind==='runtime_activity'?'automatic runtime activity; reviewed summary missing':'continuity checkpoint')+(memory.at?' · '+new Date(memory.at).toLocaleString():'')+' · '+memory.memory_id;
+    return 'MemPalace: no verified recent activity receipt observed'+(memory.latest_status && memory.latest_status!=='not_observed'?' · '+memory.latest_status:'')+'.';
+  }
+  async function recover(agent,progress=()=>{}) {
+    const result=await run(agent,'runtime.recover',{},progress);
+    return (result.steps || []).map(s=>s.name+' · '+s.state+': '+s.detail).join('\n')+'\n'+result.note;
+  }
+  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover};
 })();
