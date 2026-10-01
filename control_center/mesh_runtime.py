@@ -168,7 +168,7 @@ class MeshRuntime:
             if not job or job['agent_id'] != agent: raise ValueError('mesh_job_not_found')
             return copy.deepcopy(job)
 
-    def start(self, agent, kind, worker, background=False):
+    def start(self, agent, kind, worker, background=False, queue_timeout=600, capability=None):
         if kind=='chat' and self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
         with self.lock:
             now=time.time()
@@ -179,10 +179,11 @@ class MeshRuntime:
             ident=secrets.token_hex(16)
             self.jobs[ident]={'job_id':ident,'agent_id':agent,'kind':kind,'done':False,'phase':'queued',
                 'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[]}
+            if capability:self.jobs[ident]['capability']=capability
         def run():
             try:
                 self.mark(ident,'queued','Waiting for the shared model slot')
-                deadline=time.monotonic()+600
+                deadline=time.monotonic()+queue_timeout
                 while kind=='chat' and not self.inference.acquire(timeout=1):
                     if background:raise ValueError('mesh_chatter_deferred')
                     if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
@@ -391,7 +392,7 @@ class MeshRuntime:
             self.mark(ident,'writing','Reply generated; preparing delivery')
             if answer.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):raise ValueError('mesh_provider_rejected')
             return {'reply':answer,'role':role,'model':chosen}
-        return self.start(agent,'chat',worker,background=bool(background))
+        return self.start(agent,'chat',worker,background=bool(background),queue_timeout=1200 if media else 600,capability='image_generation' if media else None)
 
     def snapshot(self, agent, kind):
         state=self.status(agent)

@@ -28,7 +28,7 @@
   }
   async function run(agent,action,args={},progress=()=>{}) {
     let job=await request(agent,action,args);
-    const deadline=Date.now()+21*60*1000;
+    const deadline=Date.now()+(job.capability==='image_generation'?40:21)*60*1000;
     while(true) {
       progress(job);
       if(job.done) {if(job.error)throw Error(errors[job.error] || job.error);return job.result;}
