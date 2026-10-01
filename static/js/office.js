@@ -23,9 +23,10 @@
     const workers = snapshot.agents.filter(a => !a.isDirector);
     snapshot.agents.forEach(a => {
       const manual=manualPositions[a.id];
-      if (manual && Number.isFinite(manual.x) && Number.isFinite(manual.y) && manual.x >= 80 && manual.x <= 920 && manual.y >= 90 && manual.y <= 600) { positions[a.id]={...manual}; return; }
-      if (a.isDirector) positions[a.id] = {x:500,y:(snapshot.factoryAgents?.length ? 220 : 300)};
-      else { const angle = 2*Math.PI*workers.findIndex(x => x.id===a.id)/Math.max(workers.length,1)-Math.PI/2; positions[a.id] = {x:500+310*Math.cos(angle),y:(snapshot.factoryAgents?.length ? 220+130*Math.sin(angle) : 340+225*Math.sin(angle))}; }
+      if (manual && Number.isFinite(manual.x) && Number.isFinite(manual.y) && manual.x >= 80 && manual.x <= 920 && manual.y >= 90 && manual.y <= 600) { positions[a.id]={...manual}; basePositions[a.id]={...manual}; return; }
+      if (a.isDirector) basePositions[a.id] = {x:500,y:(snapshot.factoryAgents?.length ? 220 : 300)};
+      else { const angle = 2*Math.PI*workers.findIndex(x => x.id===a.id)/Math.max(workers.length,1)-Math.PI/2; basePositions[a.id] = {x:500+310*Math.cos(angle),y:(snapshot.factoryAgents?.length ? 220+130*Math.sin(angle) : 340+225*Math.sin(angle))}; }
+      if (!positions[a.id]) positions[a.id]={...basePositions[a.id]};
     });
   }
   function renderFloor() {
@@ -34,14 +35,27 @@
     const note=document.querySelector('.floor-footnote');if(note)note.hidden=Boolean(snapshot.factoryAgents?.length);
     const live=(snapshot.factoryAgents || []).map(a => ({...a,name:a.id[0].toUpperCase()+a.id.slice(1),role:'Live OpenClaw role',id:'factory-'+a.id,isDirector:false,factoryObserved:true}));
     const display=[...snapshot.agents,...live];
-    live.forEach((a,i)=>{positions[a.id]=manualPositions[a.id] || {x:140+(i%4)*240,y:505+Math.floor(i/4)*115};});
-    basePositions=Object.fromEntries(Object.entries(positions).map(([id,p])=>[id,{...p}]));
-    $('floorNodes').innerHTML = display.map(a => {
+    live.forEach((a,i)=>{basePositions[a.id]={x:140+(i%4)*240,y:505+Math.floor(i/4)*115};positions[a.id]=manualPositions[a.id] || positions[a.id] || {...basePositions[a.id]};});
+    const visible=new Set(display.map(a=>a.id));
+    for(const id of Object.keys(positions))if(!visible.has(id)){delete positions[id];delete basePositions[id];}
+    const markup = display.map(a => {
       const blocked = snapshot.tasks.some(t => t.assignee===a.id && t.status==='blocked');
       const state = a.factoryObserved ? MeshRuntime.indicator(a).state : blocked ? 'blocked' : a.state;
       const p = positions[a.id];
       return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
     }).join('');
+    // Preserve live nodes, focus, pointer capture and CSS animation timelines.
+    // Polling updates metadata, rather than resetting the animated coordinates.
+    const container=$('floorNodes'),template=document.createElement('template');template.innerHTML=markup;
+    const previous=new Map([...container.children].map(node=>[node.dataset.agent,node]));
+    [...template.content.children].forEach((next,index)=>{
+      let node=previous.get(next.dataset.agent);
+      if(node){for(const attr of next.attributes)if(node.getAttribute(attr.name)!==attr.value)node.setAttribute(attr.name,attr.value);if(node.innerHTML!==next.innerHTML)node.innerHTML=next.innerHTML;}
+      else node=next;
+      if(container.children[index]!==node)container.insertBefore(node,container.children[index]||null);
+      previous.delete(node.dataset.agent);
+    });
+    for(const node of previous.values())node.remove();
     $('floorNodes').querySelectorAll('[data-agent]').forEach(node => {
       node.onclick = () => { if (node.dataset.dragged==='true') {node.dataset.dragged='false'; return;} selected=node.dataset.agent;selectedLink=null;runtimeState=null; renderInspector(); renderFloor(); if(node.dataset.factoryRole)loadRuntime();else loadMailbox(); };
       node.onpointerdown = e => {
@@ -217,7 +231,7 @@
     catch(e){if(epoch!==hostEpoch)return;online=false;$('officeSignal').classList.remove('online');say(e.message);for(const id of ['openHire','openMission','officePause','saveOfficeSettings'])$(id).disabled=true;if(snapshot){snapshot.agents.forEach(a=>a.state='offline');render();}}
     finally{pending=false;}
   }
-  $('officeHost').onchange=()=>{hostEpoch++;mailboxEpoch++;runtimeState=null;conversations.clear();selectedLink=null;snapshot=null;selected=null;online=false;chatter=null;artifacts=[];handoffs=[];positions={};manualPositions={};$('floorNodes').replaceChildren();$('floorLinks').replaceChildren();$('floorEmpty').hidden=false;try{manualPositions=JSON.parse(sessionStorage.getItem('mesh-office-layout:'+host())||'{}');}catch{}refresh();};
+  $('officeHost').onchange=()=>{hostEpoch++;mailboxEpoch++;runtimeState=null;conversations.clear();selectedLink=null;snapshot=null;selected=null;online=false;chatter=null;artifacts=[];handoffs=[];positions={};basePositions={};manualPositions={};$('floorNodes').replaceChildren();$('floorLinks').replaceChildren();$('floorEmpty').hidden=false;try{manualPositions=JSON.parse(sessionStorage.getItem('mesh-office-layout:'+host())||'{}');}catch{}refresh();};
   $('officeRefresh').onclick=refresh;
   $('zoomIn').onclick=()=>{zoom=Math.min(1.8,zoom+.15);fit();};$('zoomOut').onclick=()=>{zoom=Math.max(.6,zoom-.15);fit();};$('zoomReset').onclick=()=>{zoom=1;fit();};
   new ResizeObserver(fit).observe($('officeFloor'));
