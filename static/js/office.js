@@ -50,7 +50,7 @@
         const scale=Math.min($('officeFloor').clientWidth/1000,$('officeFloor').clientHeight/700)*zoom;
         node.setPointerCapture(e.pointerId);
         node.onpointermove = move => {if(Math.hypot(move.clientX-start.x,move.clientY-start.y)<4)return;node.dataset.dragged='true';manualPositions[id]=positions[id]={x:Math.max(80,Math.min(920,original.x+(move.clientX-start.x)/scale)),y:Math.max(90,Math.min(600,original.y+(move.clientY-start.y)/scale))};node.style.left=positions[id].x+'px';node.style.top=positions[id].y+'px';renderLinks();};
-        node.onpointerup=()=>{node.onpointermove=null;try{manualPositions[id]={...positions[id]};sessionStorage.setItem('mesh-office-layout:'+host(),JSON.stringify(manualPositions));}catch{}};
+        node.onpointerup=()=>{node.onpointermove=null;if(node.dataset.dragged!=='true')return;try{manualPositions[id]={...positions[id]};sessionStorage.setItem('mesh-office-layout:'+host(),JSON.stringify(manualPositions));}catch{}};
       };
     });
     renderLinks(); fit();
