@@ -23,11 +23,11 @@ export async function forwardControlCenter(payload, agentId, token, fetchImpl = 
 
 export async function discoverControlAgents(agentId, token, fetchImpl = fetch) {
   if (!token || !/^[A-Za-z0-9_-]{1,80}$/.test(agentId || '')) return null;
-  const response = await fetchImpl('http://127.0.0.1:8787/api/mesh/control-center/agents', {
-    headers: {'X-ProgreTech-Mesh-Local-Token': token}, redirect: 'error', signal: AbortSignal.timeout(2000)
+  const response = await fetchImpl(`http://127.0.0.1:8787/api/mesh/control-center/agents?gateway_id=${encodeURIComponent(agentId)}`, {
+    headers: {'X-ProgreTech-Mesh-Local-Token': token}, redirect: 'error', signal: AbortSignal.timeout(17000)
   });
   if (!response.ok) return null;
   const data = await response.json();
-  if (!Array.isArray(data.agents) || data.agents.length > 32) return null;
+  if (!Array.isArray(data.agents) || data.agents.length > 256) return null;
   return data.agents.filter(item => typeof item?.id === 'string' && (item.id === agentId || item.id.startsWith(`${agentId}--`)));
 }

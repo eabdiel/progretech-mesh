@@ -63,6 +63,9 @@ def create_app(home=None, token=None, include_starter=True):
     @app.get('/api/local/discover')
     def discover(): return jsonify(ok=True, candidates=registry.discover())
 
+    @app.get('/api/local/gateway-agents')
+    def gateway_agents(): return jsonify(ok=True, **registry.discover_gateway())
+
     @app.post('/api/local/agents')
     def add(): return jsonify(ok=True, agent=registry.add(request.get_json()))
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / 'packaging/runtime-cache'
 NODE = '22.22.0'
 GIT = '2.53.0'
-VERSION = os.environ.get('MESH_OFFLINE_VERSION', '0.1.0')
+VERSION = os.environ.get('MESH_OFFLINE_VERSION', '0.1.1')
 MODEL_REV = '9217f5db79a29953eb74d5343926648285ec7e67'
 MODEL_SHA256 = '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db'
 

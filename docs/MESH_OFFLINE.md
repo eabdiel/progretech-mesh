@@ -7,10 +7,10 @@ Ubuntu is the recommended desktop platform. The Windows edition is built nativel
 Use the Ubuntu `.deb` from the Mesh Offline release on Ubuntu 22.04 or newer, x86-64:
 
 ```bash
-sudo apt install ./mesh-offline-0.1.0-ubuntu-amd64.deb
+sudo apt install ./mesh-offline-0.1.1-ubuntu-amd64.deb
 ```
 
-On a standard Ubuntu desktop, installation can be performed without network access using `sudo dpkg -i ./mesh-offline-0.1.0-ubuntu-amd64.deb`. Qt's additional xcb libraries are bundled. A minimal/server Ubuntu installation still needs its operating-system graphics and audio stack before running a desktop application.
+On a standard Ubuntu desktop, installation can be performed without network access using `sudo dpkg -i ./mesh-offline-0.1.1-ubuntu-amd64.deb`. Qt's additional xcb libraries are bundled. A minimal/server Ubuntu installation still needs its operating-system graphics and audio stack before running a desktop application.
 
 Launch **Mesh Offline** from the applications menu. The tar archive is a portable alternative: extract it and run `MeshOffline/MeshOffline`. Keep the `_internal` directory beside the executable. Windows users run the `windows-setup.exe` installer; the portable zip also contains `MeshOffline.exe` and all its dependencies. Neither platform needs a separately installed Python.
 
@@ -20,12 +20,13 @@ The application uses an embedded, private loopback UI engine while its window is
 
 1. Click the **Agent onboarding** plus tile in Mission Control.
 2. Find installed OpenClaw, Hermes or Claude runtimes, or enter their executable and workspace. Discovery reads only public identity and workspace fields. Nothing is added until you confirm ownership, acknowledge Mesh’s intermediary role and click Add.
-3. For a PyCharm project, select its Python executable, workspace and runnable agent entry point. The Files menu provides native file and folder pickers. The entry point receives one JSON object with a `question` on stdin, prints its answer on stdout, and exits with zero on success. PyCharm itself is an IDE and does not provide this runtime protocol.
-4. Ask the agent to identify itself. Its pulse turns green only after it actually returns a successful answer.
+3. To add gateway agents one by one, use **Select identified agents from gateway**. This reads the running local OpenClaw gateway. Select an agent, review its executable/workspace, acknowledge ownership and add it. Already linked agents disappear from the list; a repeated or simultaneous selection is rejected. No PEM or CodeSeal is created locally.
+4. For a PyCharm project, select its Python executable, workspace and runnable agent entry point. The Files menu provides native file and folder pickers. The entry point receives one JSON object with a `question` on stdin, prints its answer on stdout, and exits with zero on success. PyCharm itself is an IDE and does not provide this runtime protocol.
+5. Ask the agent to identify itself. Its pulse turns green only after it actually returns a successful answer.
 
 Onboarding stores local references. It does not copy credentials, histories, model subscriptions or another agent's private memory, and does not alter the source runtime's configuration. Unlinking an agent removes the reference, not the runtime or project.
 
-OpenClaw runs embedded `agent --local`; Hermes runs one-shot `chat -q`; Claude runs `-p --output-format json`. Existing agents retain their own model configuration. A runtime configured for an online provider still needs that provider; importing it cannot make that provider offline. Python agents and runtimes configured for local models can operate offline.
+OpenClaw runs embedded `agent --local`; Hermes runs one-shot `chat --query-file`; Claude runs `-p --output-format json`. Existing agents retain their own model configuration. A runtime configured for an online provider still needs that provider; importing it cannot make that provider offline. Python agents and runtimes configured for local models can operate offline.
 
 ## Run your office offline
 

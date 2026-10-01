@@ -41,6 +41,8 @@ def linked_message(record, owner, registry, gateways, send):
         return jsonify(ok=False, error='agent_not_found'), 404
     if host_id not in gateways:
         return jsonify(ok=False, error='gateway_not_connected'), 503
+    if record.get('gateway_enrollment') and not any(a.get('id') == record['id'] for a in host.get('identified_agents', [])):
+        return jsonify(ok=False, error='gateway_candidate_unavailable'), 409
     body = request.get_json(silent=True)
     if not isinstance(body, dict) or set(body) != {'text'} or not isinstance(body['text'], str) or not 1 <= len(body['text'].strip()) <= 4000:
         return jsonify(ok=False, error='invalid_message'), 400
@@ -67,6 +69,8 @@ def register_management_routes(app, require_session, user_id, registry, gateways
             return jsonify(ok=False, error='verified_host_required'), 403
         if host_id not in gateways:
             return jsonify(ok=False, error='gateway_not_connected'), 503
+        if record.get('gateway_enrollment') and not any(a.get('id') == agent_id for a in host.get('identified_agents', [])):
+            return jsonify(ok=False, error='gateway_candidate_unavailable'), 409
         body = request.get_json(silent=True)
         if not isinstance(body, dict) or set(body) - {'action', 'args'}:
             return jsonify(ok=False, error='invalid_request'), 400

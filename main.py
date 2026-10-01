@@ -785,8 +785,12 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
     if record.get("control_center_gateway"):
         host = DEV_AGENT_REGISTRY.get(record["control_center_gateway"], {})
         linked = record["control_center_gateway"] in GATEWAY_SOCKETS and host.get("trust_state") == "verified"
+        if record.get("gateway_enrollment"):
+            linked = linked and any(item['id'] == record['id'] for item in host.get('identified_agents', []))
         public["transport"] = "connected" if linked else "not-connected"
         public["control_center_available"] = public["control_center_available"] and host.get("trust_state") == "verified"
+        if record.get("gateway_enrollment"):
+            public["control_center_available"] = public["control_center_available"] and linked
     public["owner_bound"] = bool(str(record.get("owner_id") or "").strip())
     public["ownership_state"] = "owned" if public["owner_bound"] else "legacy-unowned"
     return public
@@ -2636,10 +2640,10 @@ def create_app() -> Flask:
                 "transport": "live-gateway",
             },
             fleet={
-                "connected": sum(1 for a in agents if a["transport"] == "connected" and not a.get("control_center_gateway")),
-                "verified": sum(1 for a in agents if a["trust_state"] == "verified" and not a.get("control_center_gateway")),
-                "signed_total": sum(1 for a in agents if not a.get("control_center_gateway")),
-                "linked": sum(1 for a in agents if a.get("control_center_gateway")),
+                "connected": sum(1 for a in agents if a["transport"] == "connected" and (not a.get("control_center_gateway") or a.get("gateway_enrollment"))),
+                "verified": sum(1 for a in agents if a["trust_state"] == "verified" and (not a.get("control_center_gateway") or a.get("gateway_enrollment"))),
+                "signed_total": sum(1 for a in agents if not a.get("control_center_gateway") or a.get("gateway_enrollment")),
+                "linked": sum(1 for a in agents if a.get("control_center_gateway") and not a.get("gateway_enrollment")),
                 "total": len(agents),
             },
             agents=agents,
@@ -2656,6 +2660,7 @@ def create_app() -> Flask:
     @require_session
     def enroll_agent():
         payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict): return jsonify(ok=False, error="invalid_enrollment"), 400
         name = str(payload.get("name", "")).strip()
         role = str(payload.get("role", "ProgreTech Agent")).strip() or "ProgreTech Agent"
         public_key = str(payload.get("public_key", "")).strip()
@@ -2665,13 +2670,23 @@ def create_app() -> Flask:
         if not name or not public_key:
             return jsonify(ok=False, error="name_and_public_key_required"), 400
 
+        from mesh_gateway_agents import enrollment_binding
+        try:
+            binding = enrollment_binding(payload, current_mesh_user_id(), DEV_AGENT_REGISTRY, GATEWAY_SOCKETS)
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
+        if binding:
+            from mesh_agent_management import same_origin
+            if not same_origin(): return jsonify(ok=False, error="same_origin_required"), 403
         verification = verify_runtime_agent_identity(payload, name, public_key, codeseal_key)
+        if binding and (verification.get("provider") != "codeseal" or verification.get("valid") is not True):
+            return jsonify(ok=False, error="independent_codeseal_identity_required"), 400
         if verification["state"] in {"invalid", "revoked"}:
             return jsonify(ok=False, error="agent_identity_rejected", verification=verification), 400
 
         identity = ((codeseal_evidence or {}).get("manifest") or {}).get("mesh_identity", {}) if isinstance(codeseal_evidence, dict) else {}
         agent_id = str(identity.get("agent_id") or secrets.token_hex(6))
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", agent_id) or agent_id in DEV_AGENT_REGISTRY:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", agent_id) or (agent_id in DEV_AGENT_REGISTRY and not binding):
             return jsonify(ok=False, error="agent_id_unavailable"), 409
         record = {
             "id": agent_id,
@@ -2696,7 +2711,13 @@ def create_app() -> Flask:
             "last_heartbeat": None,
             "telemetry": {},
         }
-        DEV_AGENT_REGISTRY[agent_id] = record
+        with LIVE_LOCK:
+            if binding:
+                try: record.update(enrollment_binding(payload, current_mesh_user_id(), DEV_AGENT_REGISTRY, GATEWAY_SOCKETS))
+                except ValueError as exc: return jsonify(ok=False, error=str(exc)), 409
+            elif agent_id in DEV_AGENT_REGISTRY:
+                return jsonify(ok=False, error="agent_id_unavailable"), 409
+            DEV_AGENT_REGISTRY[agent_id] = record
         return jsonify(ok=True, agent=public_agent(record)), 201
 
     @app.post("/api/agents/<agent_id>/pair-token")
