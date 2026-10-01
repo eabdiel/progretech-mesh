@@ -104,6 +104,9 @@ class MailboxTests(unittest.TestCase):
             task=call('task.create',{'title':'Mission','description':'Brief','assignee':'orchestrator','dependsOn':[],'needsApproval':False})['result']['id']
             context=call('begin',{'id':task})['result'];self.assertIn('Second',context['agents'][0]['messages'])
             queue=call('mailbox.list',{'agent':'orchestrator'})['result'];self.assertEqual(queue['pending'],[]);self.assertTrue(queue['history'])
+            next_item=call('message',{'to':'orchestrator','text':'Future mission context'})['result']['id']
+            call('mailbox.edit',{'agent':'orchestrator','id':next_item,'text':'Edited future context'})
+            self.assertEqual(call('mailbox.list',{'agent':'orchestrator'})['result']['pending'][0]['body'],'Edited future context')
             with self.assertRaisesRegex(ValueError,'not_pending|busy'):call('mailbox.remove',{'agent':'orchestrator','id':b})
     def test_mailbox_cannot_supply_paths_or_commands(self):
         with self.assertRaises(ValueError):validate_office({'operation':'mailbox.edit','args':{'agent':'x','id':'y','text':'z','path':'/etc'}})

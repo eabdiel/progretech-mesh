@@ -4061,7 +4061,6 @@ switch (body.operation) {
   case "mailbox.remove":
   case "mailbox.priority": {
     agent(args.agent);
-    if(hive.tasks().tasks.some(t=>t.status==='doing'))throw Error('mailbox_busy');
     const m=hive.inbox(args.agent).find(m=>m.id===args.id);
     if(!m || !/^[A-Za-z0-9_-]{1,160}$/.test(m.id))throw Error('mailbox_item_not_pending');
     const file=join3(hive.agentDir(args.agent),'inbox',m.id+'.json');

@@ -35,8 +35,7 @@ Selecting an OpenClaw role opens direct chat, progress and shared controls.
 Selecting an office worker opens its mailbox and recent activity. Pending mailbox
 items can be added, edited, prioritized or removed. Starting a mission claims only
 items included in its bounded input context, preserving them as delivered context
-for review. Delivery does not mean completion. Queue mutations are refused while
-a mission is running. Sending a mailbox message by itself does not start a mission.
+for review. Delivery does not mean completion. Only pending items can be changed; claimed context remains in history. Sending a mailbox message by itself does not start a mission.
 
 Local diagnostic evidence showed Qwen's advertised 262144-token context exceeding
 a 32768-token runtime budget. Aligning its advertised limit to the effective budget
