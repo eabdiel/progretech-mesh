@@ -23,7 +23,7 @@ def main():
     path=folder/'release.conf'
     if path.exists() and not path.with_suffix('.conf.before').exists():path.with_suffix('.conf.before').write_bytes(path.read_bytes())
     path.write_text(f'''[Service]
-WorkingDirectory="{root}"
+WorkingDirectory={root}
 ExecStart=
 ExecStart="{interpreter}" "{root}/main.py"
 Environment=MESH_LOCAL_CONTROL_CENTER=1
