@@ -366,11 +366,9 @@ class MeshRuntime:
             if media:
                 from control_center.media_jobs import generate
                 return generate(self,agent,text,ident)
-            image_content=None
             if image_paths:
-                from control_center.media_jobs import review_input
-                chosen,image_content=review_input(self,image_paths)
-                self.prepare(agent,ident,model=chosen.split('/',1)[1])
+                from control_center.media_jobs import review
+                return review(self,agent,text,ident,image_paths)
             elif chosen.startswith('ollama/'):self.prepare(agent,ident)
             port=cfg['gateway'].get('port',18789)
             if type(port) is not int or not 1<=port<=65535:raise ValueError('runtime_port_invalid')
@@ -380,9 +378,9 @@ class MeshRuntime:
             if background:headers['x-openclaw-session-key']='agent:'+role+':mesh-chatter:'+background
             nonce=None if background else self.settings(agent).get('conversation_nonce')
             if nonce:headers['x-openclaw-session-key']+=':'+nonce
-            if image_paths or self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
+            if self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
             req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':False,
-                'messages':[{'role':'user','content':[{'type':'text','text':text},*image_content] if image_content else text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
+                'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
             self.mark(ident,'processing','Processing your request; waiting for reply text')
             # OpenClaw postprocessing can replace output after its token events.
             # Retrieve one final response; progress remains an asynchronous host job.
