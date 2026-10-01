@@ -52,6 +52,28 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'sleeping'):self.runtime.chat('host--main','hello')
         hold.set();self.done('host',job)
         awake=self.done('host',self.runtime.power('host',True));self.assertFalse(awake['result']['sleeping'])
+    def test_wake_resumes_without_interrupting_busy_native_work(self):
+        self.rows['rend']['mode']='paused'
+        self.runtime.idle=lambda:False
+        self.runtime.control=lambda a,awake:self.rows['rend'].update(mode='running' if awake else 'paused')
+        self.runtime.prepare=lambda *a:self.fail('Busy native work must not trigger model preload')
+        self.runtime.inference.acquire();self.addCleanup(self.runtime.inference.release)
+        value=self.done('host',self.runtime.power('host',True))
+        self.assertFalse(value['result']['sleeping'])
+        self.assertIn('deferred',value['result']['note'])
+    def test_active_context_is_bound_to_observed_role_and_not_replayed(self):
+        directory=self.home/'.local/state/progretech-workday';directory.mkdir(parents=True)
+        file=directory/'activity.json'
+        file.write_text(json.dumps({'agents':{'architect':{'state':'active','session':'agent:architect:workday:fixture'}}}))
+        with patch('control_center.mesh_runtime.subprocess.run',return_value=SimpleNamespace(returncode=0,stdout='{"status":"accepted"}')) as run:
+            result=self.runtime.context('host--architect','Owner context')
+            params=json.loads(run.call_args.args[0][-2]);self.assertEqual(params['agentId'],'architect');self.assertEqual(params['queueMode'],'steer');self.assertEqual(params['sessionKey'],'agent:architect:workday:fixture');self.assertTrue(result['accepted']);self.assertEqual(run.call_count,1)
+        file.write_text(json.dumps({'agents':{'architect':{'state':'active','session':'agent:main:workday:fixture'}}}))
+        with patch('control_center.mesh_runtime.subprocess.run') as run:
+            with self.assertRaisesRegex(ValueError,'session_unavailable'):self.runtime.context('host--architect','Owner context')
+            run.assert_not_called()
+        file.write_text(json.dumps({'agents':{'architect':{'state':'idle'}}}))
+        with self.assertRaisesRegex(ValueError,'no_active_work'):self.runtime.context('host--architect','Owner context')
     def test_shared_model_is_retained_on_sleep(self):
         self.runtime.model=lambda a:'shared'
         self.runtime.control=lambda a,awake:self.rows['rend'].update(mode='paused')

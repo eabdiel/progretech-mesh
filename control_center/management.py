@@ -4,7 +4,7 @@ import os
 import re
 
 ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
-ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.snapshot'}
+ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.snapshot'}
 ACTIONS.add('communication.new')
 
 
@@ -14,7 +14,7 @@ def validate_management(action, args):
         return validate_office(args)
     if not isinstance(args, dict) or len(json.dumps(args)) > 8192:
         raise ValueError('invalid_args')
-    fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'communication.start': {'text'}, 'communication.job': {'job_id'}, 'runtime.snapshot': {'kind'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())
+    fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'communication.start': {'text'}, 'communication.job': {'job_id'}, 'runtime.context': {'text'}, 'runtime.snapshot': {'kind'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())
     if set(args) != fields or any(not isinstance(v, str) or not v.strip() or '\x00' in v for v in args.values()):
         raise ValueError('invalid_args')
     for key, value in args.items():

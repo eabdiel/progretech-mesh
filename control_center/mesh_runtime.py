@@ -181,16 +181,16 @@ class MeshRuntime:
             try:
                 self.mark(ident,'queued','Waiting for the shared model slot')
                 deadline=time.monotonic()+600
-                while kind!='sleep' and not self.inference.acquire(timeout=1):
+                while kind=='chat' and not self.inference.acquire(timeout=1):
                     if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                 try:
-                    while kind != 'sleep' and not self.idle():
+                    while kind == 'chat' and not self.idle():
                         self.mark(ident,'queued','Waiting for other runtime work to finish')
                         if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                         time.sleep(2)
                     result=worker(ident)
                 finally:
-                    if kind!='sleep':self.inference.release()
+                    if kind=='chat':self.inference.release()
                 self.mark(ident,'complete','Reply ready' if kind=='chat' else 'Agent availability updated')
                 if kind=='chat':
                     try:self.signal(agent,'success','reply_received')
@@ -230,11 +230,21 @@ class MeshRuntime:
     def power(self, agent, awake):
         def worker(ident):
             if awake:
-                try:self.prepare(agent,ident)
-                except ValueError as exc:
-                    if str(exc)!='local_preload_unavailable':raise
+                self.mark(ident,'waking','Waking this agent in Mesh and Factory')
                 self.control(agent,True)
-                return self.status(agent)
+                # Availability does not wait behind another role's inference.
+                # Preload is optional and must never interrupt that work.
+                if not self.inference.acquire(blocking=False):
+                    return {**self.status(agent),'note':'Agent awake; model preload deferred while another Mesh request is active'}
+                try:
+                    if not self.idle():
+                        return {**self.status(agent),'note':'Agent awake; model preload deferred while other runtime work is active'}
+                    try:self.prepare(agent,ident)
+                    except ValueError as exc:
+                        if str(exc)=='local_preload_unavailable':return self.status(agent)
+                        return {**self.status(agent),'note':'Agent awake; model preload unavailable','preload_error':str(exc)}
+                    return self.status(agent)
+                finally:self.inference.release()
             self.mark(ident,'sleeping','Putting this agent to sleep in Mesh and Factory')
             self.control(agent,False)
             try:model=self.model(agent)
@@ -258,6 +268,30 @@ class MeshRuntime:
             status['note']='Model retained for other roles or channels' if status.get('resident') else 'Local model released'
             return status
         return self.start(agent,'wake' if awake else 'sleep',worker)
+
+    def context(self, agent, text):
+        """Owner instruction to an observed active session; no transcript reads."""
+        if self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
+        runtime=self.provider.bindings[agent];role=ROLE_NAMES[runtime]
+        file=self.home/'.local/state/progretech-workday/activity.json'
+        try:
+            data=json.loads(file.read_text());row=data['agents'][role]
+            if time.time()-file.stat().st_mtime>90 or row['state']!='active':raise ValueError('mesh_no_active_work')
+            session=row.get('session')
+            if not session:
+                task=next((t for t in data.get('tasks',[]) if t.get('id')==row.get('task_id') and t.get('role')==role and t.get('state')=='running'),{})
+                session='agent:'+runtime+':workday:'+task.get('session','') if task.get('session') else None
+        except (OSError,KeyError,StopIteration):raise ValueError('mesh_no_active_work')
+        if not session or not session.startswith('agent:'+runtime+':') or len(session)>240:
+            raise ValueError('mesh_active_session_unavailable')
+        request={'sessionKey':session,'agentId':runtime,'message':text,'queueMode':'steer','suppressCommandInterpretation':True,'idempotencyKey':secrets.token_hex(16)}
+        try:
+            result=subprocess.run(['openclaw','gateway','call','chat.send','--params',json.dumps(request),'--json'],capture_output=True,text=True,timeout=30)
+            if result.returncode:raise ValueError('mesh_context_delivery_unconfirmed')
+            receipt=json.loads(result.stdout)
+            if receipt.get('status') not in {'started','accepted','ok','queued'}:raise ValueError('mesh_context_delivery_unconfirmed')
+        except (OSError,subprocess.TimeoutExpired,json.JSONDecodeError):raise ValueError('mesh_context_delivery_unconfirmed')
+        return {'scope':'agent','accepted':True,'delivery':receipt['status'],'note':'Runtime accepted this instruction for the observed work session. Processing or completion is not yet confirmed.'}
 
     def chat(self, agent, text):
         def worker(ident):

@@ -991,7 +991,15 @@
       state === "revoked" ? "Revoked" : "Invalid";
   }
 
+  function renderAgentStatus() {
+    let detail=document.getElementById('agentStatusDetail');
+    if(!detail){detail=document.createElement('div');detail.id='agentStatusDetail';detail.className='agent-status-detail';detail.setAttribute('role','status');eventList.before(detail);}
+    const agent=fleet.find(a=>a.id===selectedAgentId);
+    detail.hidden=!agent;
+    if(agent)detail.textContent=MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail;
+  }
   function renderFleet() {
+    renderAgentStatus();
     agentGrid.innerHTML = fleet.map((agent) => `
       <article tabindex="0" data-agent-card="${escapeHtml(agent.id)}" class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
@@ -1002,13 +1010,13 @@
               <span>${escapeHtml(agent.role)}</span>
             </div>
           </div>
-          <span class="agent-state ${agent.mesh_runtime?.last_result?.severity === "error" ? "error" : agent.transport === "connected" ? (agent.state === "working" ? "busy" : "") : "idle"}"></span>
+          <span class="agent-state ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state}" title="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail)}" aria-label="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).label)}"></span>
         </div>
 
         <div class="task">
           <label>${agent.transport === "connected" ? "Live activity" : "Status"}</label>
           <strong>${escapeHtml(agent.task)}</strong>
-          <span>${escapeHtml(agent.phase)}</span>
+          <span>${escapeHtml(agent.phase)}${agent.mesh_runtime?.controls_available ? ` · ${agent.mesh_runtime.sleeping ? "Asleep" : "Awake"}` : ""}</span>
         </div>
 
         <div class="progress"><i style="width:${Number(agent.progress || 0)}%"></i></div>
@@ -1029,7 +1037,7 @@
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><span>${agent.mesh_runtime.sleeping ? "Asleep" : "Awake"}${agent.mesh_runtime.resident ? " · model loaded" : ""}</span><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
+        ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>

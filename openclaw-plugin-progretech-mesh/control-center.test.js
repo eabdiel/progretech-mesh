@@ -37,3 +37,13 @@ test('local provider failure is preserved', async () => {
   const result = await forwardControlCenter({action:'voice.start'},'lyra','test',async () => ({ok:false,json:async () => ({ok:false,error:'permission_required'})}));
   assert.equal(result.error,'permission_required');
 });
+test('wake, sleep and progress polling use the same scoped host bridge', async () => {
+  const sent=[];
+  for(const action of ['runtime.wake','runtime.sleep','communication.job']) {
+    await forwardControlCenter({action,agent_id:'rend--progre',args:action==='communication.job'?{job_id:'a'.repeat(32)}:{}},'rend','fixture',async(_,opts)=>{
+      sent.push(JSON.parse(opts.body));return {ok:true,json:async()=>({ok:true})};
+    });
+  }
+  assert.deepEqual(sent.map(x=>x.action),['runtime.wake','runtime.sleep','communication.job']);
+  assert.ok(sent.every(x=>x.agent_id==='rend--progre'));
+});

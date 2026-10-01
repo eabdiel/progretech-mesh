@@ -489,3 +489,5 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
 #manageAgentsModal button{margin-top:8px}
 
 .agent-state.error{background:#ff6975;box-shadow:0 0 14px #ff697599}.agent-card[data-agent-card]{cursor:pointer}.agent-card[data-agent-card]:focus-visible{outline:2px solid #7cc8ff}
+
+.agent-state.monitoring{background:#b18bff;box-shadow:0 0 14px #b18bff88}.agent-state.sleeping{background:#e2b45d;box-shadow:none}.agent-status-detail{font-size:12px;color:var(--muted);padding:10px 0;line-height:1.6}

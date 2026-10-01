@@ -94,6 +94,7 @@ def dispatch_office(home, role, args, agent_id=None):
         fresh=time.time()-activity.stat().st_mtime<90
         result['snapshot']['factoryAgents']=[dict(v,id=k,state=v.get('state','unknown') if fresh else 'unknown') for k,v in payload.get('agents',{}).items()]
         result['snapshot']['factoryObservedAt']=payload.get('updated_at')
+        result['snapshot']['workdayTasks']=[{k:t.get(k) for k in ('id','role','phase','state','day','slot','started','finished')} for t in payload.get('tasks',[])][:30]
     except (OSError,ValueError): result['snapshot']['factoryAgents']=[]
     from control_center.mesh_runtime import role_controls, is_sleeping, read_signals
     try: controls=role_controls(home)

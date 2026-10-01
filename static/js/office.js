@@ -38,7 +38,7 @@
     basePositions=Object.fromEntries(Object.entries(positions).map(([id,p])=>[id,{...p}]));
     $('floorNodes').innerHTML = display.map(a => {
       const blocked = snapshot.tasks.some(t => t.assignee===a.id && t.status==='blocked');
-      const state = a.last_result?.severity==='error' ? 'error' : blocked ? 'blocked' : a.state;
+      const state = a.factoryObserved ? MeshRuntime.indicator(a).state : blocked ? 'blocked' : a.state;
       const p = positions[a.id];
       return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
     }).join('');
@@ -104,8 +104,17 @@
     $('inspectorName').textContent=a?.name || 'Choose an agent';
     $('inspectorRole').textContent=a ? `${a.role} · ${a.state} · ${live ? (live.sleeping?'asleep':'awake') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
     $('inspectorGoal').textContent=a?.goal || '';
+    $('agentWork').hidden=!a;
+    if(a) {
+      const tasks=live ? (snapshot.workdayTasks||[]).filter(t=>t.role===live.id).sort((a,b)=>(a.day+' '+a.slot).localeCompare(b.day+' '+b.slot)) : snapshot.tasks.filter(t=>a.isDirector || t.assignee===a.id);
+      $('agentAssignments').innerHTML=tasks.map(t=>`<li><strong>${escape(t.title||t.phase||t.id)}</strong><br>${escape(t.status||t.state)} · ${live?'Scheduled '+escape(t.day)+' '+escape(t.slot):'Assigned to '+escape(snapshot.agents.find(a=>a.id===t.assignee)?.name||t.assignee||'unassigned')}${t.description?'<details><summary>Task brief</summary>'+escape(t.description)+'</details>':''}${t.dependsOn?.length?'<br>Depends on '+escape(t.dependsOn.join(', ')):''}</li>`).join('') || '<li>No recorded assignment. Mailbox context alone does not start a mission.</li>';
+      const links=(snapshot.interactions||[]).filter(l=>l.from===selected || l.to===selected);
+      const delegations=(snapshot.events||[]).filter(e=>e.kind==='delegation' && (e.agentId===selected||e.to===selected));
+      $('agentPartners').innerHTML=links.map(l=>`<li>${escape(l.kind)} · ${escape((l.from===selected?l.to:l.from).replace('factory-',''))}<br>${escape(l.title)}${l.parts?.[selected]?'<br>My part: '+escape(l.parts[selected]):''}</li>`).join('')+delegations.slice(-8).map(e=>`<li>Delegation · ${escape(e.agentId)} → ${escape(e.to)}<br>${escape(e.summary||e.taskId||'')}</li>`).join('') || '<li>No recorded collaboration or delegation.</li>';
+    }
     $('archiveWorker').disabled=!a || a.isDirector || Boolean(live) || !online;
     $('officeActivity').innerHTML=(snapshot?.events || []).filter(e=>!selected||e.agentId===selected||e.from===selected||e.to===selected).slice(-10).reverse().map(e=>`<li>${escape(e.kind)}${e.summary?'<br>'+escape(e.summary):''}${e.taskId?'<br>'+escape(e.taskId):''}</li>`).join('') || (live ? `<li>${escape(live.state)}${live.task_id?'<br>'+escape(live.task_id):''}${live.last_result?.severity==='error'?'<br>Last reply failed: '+escape(live.last_result.code):''}</li>` : '<li>No recent activity.</li>');
+    if(live)$('officeActivity').insertAdjacentHTML('afterbegin',`<li>${escape(MeshRuntime.indicator(live).detail)}</li>`);
     if(live && !powerBusy) {if(runtimeState)runtimeState.sleeping=live.sleeping;const asleep=live.sleeping;$('factoryPower').textContent=asleep?'Wake up':'Sleep';$('factoryPower').disabled=asleep===null || !online;$('factoryPowerStatus').textContent=asleep===null?'Availability unknown':asleep?'Asleep in Mesh and Factory':'Awake in Mesh and Factory';}
   }
   function renderBoard() {
@@ -152,10 +161,23 @@
     catch(e){reply.text=e.message;reply.error=true;}
     if(selected===id)renderConversation();refresh();
   };
+  $('factoryActiveContext').onclick=async()=>{
+    const id=selected,aid=selectedRuntime(),input=$('factoryMessage').elements.text,text=input.value.trim();if(!aid || !text){say('Enter the context to add to this agent’s active work.');return;}
+    const button=$('factoryActiveContext');button.disabled=true;
+    try{const receipt=await MeshRuntime.request(aid,'runtime.context',{text});const rows=conversations.get(id)||[];conversations.set(id,rows);rows.push({sender:'You · active work context',text},{sender:'Host delivery receipt',text:receipt.note});input.value='';if(selected===id)renderConversation();}
+    catch(e){say(e.message);}finally{button.disabled=false;}
+  };
   $('factoryPower').onclick=async()=>{
     const aid=selectedRuntime(),id=selected;if(!aid)return;powerBusy=true;$('factoryPower').disabled=true;
     try{const state=await MeshRuntime.run(aid,snapshot.factoryAgents.find(a=>'factory-'+a.id===id)?.sleeping?'runtime.wake':'runtime.sleep',{},j=>{if(selected===id)$('factoryPowerStatus').textContent=j.detail;});if(selected===id)runtimeState=state;}
     catch(e){say(e.message);}finally{powerBusy=false;refresh();}
+  };
+  for(const action of ['pause','resume'])$('factory'+(action==='pause'?'Pause':'Resume')).onclick=async()=>{
+    const id=selected,row=snapshot.factoryAgents.find(a=>'factory-'+a.id===id);if(!row)return;
+    try{await api('workday.control',{action,role:row.id,duration:'1s'});await refresh();say(action==='pause'?'Activity paused across Mesh and Factory. Active work was asked to stop; completed actions remain.':'Activity resumed across Mesh and Factory. Interrupted work remains visible for review.');}catch(e){say(e.message);}
+  };
+  $('factoryWorkSummary').onclick=async()=>{
+    try{const id=selected,r=await MeshRuntime.request(selectedRuntime(),'runtime.snapshot',{kind:'task'});const rows=conversations.get(id)||[];conversations.set(id,rows);rows.push({sender:'Host status summary',text:r.lines.join('\n')});if(selected===id)renderConversation();}catch(e){say(e.message);}
   };
   $('factoryNewChat').onclick=async()=>{try{await MeshRuntime.request(selectedRuntime(),'communication.new');say('New conversation ready; previous runtime history is preserved.');}catch(e){say(e.message);}};
   for(const kind of ['Task','Terminal'])$('factory'+kind+'Snapshot').onclick=async()=>{
@@ -164,9 +186,10 @@
   async function loadMailbox() {
     const id=selected,epoch=++mailboxEpoch;if(!id || id.startsWith('factory-'))return;
     try{const result=await api('mailbox.list',{agent:id});const data=result.result;if(id!==selected || epoch!==mailboxEpoch)return;
-      $('mailboxItems').innerHTML=data.pending.map(m=>`<li><strong>${escape(m.subject)}</strong><p>${escape(m.body)}</p><small>Pending · priority ${m.priority||0}</small><div><button data-mail-edit="${escape(m.id)}">Edit</button><button data-mail-priority="${escape(m.id)}" data-priority="${Math.min(100,(m.priority||0)+1)}">Raise priority</button><button data-mail-priority="${escape(m.id)}" data-priority="${Math.max(-100,(m.priority||0)-1)}">Lower priority</button><button data-mail-remove="${escape(m.id)}">Remove</button></div></li>`).join('')||'<li>No pending items.</li>';
+      $('mailboxItems').innerHTML=data.pending.map(m=>`<li><strong>${escape(m.subject)}</strong><p>${escape(m.body)}</p><small>Pending · priority ${m.priority||0}</small><div><button data-mail-mission="${escape(m.id)}">Create mission</button><button data-mail-edit="${escape(m.id)}">Edit</button><button data-mail-priority="${escape(m.id)}" data-priority="${Math.min(100,(m.priority||0)+1)}">Raise priority</button><button data-mail-priority="${escape(m.id)}" data-priority="${Math.max(-100,(m.priority||0)-1)}">Lower priority</button><button data-mail-remove="${escape(m.id)}">Remove</button></div></li>`).join('')||'<li>No pending items.</li>';
       $('mailboxHistory').innerHTML=data.history.map(m=>`<li><strong>${escape(m.subject)}</strong><p>${escape(m.body)}</p><small>Delivered context · ${escape(m.created_at)}</small></li>`).join('')||'<li>No delivered items.</li>';
       $('mailboxItems').querySelectorAll('button').forEach(b=>b.onclick=async()=>{
+        if(b.dataset.mailMission){const m=data.pending.find(m=>m.id===b.dataset.mailMission);$('openMission').click();$('missionForm').elements.title.value=m.subject||'Owner mission';$('missionForm').elements.description.value=m.body;$('missionForm').elements.assignee.value=id;return;}
         const mid=b.dataset.mailEdit||b.dataset.mailRemove||b.dataset.mailPriority;
         const action=b.dataset.mailEdit?'mailbox.edit':b.dataset.mailRemove?'mailbox.remove':'mailbox.priority';const args={agent:id,id:mid};
         if(action==='mailbox.edit'){const text=prompt('Edit pending mailbox item',data.pending.find(m=>m.id===mid).body);if(text===null || !text.trim())return;args.text=text;}

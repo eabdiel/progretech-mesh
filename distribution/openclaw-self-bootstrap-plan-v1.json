@@ -24,9 +24,9 @@
   },
   "package": {
     "package_id": "progretech-mesh-openclaw",
-    "version": "0.9.0-runtime.1",
-    "filename": "progretech-mesh-openclaw-0.9.0-runtime.1.tgz",
-    "sha256": "f7d182e2bfd0649cc3c1e262c322a18747d61e9595d5da641f6194bdfabf85f0",
+    "version": "0.9.2-controls.1",
+    "filename": "progretech-mesh-openclaw-0.9.2-controls.1.tgz",
+    "sha256": "71f628556d03d7f912b80f78b08581e3907336dcd1964b49ab3f8498249c3cd3",
     "integrity_algorithm": "sha256",
     "codeseal_verified": false
   },

@@ -92,3 +92,29 @@ CREWAI_TELEMETRY_DISABLED=true OTEL_SDK_DISABLED=true \
 That test uses the actual framework with a deterministic offline LLM; it proves
 delegation/event wiring without spending API credits. Model quality and live
 production acceptance require testing with the owner's selected host and model.
+
+## Owner work inspection
+
+Selecting the Director shows recorded mission assignments and delegation events.
+Selecting a native role shows its current scheduled work and bounded queue from
+the workday controller, with scheduled times as the ordering source. Native
+scheduled work and CrewAI office missions remain distinct execution systems.
+Relationships display recorded handoffs or concurrent assignments, never assumed
+collaborators. A pending mailbox item can prefill a new mission for owner review;
+creating a mission does not execute it. The host must have its execution runtime
+configured and workers hired before Start mission is available.
+
+Native role inspectors provide Pause activity, Resume activity, and a host status
+summary. Pause requests cancellation of that selected role across channels; it
+cannot undo completed actions. Resume restores admission and leaves interrupted
+work visible for review. Add context to active work targets the locally observed
+role session through OpenClaw chat.send with queueMode=steer and a fresh
+idempotency key. The browser supplies only text; session identity is host-derived.
+An accepted receipt confirms runtime admission, not agent execution or task
+completion. Idle, stale, unavailable and cross-role observations are rejected.
+Unconfirmed delivery is never automatically replayed.
+
+Lights explain their source and timestamp in the selected inspector. Current
+monitoring is purple, work blue, sleep amber, idle gray, completed turns green,
+and recorded errors red. Native failures outside a Mesh chat are identified as
+such without exposing private session transcripts or provider payloads.
