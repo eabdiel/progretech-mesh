@@ -4,6 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
 import { forwardControlCenter, discoverControlAgents } from "./control-center.js";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
@@ -1069,7 +1070,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
     });
     sendMeshGatewayMessage(localRouteMessage());
     void discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token).then((agents) => {
-      if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents}});
+      if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents, enrollment_restore_version: 1, enrollment_receipts: enrollmentReceipts(STATE_DIR, record.agent_id)}});
     }).catch(() => {});
     appendEvent({
       event_type: "gateway",
@@ -1086,6 +1087,13 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       try {
         const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
         if (msg?.type === "control_center_request") {
+          if (msg.payload?.action === 'identity.enrollment.save') {
+            try {
+              saveEnrollment(STATE_DIR, record.agent_id, msg.payload.agent_id, msg.payload.args?.receipt);
+              sendMeshGatewayMessage({type:'control_center_response', request_id:msg.request_id, payload:{ok:true,result:{stored:true}}});
+            } catch { sendMeshGatewayMessage({type:'control_center_response', request_id:msg.request_id, payload:{ok:false,error:'gateway_enrollment_cache_failed'}}); }
+            return;
+          }
           let payload;
           try {
             payload = await forwardControlCenter(msg.payload, record.agent_id, ensureLocalAccessCredential().token);
@@ -1094,11 +1102,12 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
           }
           sendMeshGatewayMessage({type: "control_center_response", request_id: msg.request_id, payload});
           if (payload.ok && msg.payload?.action === 'enrollment.remove') {
+            forgetEnrollment(STATE_DIR, record.agent_id, msg.payload.agent_id);
             if (msg.payload?.agent_id === record.agent_id) {
               markRevoked('owner_removed_from_mesh', record);
             }
             const agents = await discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token);
-            if (Array.isArray(agents)) sendMeshGatewayMessage({type:'control_center_roster',payload:{agents}});
+            if (Array.isArray(agents)) sendMeshGatewayMessage({type:'control_center_roster',payload:{agents, enrollment_restore_version: 1, enrollment_receipts: enrollmentReceipts(STATE_DIR, record.agent_id)}});
           }
           return;
         }
@@ -1109,7 +1118,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
           sendMeshGatewayMessage(heartbeatPayload());
           try {
             const agents = await discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token);
-            if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents}});
+            if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents, enrollment_restore_version: 1, enrollment_receipts: enrollmentReceipts(STATE_DIR, record.agent_id)}});
           } catch {}
           return;
         }

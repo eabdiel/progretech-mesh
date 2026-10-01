@@ -90,6 +90,21 @@ production enrollment has not been implied by fixture-based browser validation.
 
 ## Add agents identified by a gateway
 
+If signed public bundles were prepared on the host, open **Add signed agent**,
+expand **Import prepared signed identities**, select the bundle JSON and review
+the listed names. **Verify and enroll** checks each identity against CodeSeal and
+refreshes the fleet. Private keys are never included in this file or uploaded.
+Failed imports stop at the failing identity and retain the earlier successful
+enrollments; retrying skips exact identities already enrolled in the same fleet.
+
+The updated gateway saves server-signed enrollment receipts locally before Mesh
+reports success. It sends them on reconnect or roster refresh so Mesh can restore
+explicitly approved signed identities after a server restart. Restoration rechecks
+the original owner, gateway public key, live runtime membership and CodeSeal seal.
+Discovery alone never creates signed enrollments. Removing a role through Mesh
+disables the local binding and removes its cached receipt. Rotating the server
+credential signing secret or gateway key requires renewed owner enrollment.
+
 Open **Add signed agent**, then **Select identified agents from gateway**. The list contains public role identities announced by your connected, verified gateway and excludes individually enrolled roles. Choose one, generate its own PEM identity and obtain its own CodeSeal evidence, then submit. Each role retains its own owner binding, public key, seal and fingerprint; it does not inherit the host identity. Repeat for the remaining agents. The private PEM download and public evidence bundle must be installed on the intended agent by its owner. Mesh never stores private PEM files.
 
 The host bridge must run the updated `control_center/rend_bridge.py` and Mesh OpenClaw plugin. Its administrator-owned gateway binding is required. It queries the authenticated loopback OpenClaw gateway for public agent identities, creates exact local runtime bindings within that gateway namespace, and refreshes the roster without automatically enrolling agents. Newly added runtime roles can appear without editing each child binding. Unavailable or removed roles cannot be controlled through an old selection. Per-role local permissions and removal preferences remain authoritative. Up to 256 identified agents are supported.

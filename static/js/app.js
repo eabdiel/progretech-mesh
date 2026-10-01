@@ -1008,7 +1008,7 @@
         </div>
 
         <div class="agent-identity-row">
-          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${agent.control_center_gateway ? "Linked through verified host" : trustLabel(agent.trust_state)}</span>
+          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${agent.control_center_gateway && !agent.gateway_enrollment ? "Linked through verified host" : trustLabel(agent.trust_state)}</span>
           <span class="transport-pill ${escapeHtml(agent.transport)}">${agent.transport === "connected" ? "Gateway live" : "Gateway offline"}</span>
           <button class="identity-link" data-identity="${agent.id}">Identity</button>
         </div>
@@ -1084,6 +1084,8 @@
       window.prompt("Copy this ownership payload and send it to the agent through your existing chat:", payload);
     }
   }
+
+  window.addEventListener('mesh-enrollment-completed', () => refreshFleet());
 
   async function refreshFleet() {
     const response = await fetch("/api/status", {headers:{"Accept":"application/json"}});
@@ -2218,4 +2220,3 @@ configureVoice();
   }
 
 })();
-
