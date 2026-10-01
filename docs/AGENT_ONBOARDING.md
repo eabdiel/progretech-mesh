@@ -62,6 +62,17 @@ registry principal; Mesh's ownership binding remains the logged-in Mesh user.
 The CodeSeal account option instead uses the owner's supplied API token for issuance.
 Tokens are never persisted by this flow and the field is cleared after submission.
 
+For an administrator-managed issuer, create a dedicated CodeSeal integration token
+under a verified registry account using CodeSeal's existing token creation procedure.
+Store it in Secret Manager and grant the Mesh runtime service account access to
+that secret. Bind a reviewed secret version to `CODESEAL_MESH_ISSUER_TOKEN` with
+Cloud Run's `--update-secrets` and set `CODESEAL_API_URL` to the production registry
+API. Keep the token out of shell arguments, source control and job artifacts.
+The token uses CodeSeal's existing account API permissions; there is currently no
+identity-only token scope. Revoke it through CodeSeal when retiring the integration.
+The deployment script updates existing environment and secret bindings so later
+deployments preserve administrator-managed issuer and shared-fleet configuration.
+
 An unavailable issuer or failed verification leaves the agent pending; it never
 manufactures a seal or upgrades trust. Confirmation is idempotent after successful
 completion. The agent refreshes its signed issuance proof while awaiting review.
