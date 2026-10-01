@@ -9,5 +9,15 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
+  },
+  "contracts": {
+    "tools": [
+      "mesh_specklet"
+    ]
+  },
+  "toolMetadata": {
+    "mesh_specklet": {
+      "displayName": "Agent Task Board"
+    }
   }
 }
