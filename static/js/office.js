@@ -64,10 +64,17 @@
         const scale=Math.min($('officeFloor').clientWidth/1000,$('officeFloor').clientHeight/700)*zoom;
         node.setPointerCapture(e.pointerId);
         node.onpointermove = move => {if(Math.hypot(move.clientX-start.x,move.clientY-start.y)<4)return;node.dataset.dragged='true';manualPositions[id]=positions[id]={x:Math.max(80,Math.min(920,original.x+(move.clientX-start.x)/scale)),y:Math.max(90,Math.min(600,original.y+(move.clientY-start.y)/scale))};node.style.left=positions[id].x+'px';node.style.top=positions[id].y+'px';renderLinks();};
-        node.onpointerup=()=>{node.onpointermove=null;if(node.dataset.dragged!=='true')return;try{manualPositions[id]={...positions[id]};sessionStorage.setItem('mesh-office-layout:'+host(),JSON.stringify(manualPositions));}catch{}};
+        node.onpointerup=()=>{node.onpointermove=null;if(node.dataset.dragged!=='true')return;try{manualPositions[id]={...positions[id]};sessionStorage.setItem('mesh-office-layout:'+host(),JSON.stringify(manualPositions));}catch{};if(chatter?.enabled&&id.startsWith('factory-')){const near=Object.keys(positions).filter(other=>other!==id&&other.startsWith('factory-')).map(other=>({id:other,d:Math.hypot(positions[other].x-positions[id].x,positions[other].y-positions[id].y)})).sort((a,b)=>a.d-b.d)[0];if(near&&near.d<70)requestPair(id,near.id);}};
       };
     });
     renderLinks(); fit();if(chatter)renderShared();
+  }
+  async function requestPair(a,b){
+    const epoch=hostEpoch;
+    const binding=id=>fleet.find(x=>x.control_center_gateway===host()&&x.runtime_id===({rend:'main',mak:'coder',lyra:'researcher'}[id.slice(8)]||id.slice(8)))?.id;
+    const first=binding(a),second=binding(b);
+    if(!first||!second){say('This pair needs signed agent bindings.');return;}
+    try{await MeshRuntime.request(host(),'chatter.pair',{a:first,b:second,topic:''});if(epoch!==hostEpoch)return;manualPositions[a]=positions[a]={x:Math.max(80,Math.min(920,positions[b].x+(positions[b].x>800?-110:110))),y:positions[b].y};try{sessionStorage.setItem('mesh-office-layout:'+host(),JSON.stringify(manualPositions));}catch{}say('Conversation requested; waiting for idle agents and capacity.');await loadShared();await refresh();}catch(e){if(epoch===hostEpoch)say(e.message);}
   }
   function geometry(link,t=0) {
     const a=positions[link.from],b=positions[link.to];if(!a||!b)return '';
@@ -79,9 +86,10 @@
   }
   function showInteraction(link) {
     selectedLink=link.id;
-    const panel=$('interactionDetails');panel.hidden=false;
+    const panel=$('interactionDetails');if(panel.dataset.link===link.id&&panel.contains(document.activeElement))return;panel.dataset.link=link.id;panel.hidden=false;
     const names=id=>snapshot.agents.find(a=>a.id===id)?.name || id.replace('factory-','');
-    panel.innerHTML=`<h3>${link.kind==='instruction'?'Instruction / handoff':link.kind==='conversation'?'Office chatter':'Shared task'}</h3><p>${escape(link.title)}${link.task_id?'<br>'+escape(link.task_id):''}</p><p>${escape(names(link.from))}${link.kind==='instruction'?' → ':' ↔ '}${escape(names(link.to))}</p>${[link.from,link.to].map(id=>`<p><strong>${escape(names(id))}</strong><br>${escape(link.parts?.[id] || 'Specific task part not reported.')}</p>`).join('')}<p>${escape(link.source || 'Recorded activity')}</p>`;
+    panel.innerHTML=`<h3>${link.kind==='instruction'?'Instruction / handoff':link.kind==='conversation'?'Office chatter':'Shared task'}</h3><p>${escape(link.title)}${link.task_id?'<br>'+escape(link.task_id):''}</p><p>${escape(names(link.from))}${link.kind==='instruction'?' → ':' ↔ '}${escape(names(link.to))}</p>${[link.from,link.to].map(id=>`<p><strong>${escape(names(id))}</strong><br>${escape(link.parts?.[id] || 'Specific task part not reported.')}</p>`).join('')}<p>${escape(link.source || 'Recorded activity')}</p>${link.topic_editable?'<form id="chatterTopicForm"><label>Conversation topic<input id="chatterTopic" maxlength="200" value="'+escape(link.title)+'"></label><button type="submit">Set topic for next turn</button></form>':''}`;
+    const form=$('chatterTopicForm');if(form)form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await MeshRuntime.request(host(),'chatter.topic',{id:link.chatter_id,topic:$('chatterTopic').value});say('Topic saved for the next chatter turn.');await loadShared();}catch(error){say(error.message);}finally{button.disabled=false;}};
   }
   function renderLinks() {
     const links=snapshot.interactions || [];
@@ -266,8 +274,8 @@
   }
   function renderShared() {
     if(snapshot)$('officeMessageCount').textContent=snapshot.messages.length+(chatter?.conversations||[]).reduce((n,c)=>n+c.messages.length,0);
-    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · at most one two-agent conversation every 15 minutes.':'Chatter off. Enable to discuss shared projects with idle agents.';
-    $('chatterFeed').innerHTML=(chatter?.conversations||[]).slice().reverse().map(c=>`<li><strong>${escape(c.a_role)} ↔ ${escape(c.b_role)} · ${escape(c.topic)}</strong><p>${escape(c.state)}${c.note?' · '+escape(c.note):''}</p>${c.messages.map(m=>`<p><strong>${escape(m.agent)}</strong><br>${escape(m.text)}</p>`).join('')}<small>${escape(new Date(c.created*1000).toLocaleString())}</small></li>`).join('')||'<li>No office conversations recorded.</li>';
+    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · serial conversations · repeating 15-minute sessions · '+(chatter.admission||'Waiting for idle agents and capacity')+'.':'Chatter off. Enable to discuss shared projects with idle agents.';
+    $('chatterFeed').innerHTML=(chatter?.conversations||[]).slice().reverse().map(c=>`<li><strong>${escape(c.a_role)} ↔ ${escape(c.b_role)} · ${escape(c.topic)}</strong><p>${escape(c.state)}${c.note?' · '+escape(c.note):''}</p>${(c.memory||[]).map(m=>`<small>${escape(m.agent)} · ${escape(m.status)}${m.ids?.length?' · '+escape(m.ids.join(', ')):''}</small>`).join('')}${c.messages.map(m=>`<p><strong>${escape(m.agent)}</strong><br>${escape(m.text)}</p>`).join('')}<small>${escape(new Date(c.created*1000).toLocaleString())}</small></li>`).join('')||'<li>No office conversations recorded.</li>';
     $('handoffItems').innerHTML=handoffs.filter(r=>!selected || !selected.startsWith('factory-') || r.target===selectedRuntime()).map(r=>`<li><strong>${escape(r.source)} → ${escape(r.target_role)}</strong><p>${escape(r.text)}</p><p>${escape(r.state)} · ${escape(r.note||'')}</p>${r.artifact?'<p>Artifact: '+escape(r.artifact.name)+'</p>':''}${['waiting','paused'].includes(r.state)?`<button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="${r.state==='paused'?'waiting':'paused'}">${r.state==='paused'?'Resume':'Pause'}</button><button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="cancelled">Cancel</button>`:''}</li>`).join('')||'<li>No conditional instructions.</li>';
     $('handoffItems').querySelectorAll('[data-rule]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await MeshRuntime.request(b.dataset.target,'handoff.control',{id:b.dataset.rule,state:b.dataset.state});loadShared();}catch(e){say(e.message);b.disabled=false;}});
   }
