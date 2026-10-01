@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from PIL import Image, ImageDraw
-from control_center.media_jobs import generate, image_request, review_input
+from control_center.media_jobs import generate, image_request, review_input, review
 
 class MediaTests(unittest.TestCase):
     def setUp(self):
@@ -43,3 +43,24 @@ class MediaTests(unittest.TestCase):
         self.mesh.config=lambda a:({'models':{'providers':{'ollama':{'models':[{'id':'qwen3.5:2b','input':['text','image']}]}}}},'designer','ollama/text')
         model,content=review_input(self.mesh,[result['artifacts'][0]['path']]);self.assertEqual(model,'ollama/qwen3.5:2b');self.assertTrue(content[0]['image_url']['url'].startswith('data:image/png;base64,'))
         with self.assertRaisesRegex(ValueError,'artifact_unavailable'):review_input(self.mesh,[str(self.source)])
+
+    def test_visual_review_is_bounded_validated_and_publishes_actual_report(self):
+        artifact=generate(self.mesh,'host--designer','Generate an icon','a'*32)['artifacts'][0]['path']
+        self.mesh.provider.bindings['host--architect']='architect'
+        self.mesh.config=lambda a:({'models':{'providers':{'ollama':{'models':[{'id':'qwen3.5:2b','input':['text','image']}]}}}},'architect','ollama/text')
+        calls=[]
+        def api(path,body=None,**kwargs):
+            if path=='tags':return {'models':[{'name':'qwen3.5:2b'}]}
+            if path=='show':return {'capabilities':['vision']}
+            calls.append(body)
+            return {'message':{'content':'{"verdict":"fail","observations":["Round smiling face"],"concerns":["Background is opaque"]}'}}
+        self.mesh.api=api;self.mesh.prepare=lambda *a,**kw:None
+        result=review(self.mesh,'host--architect','Review this icon','b'*32,[artifact])
+        self.assertEqual(result['review']['source_sha256'],hashlib.sha256(Path(artifact).read_bytes()).hexdigest())
+        self.assertTrue((self.home/'Rend/artifacts/architect'/('review-'+'b'*32+'.json')).is_file())
+        self.assertTrue(calls[0]['messages'][1]['images']);self.assertFalse(calls[0]['think']);self.assertEqual(calls[0]['options']['num_ctx'],8192)
+        self.assertIn('no alpha channel',result['reply'])
+        old=self.mesh.api
+        self.mesh.api=lambda path,*a,**kw: {'message':{'content':'I am working on unrelated Factory tasks.'}} if path=='chat' else old(path,*a,**kw)
+        with self.assertRaisesRegex(ValueError,'review_incomplete'):review(self.mesh,'host--architect','Review icon','c'*32,[artifact])
+        self.assertFalse((self.home/'Rend/artifacts/architect'/('review-'+'c'*32+'.json')).exists())
