@@ -30,6 +30,8 @@ class Handoffs:
         try:self.data=json.loads(self.path.read_text())
         except (OSError,ValueError):self.data={'rules':[],'seen':[],'notifications':[]}
         self.data.setdefault('chatter',{'enabled':False,'next_at':0,'conversations':[]})
+        if self.data['chatter']['enabled'] and not self.data['chatter'].get('window_started'):
+            self.data['chatter']['next_at']=0  # Migrate the legacy one-pair cooldown.
         for chat in self.data['chatter']['conversations']:
             if chat['state'] in {'approaching','dispatching','first','second','reply_wait'}:chat.update(state='unconfirmed',note='Host restarted; conversation was not replayed.')
         for row in self.data['rules']:

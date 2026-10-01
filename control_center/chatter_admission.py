@@ -14,7 +14,7 @@ def resources(mesh, agents):
         memory = psutil.virtual_memory()
         if os.getloadavg()[0] / max(1, os.cpu_count() or 1) > .85:
             return False, 'Waiting for CPU capacity'
-        if psutil.swap_memory().percent > 20:
+        if psutil.swap_memory().percent > 20 and memory.available < memory.total*.25:
             return False, 'Waiting for memory pressure to subside'
         resident = {m['name'] for m in mesh.api('ps')['models']}
         installed = {m['name']: m['size'] for m in mesh.api('tags')['models']}
