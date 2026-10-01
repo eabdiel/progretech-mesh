@@ -20,8 +20,8 @@ test('linked role is restricted to the gateway namespace', async () => {
   await assert.rejects(forwardControlCenter({action:'profile.get',agent_id:'someone-else--researcher'},'rend','test'),/agent_binding_required/);
 });
 test('discovery exposes only locally approved roles belonging to this gateway', async () => {
-  const roles=await discoverControlAgents('rend','test',async()=>({ok:true,json:async()=>({agents:[{id:'rend--researcher'},{id:'other--researcher'}]})}));
-  assert.deepEqual(roles,[{id:'rend--researcher'}]);
+  const roles=await discoverControlAgents('rend','test',async()=>({ok:true,json:async()=>({agents:[{id:'rend'},{id:'rend--researcher'},{id:'other--researcher'}]})}));
+  assert.deepEqual(roles,[{id:'rend'},{id:'rend--researcher'}]);
   assert.equal(await discoverControlAgents('rend','test',async()=>({ok:false})),null);
 });
 test('global voice mutation and arbitrary actions are rejected', async () => {

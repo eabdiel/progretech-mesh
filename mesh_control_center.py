@@ -73,10 +73,14 @@ def register_gateway_agents(gateway_id, payload, registry):
         return False
     import re
     accepted = {}
+    host_activity = None
     for item in agents:
         if not isinstance(item, dict):
             return False
         aid = item.get('id')
+        if aid == gateway_id:
+            host_activity = item
+            continue
         if not isinstance(aid, str) or not aid.startswith(gateway_id + '--') or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', aid):
             return False
         if not isinstance(item.get('name'), str) or len(item['name']) > 80 or not isinstance(item.get('role', ''), str) or len(item.get('role', '')) > 160:
@@ -90,15 +94,26 @@ def register_gateway_agents(gateway_id, payload, registry):
         if record.get('control_center_gateway') == gateway_id and aid not in accepted:
             del registry[aid]
     for aid, item in accepted.items():
+        activity = item.get('activity') if isinstance(item.get('activity'), dict) else {}
+        observed = activity.get('state', item.get('state', 'unknown'))
+        state = {'active': 'working', 'idle': 'idle', 'paused': 'paused', 'stopped': 'paused',
+                 'sleeping': 'paused', 'blocked': 'blocked', 'unknown': 'unknown'}.get(observed, 'unknown')
         registry[aid] = {
             'id': aid, 'name': item['name'], 'role': item.get('role', ''),
             'owner_id': host['owner_id'], 'control_center_gateway': gateway_id,
             'trust_state': 'verified', 'trust_valid': True, 'trust_reason': 'linked_through_verified_host',
-            'state': 'online', 'transport': 'connected', 'task': 'Linked workstation role',
+            'state': state, 'transport': 'connected', 'task': str(activity.get('task_id') or 'Linked workstation role')[:160],
+            'activity': {k: activity[k] for k in ('state', 'observed_at', 'source', 'task_id', 'session') if k in activity and isinstance(activity[k], (str, type(None)))},
             'phase': 'Agent-specific controls through verified host', 'progress': 0,
             'runtime': 'OpenClaw role', 'model': 'Load agent inventory',
             'fingerprint': host.get('fingerprint', ''),
         }
+    if host_activity is not None:
+        activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
+        observed = activity.get('state', host_activity.get('state', 'unknown'))
+        host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
+                         'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
+        host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
     return True
 
 
