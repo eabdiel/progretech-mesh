@@ -168,7 +168,7 @@ class MeshRuntime:
             if not job or job['agent_id'] != agent: raise ValueError('mesh_job_not_found')
             return copy.deepcopy(job)
 
-    def start(self, agent, kind, worker):
+    def start(self, agent, kind, worker, background=False):
         if kind=='chat' and self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
         with self.lock:
             now=time.time()
@@ -184,9 +184,11 @@ class MeshRuntime:
                 self.mark(ident,'queued','Waiting for the shared model slot')
                 deadline=time.monotonic()+600
                 while kind=='chat' and not self.inference.acquire(timeout=1):
+                    if background:raise ValueError('mesh_chatter_deferred')
                     if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                 try:
                     while kind == 'chat' and not self.idle():
+                        if background:raise ValueError('mesh_chatter_deferred')
                         self.mark(ident,'queued','Waiting for other runtime work to finish')
                         if time.monotonic()>deadline:raise ValueError('mesh_queue_timeout')
                         time.sleep(2)
@@ -202,7 +204,7 @@ class MeshRuntime:
                 # Do not return credential-bearing transport diagnostics.
                 error=str(exc) if isinstance(exc,ValueError) and str(exc).startswith(('mesh_','local_','runtime_','model_')) else provider_error(exc) if isinstance(exc,(HTTPError,URLError,TimeoutError)) else 'mesh_runtime_request_failed'
                 self.mark(ident,'failed',error)
-                if kind=='chat':
+                if kind=='chat' and error!='mesh_chatter_deferred':
                     try:self.signal(agent,'error',error)
                     except OSError:pass
                 with self.lock:self.jobs[ident].update(done=True,error=error)
@@ -338,14 +340,15 @@ class MeshRuntime:
         except (OSError,subprocess.TimeoutExpired,json.JSONDecodeError):raise ValueError('mesh_context_delivery_unconfirmed')
         return {'scope':'agent','accepted':True,'delivery':receipt['status'],'note':'Runtime accepted this instruction for the observed work session. Processing or completion is not yet confirmed.'}
 
-    def chat(self, agent, text):
+    def chat(self, agent, text, admission=None, background=None):
         from control_center.artifacts import ROLES, safe
         role=ROLES.get(self.provider.bindings[agent])
-        if role:
+        if role and not background:
             output=safe(self.home,self.home/'Rend/artifacts'/role)
             output.mkdir(parents=True,exist_ok=True,mode=0o700)
             text+='\nIf generating a deliverable for the owner, publish a non-secret copy under '+str(output)+'. Report the actual path; a reply alone is not a published file. Keep private memory and credentials out of shared artifacts.'
         def worker(ident):
+            if admission:admission(ident)
             cfg,role,chosen=self.config(agent)
             if not self.settings(agent).get('enabled',True):raise ValueError('mesh_enrollment_removed')
             if self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
@@ -355,11 +358,12 @@ class MeshRuntime:
             headers={'Content-Type':'application/json','Authorization':'Bearer '+cfg['gateway']['auth']['token'],
                 'x-openclaw-agent-id':role,'x-openclaw-message-channel':'mesh',
                 'x-openclaw-session-key':'agent:'+role+':mesh-chat:'+agent}
-            nonce=self.settings(agent).get('conversation_nonce')
+            if background:headers['x-openclaw-session-key']='agent:'+role+':mesh-chatter:'+background
+            nonce=None if background else self.settings(agent).get('conversation_nonce')
             if nonce:headers['x-openclaw-session-key']+=':'+nonce
             if self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
             req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':False,
-                'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent}).encode(),headers=headers)
+                'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
             self.mark(ident,'processing','Processing your request; waiting for reply text')
             # OpenClaw postprocessing can replace output after its token events.
             # Retrieve one final response; progress remains an asynchronous host job.
@@ -377,7 +381,7 @@ class MeshRuntime:
             self.mark(ident,'writing','Reply generated; preparing delivery')
             if answer.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):raise ValueError('mesh_provider_rejected')
             return {'reply':answer,'role':role,'model':chosen}
-        return self.start(agent,'chat',worker)
+        return self.start(agent,'chat',worker,background=bool(background))
 
     def snapshot(self, agent, kind):
         state=self.status(agent)

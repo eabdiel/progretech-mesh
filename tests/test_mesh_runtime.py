@@ -32,6 +32,16 @@ class RuntimeTests(unittest.TestCase):
             if value['done']:return value
             time.sleep(.01)
         self.fail('Job did not finish')
+    def test_chatter_guard_precedes_loading_and_does_not_mark_error(self):
+        self.runtime.prepare=lambda *a:self.fail('Deferred chatter must not load models')
+        self.runtime.signal('host','success','reply_received')
+        def guard(ident):
+            self.assertTrue(self.runtime.inference.locked())
+            raise ValueError('mesh_chatter_deferred')
+        job=self.done('host',self.runtime.chat('host','Discussion only',admission=guard,background='a'*32))
+        self.assertEqual(job['error'],'mesh_chatter_deferred')
+        self.assertEqual(self.runtime.status('host')['last_result']['severity'],'success')
+
     def test_progress_is_agent_scoped_and_busy_aliases_rejected(self):
         hold=threading.Event();self.addCleanup(hold.set)
         def worker(j):self.runtime.mark(j,'processing','Waiting for reply text');hold.wait(2);return {'reply':'private fixture'}
