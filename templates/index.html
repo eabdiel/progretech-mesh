@@ -16,6 +16,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v=build_id) }}" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/buddy.css', v=build_id) }}" />
+<link rel="stylesheet" href="/static/css/onboarding.css"><script src="/static/js/onboarding.js" defer></script>
 </head>
 <body>
   <div class="app">
@@ -31,6 +32,7 @@
       <div class="top-actions">
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
+        <a href="/mission-control" class="ghost-btn factory-nav">Mission Control</a>
         <a href="/factory" class="ghost-btn factory-nav">Factory</a>
         <a href="/capabilities" class="ghost-btn how-link">Capabilities</a>
         <a href="/how-it-works" class="ghost-btn how-link">How it works</a>

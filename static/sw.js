@@ -1,10 +1,12 @@
-const CACHE_NAME = "progretech-mesh-shell-v6-agent-management";
+const CACHE_NAME = "progretech-mesh-shell-v7-onboarding-office";
 const SHELL_ASSETS = [
   "/",
   "/how-it-works",
   "/static/css/app.css",
   "/static/js/app.js",
   "/static/js/agent-management.js",
+  "/static/js/onboarding.js",
+  "/static/css/onboarding.css",
   "/manifest.webmanifest"
 ];
 

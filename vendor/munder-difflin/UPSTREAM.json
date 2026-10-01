@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/chaitanyagiri/munder-difflin",
+  "commit": "2a5a5858ddf11885fe9c3980df0b9b1dfdace9a8",
+  "license": "MIT",
+  "components": [
+    "HiveManager",
+    "CircuitBreaker",
+    "ControlRegistry"
+  ],
+  "adaptation": "Mesh provider accepts file inbox; runtime remains CrewAI."
+}

@@ -184,6 +184,19 @@ Roles sharing one workstation keep separate profiles through their verified host
 Setup includes Minimum Requirements and Rend’s dated stack reference.
 See [the integration guide](docs/PER_AGENT_CONTROL_CENTER.md) for setup and runtime limits.
 
+## Agent onboarding and Factory office
+
+The fleet’s **Agent onboarding** plus tile connects a personally hosted agent with
+an encrypted invitation, a live pulse, an identification question and owner
+confirmation. The agent keeps its private PEM; Mesh binds verified public identity
+and CodeSeal evidence to the logged-in owner. See [onboarding](docs/AGENT_ONBOARDING.md).
+
+**Mission Control** at `/mission-control` provides the existing workstation controls.
+**Factory** at `/factory` is a Mesh-owned office with pulsing agent circles, message
+paths, hiring, mailboxes, reviewed memory, dependencies and owner approvals. CrewAI
+executes hierarchical missions on the selected host; Munder Difflin HiveManager owns
+coordination. See [Factory setup and validation](docs/FACTORY_OFFICE.md).
+
 ## Agent enrollment and management
 
 **Add signed agent** explains identity keys, imports signed evidence, and can generate a new Ed25519 identity plus a registry-issued CodeSeal key. **Manage** saves host-local communication models, removes enrollments, and launches configured CrewAI/OpenHands factory jobs. Lyra and Mak can be messaged through their verified host in separate Mesh sessions. See [setup and local/offline instructions](docs/AGENT_MANAGEMENT.md).
@@ -315,7 +328,7 @@ https://github.com/chaitanyagiri/munder-difflin
 
 Munder Difflin is not a ProgreTech product and is not maintained or owned by ProgreTech.
 
-The project is distributed under the MIT License. Any use or redistribution of Munder Difflin source within or alongside Mesh must preserve the applicable copyright and MIT license notice.
+Mesh is distributed under the ProgreTech Public Source License in LICENSE.md. Munder Difflin source retains its own MIT license; redistribution must preserve its copyright and license notice.
 
 The intended integration boundary is:
 
@@ -447,6 +460,8 @@ progretech-mesh/
 ---
 
 ## Running Locally
+
+For the fully local desktop edition, see [Mesh Offline](docs/MESH_OFFLINE.md). Its Ubuntu and Windows installers bundle the application runtimes, inference engine and a starter model. Local agent onboarding requires no CodeSeal or signing keys.
 
 Mesh is currently an RC/development project.
 
