@@ -51,6 +51,15 @@ def install(host, home=None):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
         agent=profile.get('agent_id')
+        if action.startswith('handoff.') or action in {'chatter.configure','chatter.history'}:
+            result=provider.handoffs.dispatch(agent,action,args)
+            if action=='handoff.create' or (action=='chatter.configure' and args['enabled']):provider.handoffs.start()
+            return result
+        if action.startswith('files.'):
+            from control_center.artifacts import dispatch
+            result=dispatch(home,runtime_id,action,args)
+            if action=='files.list':provider.handoffs.start()
+            return result
         if action=='communication.start':return mesh.chat(agent,args['text'])
         if action=='communication.new':return mesh.new_conversation(agent)
         if action=='communication.job':return mesh.get(agent,args['job_id'])
@@ -125,6 +134,9 @@ def install(host, home=None):
     from control_center.mesh_runtime import MeshRuntime
     mesh=MeshRuntime(provider,home)
     provider.mesh_runtime=mesh
+    from control_center.handoffs import Handoffs
+    provider.handoffs=Handoffs(provider,home,mesh)
+    if provider.handoffs.data['rules'] or provider.handoffs.data['chatter']['enabled'] or provider.handoffs.data.get('initialized'):provider.handoffs.start()
     trusted_gateways = dict(bindings)
 
     def roster(gateway_id):

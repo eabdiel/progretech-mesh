@@ -172,7 +172,7 @@ def register_provider_routes(app, provider, token, roster=None):
         actual = request.headers.get('X-ProgreTech-Mesh-Local-Token', '')
         if not expected or not secrets.compare_digest(expected, actual):
             return jsonify(ok=False, error='unauthorized'), 401
-        if request.content_length and request.content_length > 16384:
+        if request.content_length and request.content_length > 65536:
             return jsonify(ok=False, error='payload_too_large'), 413
         body = request.get_json(silent=True)
         if not isinstance(body, dict) or set(body) != {'agent_id', 'action', 'args'}:

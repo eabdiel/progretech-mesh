@@ -8,14 +8,14 @@ import subprocess
 from pathlib import Path
 from control_center.file_lock import lock, unlock
 
-PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control', 'mailbox.list', 'mailbox.edit', 'mailbox.remove', 'mailbox.priority'}
+PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.priority', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control', 'mailbox.list', 'mailbox.edit', 'mailbox.remove', 'mailbox.priority'}
 
 
 def validate_office(args):
     if not isinstance(args, dict) or set(args) != {'operation', 'args'} or args['operation'] not in PUBLIC_OPERATIONS:
         raise ValueError('invalid_office_operation')
     op, body = args['operation'], args['args']
-    fields = {'hire': {'name', 'role', 'goal'}, 'archive': {'id'}, 'task.create': {'title', 'description', 'assignee', 'dependsOn', 'needsApproval'},
+    fields = {'task.priority': {'id','priority'}, 'hire': {'name', 'role', 'goal'}, 'archive': {'id'}, 'task.create': {'title', 'description', 'assignee', 'dependsOn', 'needsApproval'},
         'task.approve': {'id', 'answer'}, 'message': {'to', 'text'}, 'pause': {'paused'}, 'settings': {'maxIterations'},
         'memory': {'id'}, 'memory.save': {'id', 'text'}, 'run': {'id'}, 'workday.control': {'action','role','duration'}, 'mailbox.list': {'agent'}, 'mailbox.edit': {'agent','id','text'}, 'mailbox.remove': {'agent','id'}, 'mailbox.priority': {'agent','id','priority'}}.get(op, set())
     if not isinstance(body, dict) or set(body) != fields:

@@ -339,6 +339,12 @@ class MeshRuntime:
         return {'scope':'agent','accepted':True,'delivery':receipt['status'],'note':'Runtime accepted this instruction for the observed work session. Processing or completion is not yet confirmed.'}
 
     def chat(self, agent, text):
+        from control_center.artifacts import ROLES, safe
+        role=ROLES.get(self.provider.bindings[agent])
+        if role:
+            output=safe(self.home,self.home/'Rend/artifacts'/role)
+            output.mkdir(parents=True,exist_ok=True,mode=0o700)
+            text+='\nIf generating a deliverable for the owner, publish a non-secret copy under '+str(output)+'. Report the actual path; a reply alone is not a published file. Keep private memory and credentials out of shared artifacts.'
         def worker(ident):
             cfg,role,chosen=self.config(agent)
             if not self.settings(agent).get('enabled',True):raise ValueError('mesh_enrollment_removed')

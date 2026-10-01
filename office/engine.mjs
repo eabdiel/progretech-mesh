@@ -4045,6 +4045,13 @@ switch (body.operation) {
     result = { id };
     break;
   }
+  case "task.priority": {
+    const task=hive.tasks().tasks.find(t=>t.id===args.id);
+    if(!task || task.status!=="todo")throw Error("task_not_ready");
+    hive.patchTask(args.id,{priority:args.priority});
+    log({kind:"task.priority",taskId:args.id,priority:args.priority});
+    result={saved:true};break;
+  }
   case "task.approve": {
     const task = hive.tasks().tasks.find((t) => t.id === args.id);
     if (!task || task.status !== "blocked") throw Error("approval_not_pending");

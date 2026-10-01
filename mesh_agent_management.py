@@ -56,7 +56,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
     @app.post('/api/agents/<agent_id>/management')
     @require_session
     def manage_agent(agent_id):
-        if request.content_length and request.content_length > 16384:
+        if request.content_length and request.content_length > 65536:
             return jsonify(ok=False, error='payload_too_large'), 413
         if not same_origin():
             return jsonify(ok=False, error='same_origin_required'), 403
@@ -75,7 +75,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
         if not isinstance(body, dict) or set(body) - {'action', 'args'}:
             return jsonify(ok=False, error='invalid_request'), 400
         action = body.get('action')
-        if action not in {'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
+        if action not in {'chatter.configure', 'chatter.history', 'handoff.create', 'handoff.list', 'handoff.control', 'files.begin', 'files.chunk', 'files.finish', 'files.cancel', 'files.list', 'files.read', 'files.reference', 'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
             return jsonify(ok=False, error='unknown_action'), 400
         from control_center.management import validate_management
         try:

@@ -47,3 +47,11 @@ test('wake, sleep and progress polling use the same scoped host bridge', async (
   assert.deepEqual(sent.map(x=>x.action),['runtime.wake','runtime.sleep','communication.job']);
   assert.ok(sent.every(x=>x.agent_id==='rend--progre'));
 });
+test('chunked artifact transfer is owner-bound and bounded separately from ordinary controls', async () => {
+ let body;
+ await forwardControlCenter({action:'files.chunk',agent_id:'rend--designer',args:{upload_id:'a'.repeat(32),offset:0,data:'A'.repeat(44000)}},'rend','fixture',async(_,options)=>{body=JSON.parse(options.body);return {ok:true,json:async()=>({ok:true,result:{offset:32768}})};});
+ assert.equal(body.agent_id,'rend--designer');
+ await assert.rejects(forwardControlCenter({action:'files.chunk',agent_id:'other--designer',args:{}},'rend','fixture'),/binding/);
+ await assert.rejects(forwardControlCenter({action:'files.chunk',args:{data:'A'.repeat(65536)}},'rend','fixture'),/too_large/);
+ await assert.rejects(forwardControlCenter({action:'profile.save',args:{data:'A'.repeat(20000)}},'rend','fixture'),/too_large/);
+});

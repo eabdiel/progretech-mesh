@@ -31,4 +31,16 @@ def interactions(snapshot, home):
             if 0<=time.time()-row['at']<180:
                 output.append({**row,'from':'factory-'+row['from'],'to':'factory-'+row['to']})
     except (OSError,ValueError,KeyError,TypeError):pass
+    try:
+        state=json.loads((Path(home)/'.progretech-mesh/artifact-handoffs.json').read_text())
+        for r in state.get('rules',[])[-20:]:
+            if r['state'] not in {'running','delivered'}:continue
+            source='factory-'+r['source'];target='factory-'+r['target_role']
+            output.append({'id':'artifact-'+r['id'],'kind':'instruction','from':source,'to':target,'title':'Artifact handoff: '+r.get('artifact',{}).get('name','unreported'),'task_id':None,'parts':{source:'Published '+r.get('artifact',{}).get('name','artifact'),target:r['text']},'source':'Owner-authorized conditional instruction · '+r['state']})
+        for c in state.get('chatter',{}).get('conversations',[])[-10:]:
+            if c['state'] not in {'first','second','complete'}:continue
+            if time.time()-c['created']>900:continue
+            a='factory-'+c['a_role'];b='factory-'+c['b_role']
+            output.append({'id':'chatter-'+c['id'],'kind':'conversation','from':a,'to':b,'title':c['topic'],'task_id':None,'parts':{a:'\n'.join(m['text'] for m in c['messages'] if m['agent']==c['a_role']) or 'Reply pending',b:'\n'.join(m['text'] for m in c['messages'] if m['agent']==c['b_role']) or 'Reply pending'},'source':'Observed office chatter · '+c['state']})
+    except (OSError,ValueError,KeyError,TypeError):pass
     return output[-80:]
