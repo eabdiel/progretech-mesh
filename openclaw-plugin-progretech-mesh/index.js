@@ -1,3 +1,4 @@
+import { registerSpecklet } from './specklet.js';
 import { recordInteraction, recordAgentResult } from "./interactions.js";
 import { forwardRoleCompletion } from './ide-client.js';
 import crypto from "node:crypto";
@@ -6,7 +7,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
-import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.5-memory.1";
+import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.7-specklet.1";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 
@@ -1640,6 +1641,7 @@ export default definePluginEntry({
   name: "ProgreTech Mesh",
   description: "Direct-first Mesh transport with offline same-LAN reconnect support.",
   register(api) {
+    registerSpecklet(api, () => process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token);
     registerObservationHooks(api);
     registerConversationBridge(api);
     startLocalSignalServer(api);

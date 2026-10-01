@@ -7,11 +7,15 @@ ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enr
 ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot'}
 ACTIONS.add('communication.new')
 ACTIONS |= {'memory.status', 'memory.share', 'memory.search'}
+ACTIONS |= {'specklet.get', 'specklet.toggle', 'specklet.import', 'specklet.task'}
 ACTIONS |= {'chatter.configure','chatter.history','chatter.pair','chatter.topic','handoff.create','handoff.list','handoff.control'}
 ACTIONS |= {'files.begin','files.chunk','files.finish','files.cancel','files.list','files.read','files.reference'}
 
 
 def validate_management(action, args):
+    if isinstance(action,str) and action.startswith("specklet."):
+        from control_center.specklet import validate
+        return validate(action,args)
     if isinstance(action,str) and action.startswith("memory."):
         from control_center.memory_search import validate
         return validate(action,args)

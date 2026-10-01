@@ -180,8 +180,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.9.5-memory.1"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.9.5-memory.1.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.9.7-specklet.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.9.7-specklet.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -1533,6 +1533,13 @@ def create_app() -> Flask:
     from mesh_office import register_office_routes
     register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
     register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
+    @app.get('/agents/<agent_id>/task-board')
+    @require_session
+    def agent_task_board(agent_id):
+        record=DEV_AGENT_REGISTRY.get(agent_id)
+        if not record or record.get('owner_id') != current_mesh_user_id():abort(404)
+        return render_template('task_board.html',agent=record,build_id=BUILD_ID)
+
     register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
     register_control_center_routes(app, require_session, current_mesh_user_id,
                                    DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)

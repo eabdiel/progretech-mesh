@@ -51,6 +51,9 @@ def install(host, home=None):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
         agent=profile.get('agent_id')
+        if action.startswith('specklet.'):
+            from control_center.specklet import dispatch
+            return dispatch(provider,agent,action,args)
         if action.startswith('memory.'):
             from control_center.memory_search import dispatch
             return dispatch(provider,home,agent,action,args)
@@ -140,6 +143,10 @@ def install(host, home=None):
     from control_center.handoffs import Handoffs
     provider.handoffs=Handoffs(provider,home,mesh)
     if provider.handoffs.data['rules'] or provider.handoffs.data['chatter']['enabled'] or provider.handoffs.data.get('initialized'):provider.handoffs.start()
+    from control_center.specklet import start_observer
+    start_observer(provider,home)
+    import control_center.office as office_module
+    office_module.SPECKLET_OBSERVER=lambda role,snapshot: __import__('control_center.specklet',fromlist=['observe_office']).observe_office(provider,home,role,snapshot)
     trusted_gateways = dict(bindings)
 
     def roster(gateway_id):

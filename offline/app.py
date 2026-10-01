@@ -102,18 +102,26 @@ def create_app(home=None, token=None, include_starter=True):
         _write(home / '.progretech-mesh/factory-runtimes.json', config)
         return jsonify(ok=True)
 
+    @app.get('/agents/<aid>/task-board')
+    def task_board(aid):
+        record=registry.get(aid)
+        return render_template('task_board.html',agent=dict(record,id=aid),build_id='offline')
+
     @app.post('/api/agents/<aid>/management')
     def memory(aid):
         body=request.get_json()
         if not isinstance(body,dict) or set(body)-{'action','args'}: raise ValueError('invalid_request')
-        from control_center.memory_search import ACTIONS, validate
+        from control_center.memory_search import ACTIONS as MEMORY_ACTIONS
+        from control_center.specklet import ACTIONS as SPECKLET_ACTIONS
+        from control_center.management import validate_management as validate
+        ACTIONS=MEMORY_ACTIONS|SPECKLET_ACTIONS
         action=body.get('action');args=body.get('args',{})
         if action not in ACTIONS: raise ValueError('local_action_unavailable')
         validate(action,args)
         record=registry.get(aid)
         if record['kind']!='openclaw':
             if action=='memory.status': return jsonify(ok=True,result={'available':False,'shared':False})
-            raise ValueError('mempalace_unavailable')
+            raise ValueError('specklet_unavailable' if action.startswith('specklet.') else 'mempalace_unavailable')
         from mesh_local_host import LocalHost
         host=LocalHost()
         try:
@@ -123,7 +131,7 @@ def create_app(home=None, token=None, include_starter=True):
             return jsonify(host.call('/api/mesh/control-center',{'agent_id':target,'action':action,'args':args}))
         except Exception:
             if action=='memory.status': return jsonify(ok=True,result={'available':False,'shared':False})
-            raise ValueError('mempalace_unavailable')
+            raise ValueError('specklet_unavailable' if action.startswith('specklet.') else 'mempalace_unavailable')
 
     @app.post('/api/agents/<aid>/office')
     def office(aid):

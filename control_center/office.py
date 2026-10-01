@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from control_center.file_lock import lock, unlock
 
+SPECKLET_OBSERVER=None
+
 PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.priority', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control', 'mailbox.list', 'mailbox.edit', 'mailbox.remove', 'mailbox.priority'}
 
 
@@ -66,7 +68,11 @@ def engine(home, role, operation, args=None):
         for code in ('task_not_ready', 'office_paused', 'office_capacity', 'agent_has_open_tasks', 'director_required', 'office_agent_not_found', 'dependency_not_found', 'approval_not_pending', 'office_role_already_exists', 'mailbox_item_not_pending', 'mailbox_busy'):
             if code in result.stderr: raise ValueError(code)
         raise ValueError('office_coordination_failed')
-    return json.loads(result.stdout)
+    payload=json.loads(result.stdout)
+    if SPECKLET_OBSERVER:
+        try:SPECKLET_OBSERVER(role,payload.get('snapshot',{}))
+        except (ValueError,OSError):payload['specklet_error']='specklet_office_sync_failed'
+    return payload
 
 
 def namespace(role, agent_id=None):

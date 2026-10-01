@@ -71,6 +71,6 @@
       </tbody></table></div>
       <ol><li>Create separate runtime identities and workspaces for each agent; assign roles and primary models.</li><li>Install and verify your model and media providers. Keep keys and reconnect credentials on the host.</li><li>Link each agent to Mesh and bind its enrolled ID to its runtime in the local provider.</li><li>Load this profile, supply missing details, select workstation status, and grant only the controls you want.</li><li>Save and test a voice preview; verify system and device status before enabling listening or vision.</li></ol>
     </section>
-  <button data-agent-memory="{{ agent.id }}" data-memory-name="{{ agent.name }}">Memory search</button></main><footer class="footer">ProgreTech Control Center · {{ agent.name }} · Agent-local settings, owner-bound control</footer>
+  <a href="/agents/{{ agent.id }}/task-board">Task Board</a> <button data-agent-memory="{{ agent.id }}" data-memory-name="{{ agent.name }}">Memory search</button></main><footer class="footer">ProgreTech Control Center · {{ agent.name }} · Agent-local settings, owner-bound control</footer>
 </div>
 <script src="/static/js/agent-memory.js" defer></script></body></html>

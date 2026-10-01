@@ -62,7 +62,7 @@ control_relay = ControlRelay()
 
 def public_runtime_status(status):
     """Relay receipt metadata without exposing memory bodies or audit payloads."""
-    result = {k: status[k] for k in ('scope', 'sleeping', 'model', 'resident',
+    result = {k: status[k] for k in ('specklet_enabled', 'specklet_error', 'scope', 'sleeping', 'model', 'resident',
         'preload_available', 'controls_available', 'last_result') if k in status}
     memory = status.get('memory')
     if isinstance(memory, dict):

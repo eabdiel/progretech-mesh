@@ -92,17 +92,20 @@ class MeshRuntime:
 
     def status(self, agent):
         from control_center.memory_status import memory_status
+        from control_center.specklet import Board
+        board=Board(self.provider,agent)
+        with board.guarded():specklet=board.read()['enabled']
         memory=memory_status(self.home,ROLE_NAMES.get(self.provider.bindings[agent],self.provider.bindings[agent]))
         try:asleep = self.sleeping(agent)
         except (ValueError,KeyError,OSError,subprocess.SubprocessError):
-            return {'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False}
         try:
             model = self.model(agent)
             names = {m['name'] for m in self.api('ps').get('models',[])}
             resident = model in names
-            return {'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
         except (ValueError, KeyError, OSError, URLError):
-            return {'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
 
     def signal(self, agent, severity, code):
         with self.lock:
@@ -161,6 +164,11 @@ class MeshRuntime:
             if not job['milestones'] or job['milestones'][-1]['phase'] != phase:
                 job['milestones'].append({'phase':phase,'detail':detail,'at':job['updated_at']})
                 job['milestones'] = job['milestones'][-16:]
+            if job.get('specklet'):
+                from control_center.specklet import Board
+                state='done' if phase=='complete' else 'blocked' if phase=='failed' else 'open' if phase=='queued' else 'doing'
+                try:Board(self.provider,job['agent_id']).observe('request-'+ident,'Mesh request '+ident[:8],state)
+                except (ValueError,OSError):job['specklet_error']='specklet_status_save_failed'
 
     def get(self, agent, ident):
         with self.lock:
@@ -168,7 +176,7 @@ class MeshRuntime:
             if not job or job['agent_id'] != agent: raise ValueError('mesh_job_not_found')
             return copy.deepcopy(job)
 
-    def start(self, agent, kind, worker):
+    def start(self, agent, kind, worker, track=False):
         if kind=='chat' and self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
         with self.lock:
             now=time.time()
@@ -178,7 +186,7 @@ class MeshRuntime:
             if len(self.jobs)>=128: raise ValueError('mesh_jobs_full')
             ident=secrets.token_hex(16)
             self.jobs[ident]={'job_id':ident,'agent_id':agent,'kind':kind,'done':False,'phase':'queued',
-                'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[]}
+                'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[], 'specklet':track}
         def run():
             try:
                 self.mark(ident,'queued','Waiting for the shared model slot')
@@ -379,7 +387,7 @@ class MeshRuntime:
             self.mark(ident,'writing','Reply generated; preparing delivery')
             if answer.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):raise ValueError('mesh_provider_rejected')
             return {'reply':answer,'role':role,'model':chosen}
-        return self.start(agent,'chat',worker)
+        return self.start(agent,'chat',worker,track=not background)
 
     def snapshot(self, agent, kind):
         state=self.status(agent)

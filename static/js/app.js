@@ -1039,7 +1039,7 @@
         </div>
         ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
         ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state === "error" ? `<div class="agent-actions"><button data-recover="${escapeHtml(agent.id)}">Try to resolve</button></div>` : ""}
-        ${agent.transport === "connected" ? `<div class="agent-actions"><button data-agent-memory="${escapeHtml(agent.id)}" data-memory-name="${escapeHtml(agent.name)}">Memory search</button></div>` : ""}
+        ${agent.transport === "connected" ? `<div class="agent-actions"><label><input type="checkbox" data-agent-specklet="${escapeHtml(agent.id)}" ${agent.mesh_runtime?.specklet_enabled?"checked":""}> Use Specklet</label><a href="/agents/${encodeURIComponent(agent.id)}/task-board">Task Board</a><button data-agent-memory="${escapeHtml(agent.id)}" data-memory-name="${escapeHtml(agent.name)}">Memory search</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
