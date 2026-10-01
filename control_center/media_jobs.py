@@ -5,6 +5,8 @@ import re
 import secrets
 import json
 import subprocess
+import time
+from datetime import datetime, timezone
 import fcntl
 from pathlib import Path
 import psutil
@@ -101,5 +103,14 @@ def record_activity(home,role,ident,path,digest,model):
         p=subprocess.run([str(home/'Rend/bin/factory-memory-activity'),'--agent',role,'--project','ProgreTech','--event','mesh-image-job-'+ident],input=json.dumps(body),text=True,capture_output=True,timeout=30)
         receipt=json.loads(p.stdout)
         if p.returncode or not receipt.get('ok') or not receipt.get('recall_verified'):return {'status':'write-failed'}
-        return {'status':'saved-and-recalled','memory_id':receipt['memory_id']}
+        result={'status':'saved-and-recalled','memory_id':receipt['memory_id']}
+        try:
+            audit=safe(home,home/'.local/state/rend/mempalace/completion-audit.jsonl')
+            audit.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+            row={'agent':role,'project':'ProgreTech','status':'saved','at':datetime.now(timezone.utc).isoformat(),'activity_kind':'host-image-execution','activity_memory_id':receipt['memory_id'],'activity_recall_verified':True}
+            fd=os.open(audit,os.O_WRONLY|os.O_CREAT|os.O_APPEND|getattr(os,'O_NOFOLLOW',0),0o600)
+            try:os.write(fd,(json.dumps(row)+'\n').encode());os.fsync(fd)
+            finally:os.close(fd)
+        except (OSError,ValueError):result['audit_status']='unavailable'
+        return result
     except (OSError,ValueError,subprocess.SubprocessError):return {'status':'write-failed'}
