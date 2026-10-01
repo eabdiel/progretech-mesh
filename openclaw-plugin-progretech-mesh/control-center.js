@@ -14,7 +14,7 @@ export async function forwardControlCenter(payload, agentId, token, fetchImpl = 
   if (body.length > 16384) throw new Error('request_too_large');
   const response = await fetchImpl('http://127.0.0.1:8787/api/mesh/control-center', {
     method: 'POST', headers: {'Content-Type': 'application/json', 'X-ProgreTech-Mesh-Local-Token': token},
-    body, redirect: 'error', signal: AbortSignal.timeout(43000)
+    body, redirect: 'error', signal: AbortSignal.timeout(payload.action === 'communication.chat' ? 310000 : 43000)
   });
   const data = await response.json();
   if (!response.ok && data.ok !== false) throw new Error(`local_control_http_${response.status}`);

@@ -80,7 +80,7 @@ def install(host, home=None):
             if model != 'default':
                 headers['x-openclaw-model'] = model
             req = Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=json.dumps(request_body).encode(), headers=headers)
-            with urlopen(req, timeout=35) as response:
+            with urlopen(req, timeout=300) as response:
                 completion = json.loads(response.read(1048576))
             return {'reply': completion['choices'][0]['message']['content'], 'role': role, 'model': model}
         mutation = action in {'voice.preview', 'audio.set', 'voice.start', 'voice.stop', 'vision.analyze', 'chatter.settings', 'chatter.test'}

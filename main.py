@@ -180,8 +180,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.3-enrollment.1"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.3-enrollment.1.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.8.4-chat.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.8.4-chat.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -814,6 +814,9 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         linked = record["control_center_gateway"] in GATEWAY_SOCKETS and host.get("trust_state") == "verified"
         if record.get("gateway_enrollment"):
             linked = linked and any(item['id'] == record['id'] for item in host.get('identified_agents', []))
+            public["task"] = "Gateway live" if linked else "Gateway offline"
+            activity = {"working": "Working", "idle": "Idle", "paused": "Paused", "blocked": "Needs attention"}.get(record.get("state"), "Activity unknown")
+            public["phase"] = f"Connected through {host.get('name') or record['control_center_gateway']} · {activity}" if linked else "Waiting for the host gateway to reconnect"
         public["transport"] = "connected" if linked else "not-connected"
         public["control_center_available"] = public["control_center_available"] and host.get("trust_state") == "verified"
         if record.get("gateway_enrollment"):

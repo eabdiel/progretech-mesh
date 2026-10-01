@@ -1,10 +1,10 @@
 {
   "package_id": "progretech-mesh-openclaw",
-  "version": "0.8.3-enrollment.1",
+  "version": "0.8.4-chat.1",
   "runtime": "openclaw",
   "min_openclaw_version": "2026.9.3",
-  "filename": "progretech-mesh-openclaw-0.8.3-enrollment.1.tgz",
-  "sha256": "6322ff1bccd95557813cb2783af417b0ec73134a8c1cae40a66f4a79292675f0",
+  "filename": "progretech-mesh-openclaw-0.8.4-chat.1.tgz",
+  "sha256": "18b9fbe73c3babe2b87cd6a68193036213b4c239dc731ff7bba154f021b92933",
   "signature": {
     "mode": "unconfigured",
     "codeseal_verified": false,

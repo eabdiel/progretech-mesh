@@ -14,8 +14,9 @@ ACTIONS = {'profile.get', 'profile.save', 'voice.preview', 'host.system', 'model
 
 
 class ControlRelay:
-    def __init__(self, timeout=45):
+    def __init__(self, timeout=45, chat_timeout=320):
         self.timeout = timeout
+        self.chat_timeout = chat_timeout
         self.pending = {}
         self.lock = threading.Lock()
 
@@ -47,7 +48,7 @@ class ControlRelay:
                                       'payload': {'action': action, 'args': args, 'agent_id': agent_id}})
             if not ok:
                 return {'ok': False, 'error': error or 'gateway_unavailable'}, 503
-            if not entry['event'].wait(self.timeout):
+            if not entry['event'].wait(self.chat_timeout if action == 'communication.chat' else self.timeout):
                 return {'ok': False, 'error': 'control_center_timeout',
                         'detail': 'The action may still finish. Check status before trying again.'}, 504
             return entry['payload'], 200 if entry['payload']['ok'] else 502

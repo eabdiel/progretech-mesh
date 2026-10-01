@@ -110,3 +110,13 @@ Open **Add signed agent**, then **Select identified agents from gateway**. The l
 The host bridge must run the updated `control_center/rend_bridge.py` and Mesh OpenClaw plugin. Its administrator-owned gateway binding is required. It queries the authenticated loopback OpenClaw gateway for public agent identities, creates exact local runtime bindings within that gateway namespace, and refreshes the roster without automatically enrolling agents. Newly added runtime roles can appear without editing each child binding. Unavailable or removed roles cannot be controlled through an old selection. Per-role local permissions and removal preferences remain authoritative. Up to 256 identified agents are supported.
 
 Offline Mesh offers the same one-at-a-time gateway selection in **Agent onboarding**, with ownership and intermediary acknowledgments and unsigned local runtime references. It does not require a hosted Mesh connection or account.
+
+Signed roles communicate through their connected host; they do not need another
+pairing step. Cards show host gateway availability and observed role activity.
+Role conversations keep sent messages, pending status, replies and failures when
+switching agents in the same open tab. Replies arriving while another agent is
+selected stay with their original conversation. This browser view is held in
+memory and clears on page reload; the agent runtime owns its separate Mesh session.
+Chat allows up to five minutes for a local runtime reply, with longer adapter and
+relay budgets. Other management actions retain their shorter timeouts. A failed
+request is shown in the conversation and is not automatically retried.

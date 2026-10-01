@@ -83,3 +83,18 @@ class ReceiptTests(unittest.TestCase):
         finally:
             main.DEV_AGENT_REGISTRY.clear();main.DEV_AGENT_REGISTRY.update(registry)
             main.GATEWAY_SOCKETS.clear();main.GATEWAY_SOCKETS.update(gateways)
+
+class RoleStatusTests(unittest.TestCase):
+    def test_role_status_follows_authenticated_host_and_roster(self):
+        registry=main.DEV_AGENT_REGISTRY.copy();gateways=main.GATEWAY_SOCKETS.copy()
+        try:
+            host={'id':'host','name':'Host','owner_id':'owner','trust_state':'verified','identified_agents':[{'id':'host--coder'}]}
+            role={'id':'host--coder','owner_id':'owner','trust_state':'verified','gateway_enrollment':True,'control_center_gateway':'host','state':'idle','task':'Awaiting gateway','phase':'Enrollment complete · connecting agent'}
+            main.DEV_AGENT_REGISTRY.update({'host':host,'host--coder':role});main.GATEWAY_SOCKETS['host']=object()
+            live=main.public_agent(role)
+            self.assertEqual(live['task'],'Gateway live');self.assertIn('Idle',live['phase']);self.assertEqual(live['transport'],'connected')
+            main.GATEWAY_SOCKETS.pop('host')
+            offline=main.public_agent(role);self.assertEqual(offline['task'],'Gateway offline');self.assertEqual(offline['transport'],'not-connected')
+        finally:
+            main.DEV_AGENT_REGISTRY.clear();main.DEV_AGENT_REGISTRY.update(registry)
+            main.GATEWAY_SOCKETS.clear();main.GATEWAY_SOCKETS.update(gateways)

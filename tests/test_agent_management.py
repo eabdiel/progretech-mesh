@@ -121,4 +121,5 @@ class BoundBridgeConversationTests(unittest.TestCase):
                 self.assertEqual(request.get_header('X-openclaw-session-key'),'agent:researcher:mesh-chat:rend--researcher')
                 self.assertEqual(json.loads(request.data)['model'],'openclaw/researcher')
                 self.assertEqual(result['reply'],'reply')
+                self.assertEqual(transport.call_args.kwargs['timeout'],300)
             self.assertEqual(json.loads((root/'.openclaw/openclaw.json').read_text()),cfg)

@@ -66,6 +66,7 @@
   let installPrompt = null;
   let fleet = [];
   let selectedAgentId = null;
+  const roleConversations = new Map();
   let monitorSocket = null;
   let monitorReconnectTimer = null;
   let monitorReconnectAttempt = 0;
@@ -1446,6 +1447,8 @@
         monitorSocket.close();
       } catch (_) {}
     }
+    monitorSocket = null;
+    liveEvents = [];
 
     const agent = fleet.find((a) => a.id === agentId);
     if (!reconnecting) {
@@ -1466,7 +1469,10 @@
     if (agent?.control_center_gateway) {
       closeDirectTransport();
       document.getElementById("eventStreamLabel").textContent = `${agent.name} · conversation through verified host`;
-      eventList.innerHTML = '<div class="empty-stream">Messages go to this role in its own Mesh conversation. Host monitoring stays on the gateway tile.</div>';
+      const messages = roleConversations.get(agentId) || [];
+      if (messages.length) renderEvents(messages);
+      else eventList.innerHTML = '<div class="empty-stream">Messages go to this role in its own Mesh conversation. Host monitoring stays on the gateway tile.</div>';
+      renderTelemetry(agent);
       return;
     }
     const socket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
@@ -1675,7 +1681,7 @@
 
     if (type === "file_offer_ready" && message.file) appendTerminalFileCard(item, message.file);
     eventList.appendChild(item);
-    if (type === "message_response") speakAgentReply(message.message || "");
+    if (type === "message_response" && track) speakAgentReply(message.message || "");
 
     while (eventList.children.length > 80) eventList.firstElementChild.remove();
     eventList.lastElementChild?.scrollIntoView({block:"nearest"});
@@ -1685,14 +1691,27 @@
     const agent=fleet.find((a)=>a.id===selectedAgentId);
     if (!agent) { showToast("Select an agent first."); return; }
     if (agent.transport!=="connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
-    appendLiveEvent({type:'user_message',message:text,payload:{sender:'You'}});
+    const messages = roleConversations.get(agent.id) || [];
+    roleConversations.set(agent.id, messages);
+    const sent = {type:'user_message',message:text,timestamp:new Date().toISOString(),payload:{sender:'You'}};
+    const reply = {type:'message_pending',message:`Waiting for ${agent.name} to reply…`,timestamp:new Date().toISOString(),payload:{sender:agent.name}};
+    messages.push(sent, reply);
+    if (messages.length > 160) messages.splice(0, messages.length - 160);
+    appendLiveEvent(sent);
+    appendLiveEvent(reply);
     messageInput.value='';
     try {
       const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/management`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'communication.chat',args:{text}})});
       const data=await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || response.status);
-      appendLiveEvent({type:'message_response',message:data.result.reply,payload:{sender:agent.name}});
-    } catch(error) { showToast(`Message failed: ${error.message}. No automatic retry was sent.`); }
+      Object.assign(reply, {type:'message_response',message:data.result.reply,timestamp:new Date().toISOString()});
+      if (selectedAgentId === agent.id) { renderEvents(messages); speakAgentReply(reply.message || ''); }
+      else showToast(`${agent.name} replied. Open their Message view to read it.`);
+    } catch(error) {
+      Object.assign(reply, {type:'message_error',message:`Message failed: ${error.message}. No automatic retry was sent.`,payload:{sender:agent.name,severity:'error'}});
+      if (selectedAgentId === agent.id) renderEvents(messages);
+      showToast(`${agent.name}: ${reply.message}`);
+    }
 
   }
 
