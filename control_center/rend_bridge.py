@@ -4,6 +4,8 @@ Load this module after factory_host, then call install(factory_host).
 Nothing is started or enabled by importing it.
 """
 import json
+import hashlib
+import re
 from urllib.request import Request, urlopen
 from pathlib import Path
 
@@ -100,5 +102,41 @@ def install(host, home=None):
                 host.MUTATION_LOCK.release()
 
     provider = AgentControlProvider(state / 'agent-profiles', bindings, discover, execute, capabilities)
-    register_provider_routes(host.app, provider, host.token)
+    trusted_gateways = dict(bindings)
+
+    def roster(gateway_id):
+        # The gateway is explicitly installed by the local administrator. Child
+        # runtime bindings come only from this workstation's authenticated live
+        # inventory, never from a cloud-supplied runtime ID or command.
+        if gateway_id not in trusted_gateways or not re.fullmatch(r'[A-Za-z0-9_-]{1,48}', gateway_id or ''):
+            raise ValueError('gateway_binding_required')
+        from offline.registry import Registry
+        # Reuse the public-only discovery parser without creating an offline DB.
+        class Inventory:
+            all = lambda self: []
+        result = Registry.discover_gateway(Inventory(), home)
+        if not result['available']:
+            raise ValueError('local_gateway_unavailable')
+        additions, agents = {}, []
+        for item in result['candidates']:
+            runtime = item['runtime_id']
+            suffix = runtime if re.fullmatch(r'[A-Za-z0-9_-]{1,28}', runtime) else 'role_' + hashlib.sha256(runtime.encode()).hexdigest()[:24]
+            aid = gateway_id + '--' + suffix
+            if aid in trusted_gateways and trusted_gateways[aid] != runtime:
+                raise ValueError('runtime_binding_conflict')
+            additions[aid] = runtime
+            agents.append({'id': aid, 'name': item['name'], 'role': ''})
+        with provider.lock:
+            prefix = gateway_id + '--'
+            # Old runtime targets stop being controllable immediately. Saved
+            # profiles retain their permissions if the same runtime returns.
+            for aid in list(provider.bindings):
+                if aid.startswith(prefix) and aid not in additions:
+                    del provider.bindings[aid]
+            provider.bindings.update(additions)
+            from control_center.management import preferences
+            agents = [item for item in agents if preferences(provider, item['id'])['enabled']]
+        return agents
+
+    register_provider_routes(host.app, provider, host.token, roster=roster)
     return provider

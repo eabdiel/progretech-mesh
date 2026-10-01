@@ -69,7 +69,7 @@ def register_gateway_agents(gateway_id, payload, registry):
     if not host or not host.get('owner_id') or host.get('trust_state') != 'verified':
         return False
     agents = payload.get('agents') if isinstance(payload, dict) else None
-    if not isinstance(agents, list) or len(agents) > 32:
+    if not isinstance(agents, list) or len(agents) > 256:
         return False
     import re
     accepted = {}
@@ -81,24 +81,20 @@ def register_gateway_agents(gateway_id, payload, registry):
             return False
         if not isinstance(item.get('name'), str) or len(item['name']) > 80 or not isinstance(item.get('role', ''), str) or len(item.get('role', '')) > 160:
             return False
+        if aid in accepted:
+            return False
         existing = registry.get(aid)
         if existing and existing.get('control_center_gateway') != gateway_id:
             return False
         accepted[aid] = item
-    # Retired bindings disappear; independently enrolled agents are untouched.
+    # A roster is discovery, not enrollment or proof of each role's identity.
+    host['identified_agents'] = [{'id': aid, 'name': item['name'], 'role': item.get('role', '')}
+        for aid, item in accepted.items()]
+    # Retire old automatically linked records. Explicitly signed agents survive
+    # roster refresh/removal with their own PEM, seal and fingerprint intact.
     for aid, record in list(registry.items()):
-        if record.get('control_center_gateway') == gateway_id and aid not in accepted:
+        if record.get('control_center_gateway') == gateway_id and not record.get('gateway_enrollment'):
             del registry[aid]
-    for aid, item in accepted.items():
-        registry[aid] = {
-            'id': aid, 'name': item['name'], 'role': item.get('role', ''),
-            'owner_id': host['owner_id'], 'control_center_gateway': gateway_id,
-            'trust_state': 'verified', 'trust_valid': True, 'trust_reason': 'linked_through_verified_host',
-            'state': 'online', 'transport': 'connected', 'task': 'Linked workstation role',
-            'phase': 'Agent-specific controls through verified host', 'progress': 0,
-            'runtime': 'OpenClaw role', 'model': 'Load agent inventory',
-            'fingerprint': host.get('fingerprint', ''),
-        }
     return True
 
 
@@ -114,7 +110,22 @@ def register_control_center_routes(app, require_session, user_id, registry, gate
         gateway = registry.get(gateway_id)
         if not gateway or gateway.get('owner_id') != user_id() or gateway.get('trust_state') != 'verified':
             return None
+        if record.get('gateway_enrollment') and not any(item['id'] == record['id'] for item in gateway.get('identified_agents', [])):
+            return None
         return gateway_id
+
+    @app.get('/api/gateways/identified-agents')
+    @require_session
+    def identified_agents():
+        candidates = []
+        for gid, host in registry.items():
+            if host.get('owner_id') != user_id() or host.get('trust_state') != 'verified' or gid not in gateways:
+                continue
+            for item in host.get('identified_agents', []):
+                if registry.get(item['id'], {}).get('gateway_enrollment'):
+                    continue
+                candidates.append({**item, 'gateway_id':gid, 'gateway_name':host.get('name', gid)})
+        return jsonify(ok=True, candidates=candidates)
 
     @app.get('/agents/<agent_id>/control-center')
     @require_session

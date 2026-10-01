@@ -145,7 +145,7 @@ class AgentControlProvider:
             return result
 
 
-def register_provider_routes(app, provider, token):
+def register_provider_routes(app, provider, token, roster=None):
     @app.get('/api/mesh/control-center/agents')
     def mesh_control_agents():
         expected = token()
@@ -153,6 +153,8 @@ def register_provider_routes(app, provider, token):
         if not expected or not secrets.compare_digest(expected, actual):
             return jsonify(ok=False, error='unauthorized'), 401
         try:
+            if roster is not None:
+                return jsonify(ok=True, agents=roster(request.args.get('gateway_id')))
             agents = []
             for aid, runtime in provider.bindings.items():
                 from control_center.management import preferences
