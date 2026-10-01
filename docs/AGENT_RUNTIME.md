@@ -10,7 +10,8 @@ adapter, an enrolled role, and the local workday controller.
 
 Chat requests return a host job immediately. Polling reports observed milestones:
 waiting for a model slot, model loading, model ready, processing a request, and
-writing reply text. Processing is an operational status, not hidden reasoning.
+preparing the generated reply for delivery. Final replies use a single gateway
+response because runtime postprocessing can replace token-stream output. Processing is an operational status, not hidden reasoning.
 Mesh jobs serialize model use and wait for observed native work to become idle;
 this is not a global admission controller for every external inference client.
 A failed or timed-out reply is never automatically resent. New chat chooses a

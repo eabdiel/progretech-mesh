@@ -59,17 +59,17 @@ class RuntimeTests(unittest.TestCase):
         self.runtime.api=lambda path,body=None,**kw:calls.append((path,body)) or {'models':[{'name':'shared'}]}
         value=self.done('host',self.runtime.power('host',False))
         self.assertTrue(value['result']['sleeping']);self.assertFalse(any(body and body.get('keep_alive')==0 for _,body in calls))
-    def test_stream_records_actual_reply_phase_and_excludes_reasoning(self):
+    def test_final_reply_progress_excludes_reasoning_without_append_only_stream(self):
         class Response:
             def __enter__(self):return self
             def __exit__(self,*a):pass
-            def __iter__(self):return iter([b'data: {"choices":[{"delta":{"reasoning_content":"hidden fixture"}}]}\n',b'data: {"choices":[{"delta":{"content":"actual answer"}}]}\n',b'data: [DONE]\n'])
+            def read(self,size):return json.dumps({'choices':[{'message':{'content':'actual answer','reasoning_content':'hidden fixture'},'finish_reason':'stop'}]}).encode()
         requests=[]
         self.runtime.open=lambda req,**k:requests.append(req) or Response()
         value=self.done('host--architect',self.runtime.chat('host--architect','fixture request'))
         self.assertEqual(value['result']['reply'],'actual answer')
         self.assertIn('writing',[m['phase'] for m in value['milestones']])
-        self.assertNotIn('hidden fixture',str(value));self.assertEqual(requests[0].get_header('X-openclaw-agent-id'),'architect')
+        self.assertNotIn('hidden fixture',str(value));self.assertEqual(requests[0].get_header('X-openclaw-agent-id'),'architect');self.assertFalse(json.loads(requests[0].data)['stream'])
     def test_failed_job_finishes_even_if_signal_write_fails(self):
         self.runtime.signal=lambda *a:(_ for _ in ()).throw(OSError('fixture'))
         value=self.done('host',self.runtime.start('host','chat',lambda j:(_ for _ in ()).throw(ValueError('mesh_context_limit'))))

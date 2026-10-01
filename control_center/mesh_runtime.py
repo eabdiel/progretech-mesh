@@ -273,28 +273,23 @@ class MeshRuntime:
             nonce=self.settings(agent).get('conversation_nonce')
             if nonce:headers['x-openclaw-session-key']+=':'+nonce
             if self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
-            req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':True,
+            req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':False,
                 'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent}).encode(),headers=headers)
             self.mark(ident,'processing','Processing your request; waiting for reply text')
-            reply=[];length=0;deadline=time.monotonic()+300;finished=False
+            # OpenClaw postprocessing can replace output after its token events.
+            # Retrieve one final response; progress remains an asynchronous host job.
             with self.open(req,timeout=300) as response:
-                for raw in response:
-                    if time.monotonic()>deadline:raise ValueError('mesh_reply_timeout')
-                    if len(raw)>1048576:raise ValueError('mesh_reply_too_large')
-                    if not raw.startswith(b'data:'):continue
-                    value=raw[5:].strip()
-                    if value==b'[DONE]':finished=True;break
-                    chunk=json.loads(value)
-                    if chunk.get('error'):raise ValueError('mesh_reply_failed')
-                    for choice in chunk.get('choices',[]):
-                        content=choice.get('delta',{}).get('content')
-                        if isinstance(content,str) and content:
-                            self.mark(ident,'writing','Writing the reply')
-                            reply.append(content);length+=len(content)
-                            if length>1048576:raise ValueError('mesh_reply_too_large')
-                        if choice.get('finish_reason'):finished=True
-            if not finished or not reply:raise ValueError('mesh_reply_incomplete')
-            answer=''.join(reply)
+                raw=response.read(4194305)
+            if len(raw)>4194304:raise ValueError('mesh_reply_too_large')
+            payload=json.loads(raw)
+            if payload.get('error'):raise ValueError('mesh_reply_failed')
+            choices=payload.get('choices',[])
+            if not choices:raise ValueError('mesh_reply_incomplete')
+            answer=choices[0].get('message',{}).get('content')
+            if isinstance(answer,list):answer=''.join(c.get('text','') for c in answer if isinstance(c,dict) and c.get('type')=='text')
+            if not isinstance(answer,str) or not answer.strip():raise ValueError('mesh_reply_incomplete')
+            if len(answer)>1048576:raise ValueError('mesh_reply_too_large')
+            self.mark(ident,'writing','Reply generated; preparing delivery')
             if answer.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):raise ValueError('mesh_provider_rejected')
             return {'reply':answer,'role':role,'model':chosen}
         return self.start(agent,'chat',worker)
