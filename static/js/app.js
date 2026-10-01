@@ -1498,7 +1498,7 @@
         fleet = fleet.map((item) => item.id === agentId ? data.agent : item);
         renderFleet();
         renderTelemetry(data.agent);
-        renderEvents(data.events || []);
+        renderEvents([...(data.events || []), ...(roleConversations.get(agentId) || [])]);
         return;
       }
 
@@ -1705,11 +1705,11 @@
       const data=await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || response.status);
       Object.assign(reply, {type:'message_response',message:data.result.reply,timestamp:new Date().toISOString()});
-      if (selectedAgentId === agent.id) { renderEvents(messages); speakAgentReply(reply.message || ''); }
+      if (selectedAgentId === agent.id) { renderEvents(agent.control_center_gateway ? messages : liveEvents); speakAgentReply(reply.message || ''); }
       else showToast(`${agent.name} replied. Open their Message view to read it.`);
     } catch(error) {
       Object.assign(reply, {type:'message_error',message:`Message failed: ${error.message}. No automatic retry was sent.`,payload:{sender:agent.name,severity:'error'}});
-      if (selectedAgentId === agent.id) renderEvents(messages);
+      if (selectedAgentId === agent.id) renderEvents(agent.control_center_gateway ? messages : liveEvents);
       showToast(`${agent.name}: ${reply.message}`);
     }
 
