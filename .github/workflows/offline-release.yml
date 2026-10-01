@@ -42,7 +42,7 @@ jobs:
           key: mesh-offline-deps-${{ runner.os }}-${{ hashFiles('requirements-offline.txt') }}
       - name: Ubuntu desktop libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb
+        run: sudo apt-get update && sudo apt-get install -y libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-render0 libxcb-util1 libxau6 libxdmcp6 libegl1 libxkbcommon-x11-0 libnss3 libasound2 xvfb
       - name: Local security and migration tests
         run: python -m unittest discover -s tests -p test_mesh_offline.py
       - name: Build installers and exercise bundled engine
