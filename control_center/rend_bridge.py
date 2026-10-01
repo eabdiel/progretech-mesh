@@ -35,7 +35,7 @@ def install(host, home=None):
                       for provider, data in cfg.get('models', {}).get('providers', {}).items()
                       for entry in data.get('models', [])
                       if isinstance(entry, dict) and isinstance(entry.get('id'), str)]
-        communication_models = list(dict.fromkeys([*models, *(allowlist.keys() if isinstance(allowlist, dict) and allowlist else configured)]))
+        communication_models = list(dict.fromkeys([*models, *(allowlist.keys() if isinstance(allowlist, dict) else []), *[m for m in configured if 'embed' not in m.lower()]]))
         return {'runtime_id': runtime_id, 'name': agent.get('name', runtime_id),
                 'role': agent.get('identity', {}).get('theme', ''), 'models': models,
                 'communication_roles': [runtime_id], 'communication_models': communication_models,

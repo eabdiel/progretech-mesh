@@ -13,3 +13,14 @@
 #counterDialog>.office-panel-head{flex-shrink:0}
 #counterContent{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;overflow-wrap:anywhere}
 #counterContent p,#counterContent pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Keep both office tiles bounded; their content scrolls independently. */
+.office-layout{--office-panel-height:1050px;align-items:start}
+.office-floor-panel,.office-inspector{height:var(--office-panel-height);box-sizing:border-box;min-height:0}
+.office-floor-panel{display:flex;flex-direction:column}
+.office-floor-panel>.office-panel-head,.office-floor-panel>.office-floor,.office-floor-panel>.floor-stats{flex-shrink:0}
+.office-chatter{padding:20px;display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden}
+.office-chatter>h3,.office-chatter>p{flex-shrink:0}
+.office-chatter .office-feed{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
+.office-inspector{display:block;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+@media(max-width:650px){.office-layout{--office-panel-height:950px}}

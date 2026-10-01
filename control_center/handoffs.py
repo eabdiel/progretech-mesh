@@ -121,7 +121,7 @@ class Handoffs:
                 row.update(state='dispatching',artifact=public(match));self.save()
                 text=row['text']+'\nDependency delivered by '+row['source']+': '+match['path']+'\nRead this published artifact before answering. Report what you actually reviewed. If producing files, save them under '+str(self.home/'Rend/artifacts'/row['target_role'])+'.'
                 try:
-                    job=self.mesh.chat(row['target'],text);row.update(state='running',job_id=job['job_id'],note='Dependency received; follow-up admitted to the runtime queue.')
+                    job=self.mesh.chat(row['target'],text,**({'image_paths':[match['path']]} if Path(match['path']).suffix.lower() in {'.png','.jpg','.jpeg','.webp'} else {}));row.update(state='running',job_id=job['job_id'],note='Dependency received; follow-up admitted to the runtime queue.')
                 except ValueError as e:
                     if str(e) in {'mesh_agent_busy','mesh_agent_sleeping'}:row.update(state='waiting',note='Waiting for target availability.')
                     else:row.update(state='failed',note=str(e))

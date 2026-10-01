@@ -211,8 +211,8 @@ class MeshRuntime:
         threading.Thread(target=run,daemon=True,name='mesh-'+kind).start()
         return self.get(agent,ident)
 
-    def prepare(self, agent, ident):
-        model=self.model(agent)
+    def prepare(self, agent, ident, model=None):
+        model=model or self.model(agent)
         resident={m['name'] for m in self.api('ps').get('models',[])}
         if model not in resident:
             tags=self.api('tags').get('models',[])
@@ -340,10 +340,12 @@ class MeshRuntime:
         except (OSError,subprocess.TimeoutExpired,json.JSONDecodeError):raise ValueError('mesh_context_delivery_unconfirmed')
         return {'scope':'agent','accepted':True,'delivery':receipt['status'],'note':'Runtime accepted this instruction for the observed work session. Processing or completion is not yet confirmed.'}
 
-    def chat(self, agent, text, admission=None, background=None):
+    def chat(self, agent, text, admission=None, background=None, image_paths=None):
         from control_center.artifacts import ROLES, safe
         role=ROLES.get(self.provider.bindings[agent])
-        if role and not background:
+        from control_center.media_jobs import image_request
+        media=not background and not image_paths and image_request(text)
+        if role and not background and not media:
             output=safe(self.home,self.home/'Rend/artifacts'/role)
             output.mkdir(parents=True,exist_ok=True,mode=0o700)
             text+='\nIf generating a deliverable for the owner, publish a non-secret copy under '+str(output)+'. Report the actual path; a reply alone is not a published file. Keep private memory and credentials out of shared artifacts.'
@@ -352,7 +354,15 @@ class MeshRuntime:
             cfg,role,chosen=self.config(agent)
             if not self.settings(agent).get('enabled',True):raise ValueError('mesh_enrollment_removed')
             if self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
-            if chosen.startswith('ollama/'):self.prepare(agent,ident)
+            if media:
+                from control_center.media_jobs import generate
+                return generate(self,agent,text,ident)
+            image_content=None
+            if image_paths:
+                from control_center.media_jobs import review_input
+                chosen,image_content=review_input(self,image_paths)
+                self.prepare(agent,ident,model=chosen.split('/',1)[1])
+            elif chosen.startswith('ollama/'):self.prepare(agent,ident)
             port=cfg['gateway'].get('port',18789)
             if type(port) is not int or not 1<=port<=65535:raise ValueError('runtime_port_invalid')
             headers={'Content-Type':'application/json','Authorization':'Bearer '+cfg['gateway']['auth']['token'],
@@ -361,9 +371,9 @@ class MeshRuntime:
             if background:headers['x-openclaw-session-key']='agent:'+role+':mesh-chatter:'+background
             nonce=None if background else self.settings(agent).get('conversation_nonce')
             if nonce:headers['x-openclaw-session-key']+=':'+nonce
-            if self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
+            if image_paths or self.settings(agent).get('model','default')!='default':headers['x-openclaw-model']=chosen
             req=Request(f'http://127.0.0.1:{port}/v1/chat/completions',data=json.dumps({'model':'openclaw/'+role,'stream':False,
-                'messages':[{'role':'user','content':text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
+                'messages':[{'role':'user','content':[{'type':'text','text':text},*image_content] if image_content else text}],'user':'mesh-conversation-'+agent,**({'max_tokens':384} if background else {})}).encode(),headers=headers)
             self.mark(ident,'processing','Processing your request; waiting for reply text')
             # OpenClaw postprocessing can replace output after its token events.
             # Retrieve one final response; progress remains an asynchronous host job.
