@@ -29,6 +29,30 @@ is distinct from the permanent gateway connection shown on the fleet tile. Adapt
 installation follows the existing bounded, verified, runtime-specific enrollment
 protocol. Unsupported runtimes fail closed instead of receiving invented adapters.
 
+## Separate logins sharing a fleet
+
+An administrator can bind verified Firebase UIDs to an existing fleet owner with
+`MESH_OWNER_UID_BINDINGS`, a JSON object such as
+`{"secondary-firebase-uid":"existing-owner-firebase-uid"}`. Both Firebase
+accounts must first complete verified sign-in. Verify the exact UIDs through
+Firebase administrative lookup and the existing gateway's owner binding before
+applying the configuration; never derive ownership from an email alias.
+
+The two accounts remain separate. Sessions and activity keep the authenticated
+login UID and email; fleet operations and new enrollments resolve to the configured
+owner UID. This grants full fleet owner access, including control and removal.
+Existing gateway and agent ownership records and credentials retain their original
+owner UID. Already-enrolled agents owned by a secondary UID require a separate
+reviewed ownership migration; the binding does not migrate those records.
+
+Only Firebase-authenticated sessions use these bindings. No browser field can
+choose its owner. Unlisted logins retain their own ownership scope. Configuration
+rejects malformed JSON, duplicate UIDs, email addresses, chains, cycles, self
+bindings and more than 256 entries. Removing a binding restores the login's own
+owner scope for existing sessions on subsequent requests. Cloud Run configuration
+updates create a new revision; account for the existing process-local registry
+and pending invitations when scheduling rollout and rollback.
+
 ## Automatic CodeSeal issuance
 
 Configure `CODESEAL_MESH_ISSUER_TOKEN` in server secret storage and keep the existing

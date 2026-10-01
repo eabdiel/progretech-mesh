@@ -40,6 +40,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from mesh_firebase_auth import register_firebase_auth_routes, firebase_client_ready, firebase_admin_ready
+from mesh_owner_access import fleet_owner_id, owner_uid_bindings
 from mesh_cloud_health import register_cloud_health_routes
 from mesh_ownership import (
     OWNERSHIP_CLAIM_TTL_SECONDS,
@@ -1404,6 +1405,7 @@ def direct_transport_contract() -> dict[str, Any]:
     }
 
 def create_app() -> Flask:
+    owner_uid_bindings()  # Reject invalid administrator access configuration at startup.
     app = Flask(
         __name__,
         template_folder="templates",
@@ -1482,8 +1484,7 @@ def create_app() -> Flask:
         return wrapped
 
     def current_mesh_user_id() -> str:
-        user = session.get("mesh_user") or {}
-        return str(user.get("id") or "").strip()
+        return fleet_owner_id(session.get("mesh_user"))
 
     from mesh_office import register_office_routes
     register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
