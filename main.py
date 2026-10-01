@@ -467,8 +467,13 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
 
     if msg_type == "heartbeat":
         payload = message.get("payload", {})
+        # Connectivity heartbeats must not erase role-specific observed work.
+        activity = record.get('activity') or {}
+        heartbeat_state = payload.get("state", record.get("state", "online"))
+        if activity.get('source'):
+            heartbeat_state = record.get('state', 'unknown')
         record.update(
-            state=payload.get("state", record.get("state", "online")),
+            state=heartbeat_state,
             task=payload.get("task", record.get("task", "Connected")),
             phase=payload.get("phase", record.get("phase", "Live gateway connected")),
             progress=max(0, min(100, int(payload.get("progress", record.get("progress", 0)) or 0))),

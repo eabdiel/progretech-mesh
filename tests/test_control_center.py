@@ -206,6 +206,18 @@ class CloudTests(unittest.TestCase):
         cloud.register_gateway_agents('lyra',{'agents':[]},self.registry)
         self.assertNotIn('lyra--worker',self.registry)
         self.assertIn('lyra',self.registry)
+    def test_role_activity_is_distinct_from_connected_transport(self):
+        self.registry['lyra--worker']={'id':'lyra--worker','control_center_gateway':'lyra','gateway_enrollment':True,'fingerprint':'worker-signature','owner_id':'owner'}
+        cloud.register_gateway_agents('lyra',{'agents':[{'id':'lyra--worker','name':'Worker','activity':{'state':'active','source':'openclaw-native-event','task_id':'workday-test'}}]},self.registry)
+        self.assertEqual(self.registry['lyra--worker']['state'],'working')
+        self.assertEqual(self.registry['lyra--worker']['transport'],'connected')
+        self.assertEqual(self.registry['lyra--worker']['fingerprint'],'worker-signature')
+        cloud.register_gateway_agents('lyra',{'agents':[{'id':'lyra--worker','name':'Worker','activity':{'state':'unknown'}}]},self.registry)
+        self.assertEqual(self.registry['lyra--worker']['state'],'unknown')
+    def test_gateway_activity_does_not_overwrite_identity(self):
+        cloud.register_gateway_agents('lyra',{'agents':[{'id':'lyra','activity':{'state':'idle','source':'workday'}},{'id':'lyra--worker','name':'Worker'}]},self.registry)
+        self.assertEqual(self.registry['lyra']['state'],'idle')
+        self.assertEqual(self.registry['lyra']['owner_id'],'owner')
 
 
 if __name__ == '__main__':unittest.main()

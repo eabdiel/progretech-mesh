@@ -73,10 +73,14 @@ def register_gateway_agents(gateway_id, payload, registry):
         return False
     import re
     accepted = {}
+    host_activity = None
     for item in agents:
         if not isinstance(item, dict):
             return False
         aid = item.get('id')
+        if aid == gateway_id:
+            host_activity = item
+            continue
         if not isinstance(aid, str) or not aid.startswith(gateway_id + '--') or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', aid):
             return False
         if not isinstance(item.get('name'), str) or len(item['name']) > 80 or not isinstance(item.get('role', ''), str) or len(item.get('role', '')) > 160:
@@ -95,6 +99,23 @@ def register_gateway_agents(gateway_id, payload, registry):
     for aid, record in list(registry.items()):
         if record.get('control_center_gateway') == gateway_id and not record.get('gateway_enrollment'):
             del registry[aid]
+    for aid, item in accepted.items():
+        record = registry.get(aid)
+        if not record or not record.get('gateway_enrollment'):
+            continue
+        activity = item.get('activity') if isinstance(item.get('activity'), dict) else {}
+        observed = activity.get('state', item.get('state', 'unknown'))
+        record['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
+                           'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
+        record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
+        record['transport'] = 'connected'
+    if host_activity is not None:
+        activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
+        observed = activity.get('state', host_activity.get('state', 'unknown'))
+        host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
+                         'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
+        host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
+
     return True
 
 

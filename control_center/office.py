@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from control_center.file_lock import lock, unlock
 
-PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run'}
+PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control'}
 
 
 def validate_office(args):
@@ -17,7 +17,7 @@ def validate_office(args):
     op, body = args['operation'], args['args']
     fields = {'hire': {'name', 'role', 'goal'}, 'archive': {'id'}, 'task.create': {'title', 'description', 'assignee', 'dependsOn', 'needsApproval'},
         'task.approve': {'id', 'answer'}, 'message': {'to', 'text'}, 'pause': {'paused'}, 'settings': {'maxIterations'},
-        'memory': {'id'}, 'memory.save': {'id', 'text'}, 'run': {'id'}}.get(op, set())
+        'memory': {'id'}, 'memory.save': {'id', 'text'}, 'run': {'id'}, 'workday.control': {'action','role','duration'}}.get(op, set())
     if not isinstance(body, dict) or set(body) != fields:
         raise ValueError('invalid_office_args')
     for key, value in body.items():
@@ -33,6 +33,10 @@ def validate_office(args):
         elif key not in {'assignee', 'description'} and not value.strip():
             raise ValueError('invalid_office_args')
     if len(json.dumps(args)) > 16384: raise ValueError('invalid_office_args')
+    if op == 'workday.control':
+        if body['action'] not in {'stop','pause','resume','sleep'} or body['role'] not in {'all','rend','lyra','mak','fast','reviewer','architect','designer','progre'}:
+            raise ValueError('invalid_workday_control')
+        if not re.fullmatch(r'\d+(s|m|h|d)',body['duration']): raise ValueError('invalid_workday_duration')
 
 
 def office_root(home, role):
@@ -69,10 +73,26 @@ def namespace(role, agent_id=None):
 
 def dispatch_office(home, role, args, agent_id=None):
     validate_office(args)
+    if args['operation'] == 'workday.control':
+        body=args['args']; command=[str(Path(home)/'Rend/bin/factory-workday'),body['action'],'--agent',body['role']]
+        if body['action']=='sleep': command += ['--for',body['duration']]
+        result=subprocess.run(command,capture_output=True,text=True,timeout=90,check=False)
+        if result.returncode: raise ValueError('workday_control_failed')
+        snapshot=dispatch_office(home,role,{'operation':'snapshot','args':{}},agent_id)
+        snapshot['workday']=json.loads(result.stdout)
+        return snapshot
     if args['operation'] == 'run':
         from control_center.factory_jobs import dispatch_factory
         return dispatch_factory(home, role, 'factory.run', {'provider': 'crewai', 'task': '', 'office_task': args['args']['id']}, office_id=agent_id)
     result = engine(home, namespace(role, agent_id), args['operation'], args['args'])
+    activity=Path(home)/'.local/state/progretech-workday/activity.json'
+    try:
+        payload=json.loads(activity.read_text())
+        import time
+        fresh=time.time()-activity.stat().st_mtime<90
+        result['snapshot']['factoryAgents']=[dict(v,id=k,state=v.get('state','unknown') if fresh else 'unknown') for k,v in payload.get('agents',{}).items()]
+        result['snapshot']['factoryObservedAt']=payload.get('updated_at')
+    except (OSError,ValueError): result['snapshot']['factoryAgents']=[]
     from control_center.factory_jobs import _config
     settings = _config(home).get('crewai', {})
     result['snapshot']['runtimeReady'] = bool(settings.get('enabled') and role in settings.get('roles', []) and Path(settings.get('python', '')).is_file())

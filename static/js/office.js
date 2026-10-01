@@ -22,20 +22,35 @@
     snapshot.agents.forEach(a => {
       const manual=manualPositions[a.id];
       if (manual && Number.isFinite(manual.x) && Number.isFinite(manual.y) && manual.x >= 80 && manual.x <= 920 && manual.y >= 90 && manual.y <= 600) { positions[a.id]={...manual}; return; }
-      if (a.isDirector) positions[a.id] = {x:500,y:300};
-      else { const angle = 2*Math.PI*workers.findIndex(x => x.id===a.id)/Math.max(workers.length,1)-Math.PI/2; positions[a.id] = {x:500+310*Math.cos(angle),y:340+225*Math.sin(angle)}; }
+      if (a.isDirector) positions[a.id] = {x:500,y:(snapshot.factoryAgents?.length ? 220 : 300)};
+      else { const angle = 2*Math.PI*workers.findIndex(x => x.id===a.id)/Math.max(workers.length,1)-Math.PI/2; positions[a.id] = {x:500+310*Math.cos(angle),y:(snapshot.factoryAgents?.length ? 220+130*Math.sin(angle) : 340+225*Math.sin(angle))}; }
     });
   }
   function renderFloor() {
     arrange();
-    $('floorEmpty').hidden = snapshot.agents.length > 0;
-    $('floorNodes').innerHTML = snapshot.agents.map(a => {
+    $('floorEmpty').hidden = snapshot.agents.length + (snapshot.factoryAgents?.length || 0) > 0;
+    const note=document.querySelector('.floor-footnote');if(note)note.hidden=Boolean(snapshot.factoryAgents?.length);
+    const live=(snapshot.factoryAgents || []).map(a => ({...a,name:a.id[0].toUpperCase()+a.id.slice(1),role:'Live OpenClaw role',id:'factory-'+a.id,isDirector:false,factoryObserved:true}));
+    const display=[...snapshot.agents,...live];
+    live.forEach((a,i)=>{positions[a.id]={x:140+(i%4)*240,y:505+Math.floor(i/4)*125};});
+    $('floorNodes').innerHTML = display.map(a => {
       const blocked = snapshot.tasks.some(t => t.assignee===a.id && t.status==='blocked');
       const state = blocked ? 'blocked' : a.state;
       const p = positions[a.id];
-      return `<button class="floor-node ${a.isDirector?'director':''} ${escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" style="left:${p.x}px;top:${p.y}px" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)}</span><span class="node-role">${escape(a.role)}</span></button>`;
+      return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
     }).join('');
     $('floorNodes').querySelectorAll('[data-agent]').forEach(node => {
+      if(node.dataset.factoryRole) {
+        node.onclick=async()=>{
+          const action=window.prompt('Factory control: pause, stop, sleep, resume (Cancel to leave unchanged)');
+          if(!['pause','stop','sleep','resume'].includes(action))return;
+          const duration=action==='sleep'?window.prompt('Sleep duration, such as 30m','30m'):'1s';
+          if(!duration)return;
+          try {await api('workday.control',{action,role:node.dataset.factoryRole,duration});say('Factory control saved. Refreshing observed state.');}
+          catch(error){say(error.message);}
+        };
+        return;
+      }
       node.onclick = () => { if (node.dataset.dragged==='true') {node.dataset.dragged='false'; return;} selected=node.dataset.agent; renderInspector(); renderFloor(); };
       node.onpointerdown = e => {
         if(e.button!==0)return;
