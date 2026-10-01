@@ -51,6 +51,9 @@ def install(host, home=None):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
         agent=profile.get('agent_id')
+        if action.startswith('memory.'):
+            from control_center.memory_search import dispatch
+            return dispatch(provider,home,agent,action,args)
         if action.startswith('handoff.') or action in {'chatter.configure','chatter.history'}:
             result=provider.handoffs.dispatch(agent,action,args)
             if action=='handoff.create' or (action=='chatter.configure' and args['enabled']):provider.handoffs.start()

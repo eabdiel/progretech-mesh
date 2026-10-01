@@ -98,6 +98,7 @@
     const live=snapshot?.factoryAgents?.find(a=>'factory-'+a.id===selected);
     const a=live ? {...live,name:live.id[0].toUpperCase()+live.id.slice(1),role:'Local agent'} : snapshot?.agents.find(a=>a.id===selected);
     $('factoryChat').hidden=!live;
+    let memoryButton=$('factoryMemorySearch');if(!memoryButton){memoryButton=document.createElement('button');memoryButton.id='factoryMemorySearch';memoryButton.textContent='Memory search';$('factoryMemoryStatus').after(memoryButton);memoryButton.onclick=()=>{const aid=selectedRuntime();if(aid)MeshMemory.open(aid,$('inspectorName').textContent);else say('Select an enrolled agent to search its memory.');};}memoryButton.hidden=!live;
     $('officeMailbox').hidden=!a || Boolean(live);
     if(live){renderConversation();$('factoryRecovery').hidden=MeshRuntime.indicator(live).state!=='error';$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
     $('inspectorActions').hidden=!a || Boolean(live);

@@ -6,7 +6,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
-import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.4-artifacts.1";
+import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.5-memory.1";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 

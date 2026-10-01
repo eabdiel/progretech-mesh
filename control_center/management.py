@@ -6,11 +6,15 @@ import re
 ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
 ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot'}
 ACTIONS.add('communication.new')
+ACTIONS |= {'memory.status', 'memory.share', 'memory.search'}
 ACTIONS |= {'chatter.configure','chatter.history','handoff.create','handoff.list','handoff.control'}
 ACTIONS |= {'files.begin','files.chunk','files.finish','files.cancel','files.list','files.read','files.reference'}
 
 
 def validate_management(action, args):
+    if isinstance(action,str) and action.startswith("memory."):
+        from control_center.memory_search import validate
+        return validate(action,args)
     if action.startswith('handoff.') or action in {'chatter.configure','chatter.history'}:
         from control_center.handoffs import validate
         return validate(action,args)

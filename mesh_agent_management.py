@@ -75,7 +75,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
         if not isinstance(body, dict) or set(body) - {'action', 'args'}:
             return jsonify(ok=False, error='invalid_request'), 400
         action = body.get('action')
-        if action not in {'chatter.configure', 'chatter.history', 'handoff.create', 'handoff.list', 'handoff.control', 'files.begin', 'files.chunk', 'files.finish', 'files.cancel', 'files.list', 'files.read', 'files.reference', 'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
+        if action not in {'memory.status', 'memory.share', 'memory.search', 'chatter.configure', 'chatter.history', 'handoff.create', 'handoff.list', 'handoff.control', 'files.begin', 'files.chunk', 'files.finish', 'files.cancel', 'files.list', 'files.read', 'files.reference', 'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
             return jsonify(ok=False, error='unknown_action'), 400
         from control_center.management import validate_management
         try:
@@ -92,7 +92,11 @@ def register_management_routes(app, require_session, user_id, registry, gateways
                 if socket:
                     try: socket.close()
                     except (RuntimeError, OSError): pass
-        return jsonify(result), status
+        response=jsonify(result)
+        if action.startswith('memory.'):
+            response.headers['Cache-Control']='no-store, private'
+            response.headers['Pragma']='no-cache'
+        return response, status
 
     @app.post('/api/enrollment/codeseal')
     @require_session

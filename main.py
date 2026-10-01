@@ -180,8 +180,8 @@ SAFE_FILE_EXTENSIONS = {
 }
 SENSITIVE_FILE_EXTENSIONS = {".exe", ".msi", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".so", ".dylib"}
 
-OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.9.4-artifacts.1"
-OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.9.4-artifacts.1.tgz"
+OPENCLAW_PLUGIN_PACKAGE_VERSION = "0.9.5-memory.1"
+OPENCLAW_PLUGIN_PACKAGE_FILENAME = "progretech-mesh-openclaw-0.9.5-memory.1.tgz"
 UNIVERSAL_ENROLLMENT_PROTOCOL_FILENAME = "universal-agent-enrollment-v1.json"
 AGENT_ADAPTER_CATALOG_FILENAME = "agent-adapter-catalog-v1.json"
 OPENCLAW_SELF_BOOTSTRAP_PLAN_FILENAME = "openclaw-self-bootstrap-plan-v1.json"
@@ -1515,12 +1515,27 @@ def create_app() -> Flask:
     def current_mesh_user_id() -> str:
         return fleet_owner_id(session.get("mesh_user"))
 
+    management_send=send_gateway_message
+    if os.environ.get('MESH_LOCAL_CONTROL_CENTER')=='1':
+        if environment=='production' or not app.config['DEV_AUTH_ENABLED']:
+            raise ValueError('local_host_requires_local_development_auth')
+        from mesh_local_host import LocalHost
+        local_host=LocalHost()
+        management_send=local_host.send
+        @app.before_request
+        def local_host_only():
+            if request.remote_addr not in {'127.0.0.1','::1'} or request.host.split(':')[0] not in {'127.0.0.1','localhost'}:
+                return jsonify(ok=False,error='loopback_required'),403
+            if request.headers.get('Sec-Fetch-Site')=='cross-site':
+                return jsonify(ok=False,error='same_origin_required'),403
+            local_host.refresh(DEV_AGENT_REGISTRY,GATEWAY_SOCKETS)
+
     from mesh_office import register_office_routes
-    register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
-    register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
-    register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
+    register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
+    register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
+    register_factory_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
     register_control_center_routes(app, require_session, current_mesh_user_id,
-                                   DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, send_gateway_message)
+                                   DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
 
     @app.before_request
     def restrict_linked_role_credentials():
@@ -3490,4 +3505,4 @@ app = create_app()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
     debug = os.environ.get("FLASK_DEBUG", "1") == "1"
-    app.run(host="0.0.0.0", port=port, debug=debug, threaded=True)
+    app.run(host="127.0.0.1" if os.environ.get("MESH_LOCAL_CONTROL_CENTER")=="1" else "0.0.0.0", port=port, debug=debug, threaded=True)
