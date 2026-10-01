@@ -487,3 +487,5 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
 #manageAgentsModal summary,#agentModal summary{cursor:pointer}
 #manageAgentsModal p,#agentModal .enrollment-help{font-size:13px;line-height:1.6;color:#b1c2d1}
 #manageAgentsModal button{margin-top:8px}
+
+.agent-state.error{background:#ff6975;box-shadow:0 0 14px #ff697599}.agent-card[data-agent-card]{cursor:pointer}.agent-card[data-agent-card]:focus-visible{outline:2px solid #7cc8ff}

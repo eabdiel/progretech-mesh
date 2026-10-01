@@ -50,6 +50,13 @@ def install(host, home=None):
     def execute(runtime_id, action, args, profile):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
+        agent=profile.get('agent_id')
+        if action=='communication.start':return mesh.chat(agent,args['text'])
+        if action=='communication.new':return mesh.new_conversation(agent)
+        if action=='communication.job':return mesh.get(agent,args['job_id'])
+        if action=='runtime.status':return mesh.status(agent)
+        if action in {'runtime.wake','runtime.sleep'}:return mesh.power(agent,action=='runtime.wake')
+        if action=='runtime.snapshot':return mesh.snapshot(agent,args['kind'])
         if action.startswith('factory.'):
             from control_center.factory_jobs import dispatch_factory
             return dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
@@ -80,9 +87,20 @@ def install(host, home=None):
             if model != 'default':
                 headers['x-openclaw-model'] = model
             req = Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=json.dumps(request_body).encode(), headers=headers)
-            with urlopen(req, timeout=300) as response:
-                completion = json.loads(response.read(1048576))
-            return {'reply': completion['choices'][0]['message']['content'], 'role': role, 'model': model}
+            nonce=preferences(provider,profile['agent_id']).get('conversation_nonce')
+            if nonce:req.add_header('x-openclaw-session-key',headers['x-openclaw-session-key']+':'+nonce)
+            try:
+                with urlopen(req, timeout=300) as response:
+                    completion = json.loads(response.read(1048576))
+            except Exception as exc:
+                from control_center.mesh_runtime import provider_error
+                code=provider_error(exc);mesh.signal(agent,'error',code)
+                raise ValueError(code) from exc
+            reply=completion['choices'][0]['message']['content']
+            if reply.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):
+                mesh.signal(agent,'error','mesh_provider_rejected');raise ValueError('mesh_provider_rejected')
+            mesh.signal(agent,'success','reply_received')
+            return {'reply': reply, 'role': role, 'model': model}
         mutation = action in {'voice.preview', 'audio.set', 'voice.start', 'voice.stop', 'vision.analyze', 'chatter.settings', 'chatter.test'}
         if mutation and not host.MUTATION_LOCK.acquire(blocking=False):
             raise ValueError('shared_workstation_busy')
@@ -102,6 +120,9 @@ def install(host, home=None):
                 host.MUTATION_LOCK.release()
 
     provider = AgentControlProvider(state / 'agent-profiles', bindings, discover, execute, capabilities)
+    from control_center.mesh_runtime import MeshRuntime
+    mesh=MeshRuntime(provider,home)
+    provider.mesh_runtime=mesh
     trusted_gateways = dict(bindings)
 
     def roster(gateway_id):
@@ -136,6 +157,8 @@ def install(host, home=None):
             provider.bindings.update(additions)
             from control_center.management import preferences
             agents = [item for item in agents if preferences(provider, item['id'])['enabled']]
+        for item in agents:item['mesh_runtime']=mesh.status(item['id'])
+        agents.append({'id':gateway_id,'name':gateway_id,'role':'','mesh_runtime':mesh.status(gateway_id)})
         return agents
 
     register_provider_routes(host.app, provider, host.token, roster=roster)

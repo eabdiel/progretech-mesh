@@ -4,6 +4,8 @@ import os
 import re
 
 ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
+ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.snapshot'}
+ACTIONS.add('communication.new')
 
 
 def validate_management(action, args):
@@ -12,7 +14,7 @@ def validate_management(action, args):
         return validate_office(args)
     if not isinstance(args, dict) or len(json.dumps(args)) > 8192:
         raise ValueError('invalid_args')
-    fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())
+    fields = {'communication.save': {'role', 'model'}, 'communication.chat': {'text'}, 'communication.start': {'text'}, 'communication.job': {'job_id'}, 'runtime.snapshot': {'kind'}, 'factory.run': {'provider', 'task'}, 'factory.job': {'job_id'}}.get(action, set())
     if set(args) != fields or any(not isinstance(v, str) or not v.strip() or '\x00' in v for v in args.values()):
         raise ValueError('invalid_args')
     for key, value in args.items():
@@ -22,6 +24,27 @@ def validate_management(action, args):
         raise ValueError('invalid_provider')
     if action == 'factory.job' and not re.fullmatch('[a-f0-9]{32}', args['job_id']):
         raise ValueError('invalid_job_id')
+    if action == 'communication.job' and not re.fullmatch('[a-f0-9]{32}', args['job_id']):
+        raise ValueError('invalid_job_id')
+    if action == 'runtime.snapshot' and args['kind'] not in {'task','terminal'}:
+        raise ValueError('invalid_snapshot_kind')
+
+
+def save_preferences(provider, agent_id, changes):
+    with provider.lock:
+        current=preferences(provider,agent_id)
+        current.update(changes)
+        provider.root.mkdir(parents=True,exist_ok=True,mode=0o700)
+        path=provider._path(agent_id).with_suffix('.communication.json')
+        import secrets
+        temporary=path.with_name(path.name+'.'+secrets.token_hex(8)+'.tmp')
+        try:
+            fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'w') as stream:
+                json.dump(current,stream);stream.flush();os.fsync(stream.fileno())
+            temporary.replace(path)
+        finally:
+            if temporary.exists():temporary.unlink()
 
 
 def preferences(provider, agent_id):
@@ -37,6 +60,11 @@ def dispatch(provider, agent_id, action, args):
         current = preferences(provider, agent_id)
         if not current['enabled']:
             raise ValueError('mesh_enrollment_removed')
+        runtime_control=getattr(provider,'mesh_runtime',None)
+        if action in {'communication.chat','communication.start'} and runtime_control:
+            try:asleep=runtime_control.sleeping(agent_id)
+            except (ValueError,KeyError,OSError):asleep=False
+            if asleep:raise ValueError('mesh_agent_sleeping')
         inventory = provider.discover(runtime)
         if action == 'communication.get':
             return {'settings': current, 'roles': inventory.get('communication_roles', [runtime]), 'models': ['default', *inventory.get('communication_models', inventory.get('models', []))], 'runtime_id': runtime}

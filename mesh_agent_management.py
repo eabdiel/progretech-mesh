@@ -75,7 +75,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
         if not isinstance(body, dict) or set(body) - {'action', 'args'}:
             return jsonify(ok=False, error='invalid_request'), 400
         action = body.get('action')
-        if action not in {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
+        if action not in {'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
             return jsonify(ok=False, error='unknown_action'), 400
         from control_center.management import validate_management
         try:

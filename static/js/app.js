@@ -876,6 +876,16 @@
       return;
     }
 
+    if (['request_task_snapshot','request_terminal_snapshot','task_snapshot','terminal_snapshot','task.snapshot','terminal.snapshot'].includes(actionType)) {
+      const id=selectedAgentId;
+      try {
+        const result=await MeshRuntime.request(id,'runtime.snapshot',{kind:actionType.includes('task')?'task':'terminal'});
+        const event={type:'runtime_snapshot',message:result.lines.join('\n'),timestamp:new Date().toISOString(),payload:{sender:'Host',scope:result.scope}};
+        const messages=roleConversations.get(id)||[];roleConversations.set(id,messages);messages.push(event);
+        if(selectedAgentId===id) {appendLiveEvent(event);}
+      } catch(e){showToast(e.message);}
+      return;
+    }
     const response = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/actions/request`, {
       method: "POST",
       headers: {"Accept":"application/json","Content-Type":"application/json"},
@@ -983,7 +993,7 @@
 
   function renderFleet() {
     agentGrid.innerHTML = fleet.map((agent) => `
-      <article class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
+      <article tabindex="0" data-agent-card="${escapeHtml(agent.id)}" class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
           <div class="agent-id">
             <div class="avatar ${["rend","lyra","mak"].includes(agent.id) ? agent.id : "rend"}"></div>
@@ -992,7 +1002,7 @@
               <span>${escapeHtml(agent.role)}</span>
             </div>
           </div>
-          <span class="agent-state ${agent.transport === "connected" ? (agent.state === "working" ? "busy" : "") : "idle"}"></span>
+          <span class="agent-state ${agent.mesh_runtime?.last_result?.severity === "error" ? "error" : agent.transport === "connected" ? (agent.state === "working" ? "busy" : "") : "idle"}"></span>
         </div>
 
         <div class="task">
@@ -1019,6 +1029,7 @@
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
+        ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><span>${agent.mesh_runtime.sleeping ? "Asleep" : "Awake"}${agent.mesh_runtime.resident ? " · model loaded" : ""}</span><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
@@ -1035,6 +1046,19 @@
     }));
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
+    agentGrid.querySelectorAll('[data-agent-card]').forEach(card => {
+      card.onclick=e=>{if(!e.target.closest('button,a,input,select,textarea'))monitorAgent(card.dataset.agentCard);};
+      card.onkeydown=e=>{if(e.target===card && ['Enter',' '].includes(e.key)){e.preventDefault();monitorAgent(card.dataset.agentCard);}};
+    });
+    agentGrid.querySelectorAll('[data-power]').forEach(b=>b.onclick=async()=>{
+      const a=fleet.find(a=>a.id===b.dataset.power);b.disabled=true;
+      try{a.mesh_runtime=await MeshRuntime.run(a.id,a.mesh_runtime.sleeping?'runtime.wake':'runtime.sleep',{},j=>{b.textContent=j.detail;});renderFleet();}
+      catch(e){showToast(e.message);b.disabled=false;}
+    });
+    agentGrid.querySelectorAll('[data-new-conversation]').forEach(b=>b.onclick=async()=>{
+      try{await MeshRuntime.request(b.dataset.newConversation,'communication.new');showToast('New conversation ready. Previous runtime history is preserved.');}
+      catch(e){showToast(e.message);}
+    });
     renderNotificationControls();
   }
 
@@ -1701,13 +1725,18 @@
     appendLiveEvent(reply);
     messageInput.value='';
     try {
-      const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/management`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'communication.chat',args:{text}})});
-      const data=await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || response.status);
-      Object.assign(reply, {type:'message_response',message:data.result.reply,timestamp:new Date().toISOString()});
+      const result=await MeshRuntime.run(agent.id,'communication.start',{text},job=>{
+        reply.message=`${agent.name}: ${job.detail} · ${Math.max(0,Math.floor(Date.now()/1000-job.created_at))}s`;
+        reply.payload={sender:agent.name,phase:job.phase,milestones:job.milestones};
+        if(selectedAgentId===agent.id)renderEvents(agent.control_center_gateway ? messages : liveEvents);
+      });
+      agent.mesh_runtime={...agent.mesh_runtime,last_result:{severity:'success'}};
+      renderFleet();
+      Object.assign(reply, {type:'message_response',message:result.reply,timestamp:new Date().toISOString()});
       if (selectedAgentId === agent.id) { renderEvents(agent.control_center_gateway ? messages : liveEvents); speakAgentReply(reply.message || ''); }
       else showToast(`${agent.name} replied. Open their Message view to read it.`);
     } catch(error) {
+      agent.mesh_runtime={...agent.mesh_runtime,last_result:{severity:'error'}};renderFleet();
       Object.assign(reply, {type:'message_error',message:`Message failed: ${error.message}. No automatic retry was sent.`,payload:{sender:agent.name,severity:'error'}});
       if (selectedAgentId === agent.id) renderEvents(agent.control_center_gateway ? messages : liveEvents);
       showToast(`${agent.name}: ${reply.message}`);

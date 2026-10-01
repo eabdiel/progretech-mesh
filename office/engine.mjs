@@ -3990,6 +3990,12 @@ var agent = (id) => {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || !hive.registry().agents[id] || hive.registry().agents[id].archived) throw Error("office_agent_not_found");
   return hive.registry().agents[id];
 };
+function inboxContext(id) {
+  const pending=hive.inbox(id).sort((a,b)=>(b.priority||0)-(a.priority||0)||String(a.created_at).localeCompare(String(b.created_at)));
+  const selected=[];let text='';
+  for(const m of pending.slice(0,8)) {const next=(text?'\n':'')+m.body;if(text.length+next.length>4000)break;text+=next;selected.push(m.id);}
+  return {messages:text,mailboxIds:selected};
+}
 var log = (event) => hive.appendLog({ ...event, ts: (/* @__PURE__ */ new Date()).toISOString() });
 async function hire(name, role, goal, god = false) {
   if (roster().length >= 12) throw Error("office_capacity");
@@ -4046,6 +4052,25 @@ switch (body.operation) {
     log({ kind: "approval", taskId: args.id, decision: "approved" });
     break;
   }
+  case "mailbox.list": {
+    agent(args.agent);
+    result = {pending: hive.inbox(args.agent).sort((a,b)=>(b.priority||0)-(a.priority||0)||String(a.created_at).localeCompare(String(b.created_at))).map(m=>({...m,subject:redactSecrets(m.subject),body:redactSecrets(m.body)})), history:hive.voiceMessages({agentId:args.agent,limit:20}).filter(m=>m.archived)};
+    break;
+  }
+  case "mailbox.edit":
+  case "mailbox.remove":
+  case "mailbox.priority": {
+    agent(args.agent);
+    if(hive.tasks().tasks.some(t=>t.status==='doing'))throw Error('mailbox_busy');
+    const m=hive.inbox(args.agent).find(m=>m.id===args.id);
+    if(!m || !/^[A-Za-z0-9_-]{1,160}$/.test(m.id))throw Error('mailbox_item_not_pending');
+    const file=join3(hive.agentDir(args.agent),'inbox',m.id+'.json');
+    if(body.operation==='mailbox.remove')unlinkSync(file);
+    else {if(body.operation==='mailbox.edit')m.body=args.text;else m.priority=args.priority;hive.atomicWriteJson(file,m);}
+    log({kind:body.operation,agentId:args.agent,id:m.id});
+    result={saved:true};
+    break;
+  }
   case "message": {
     agent(args.to);
     result = hive.send({ to: args.to, subject: "Owner message", body: args.text, act: "inform" }, "owner");
@@ -4083,8 +4108,16 @@ switch (body.operation) {
       role: a.role,
       goal: settings.goals[a.id],
       memory: hive.memory(a.id).slice(-4e3),
-      messages: hive.inbox(a.id).slice(-8).map((m) => m.body).join("\n").slice(-4e3)
+      ...inboxContext(a.id)
     })), maxIterations: settings.maxIterations };
+    // Claim the pending context atomically with begin; delivered items stay reviewable.
+    for(const a of result.agents) {
+      const inbox=join3(hive.agentDir(a.id),'inbox'),done=join3(inbox,'.done');mkdirSync(done,{recursive:true,mode:448});
+      for(const m of hive.inbox(a.id).filter(m=>a.mailboxIds.includes(m.id))) {
+        if(/^[A-Za-z0-9_-]{1,160}$/.test(m.id))renameSync(join3(inbox,m.id+'.json'),join3(done,m.id+'.json'));
+      }
+      delete a.mailboxIds;
+    }
     break;
   }
   case "event": {

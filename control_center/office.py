@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from control_center.file_lock import lock, unlock
 
-PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control'}
+PUBLIC_OPERATIONS = {'snapshot', 'hire', 'archive', 'task.create', 'task.approve', 'message', 'pause', 'settings', 'memory', 'memory.save', 'run', 'workday.control', 'mailbox.list', 'mailbox.edit', 'mailbox.remove', 'mailbox.priority'}
 
 
 def validate_office(args):
@@ -17,11 +17,13 @@ def validate_office(args):
     op, body = args['operation'], args['args']
     fields = {'hire': {'name', 'role', 'goal'}, 'archive': {'id'}, 'task.create': {'title', 'description', 'assignee', 'dependsOn', 'needsApproval'},
         'task.approve': {'id', 'answer'}, 'message': {'to', 'text'}, 'pause': {'paused'}, 'settings': {'maxIterations'},
-        'memory': {'id'}, 'memory.save': {'id', 'text'}, 'run': {'id'}, 'workday.control': {'action','role','duration'}}.get(op, set())
+        'memory': {'id'}, 'memory.save': {'id', 'text'}, 'run': {'id'}, 'workday.control': {'action','role','duration'}, 'mailbox.list': {'agent'}, 'mailbox.edit': {'agent','id','text'}, 'mailbox.remove': {'agent','id'}, 'mailbox.priority': {'agent','id','priority'}}.get(op, set())
     if not isinstance(body, dict) or set(body) != fields:
         raise ValueError('invalid_office_args')
     for key, value in body.items():
-        if key in {'paused', 'needsApproval'}:
+        if key == 'priority':
+            if type(value) is not int or not -100 <= value <= 100: raise ValueError('invalid_mailbox_priority')
+        elif key in {'paused', 'needsApproval'}:
             if type(value) is not bool: raise ValueError('invalid_office_args')
         elif key == 'maxIterations':
             if type(value) is not int or not 2 <= value <= 20: raise ValueError('invalid_office_args')
@@ -61,7 +63,7 @@ def engine(home, role, operation, args=None):
             unlock(guard)
     if result.returncode:
         # Only known machine codes cross the relay; full runtime diagnostics stay local.
-        for code in ('task_not_ready', 'office_paused', 'office_capacity', 'agent_has_open_tasks', 'director_required', 'office_agent_not_found', 'dependency_not_found', 'approval_not_pending', 'office_role_already_exists'):
+        for code in ('task_not_ready', 'office_paused', 'office_capacity', 'agent_has_open_tasks', 'director_required', 'office_agent_not_found', 'dependency_not_found', 'approval_not_pending', 'office_role_already_exists', 'mailbox_item_not_pending', 'mailbox_busy'):
             if code in result.stderr: raise ValueError(code)
         raise ValueError('office_coordination_failed')
     return json.loads(result.stdout)
@@ -93,6 +95,17 @@ def dispatch_office(home, role, args, agent_id=None):
         result['snapshot']['factoryAgents']=[dict(v,id=k,state=v.get('state','unknown') if fresh else 'unknown') for k,v in payload.get('agents',{}).items()]
         result['snapshot']['factoryObservedAt']=payload.get('updated_at')
     except (OSError,ValueError): result['snapshot']['factoryAgents']=[]
+    from control_center.mesh_runtime import role_controls, is_sleeping, read_signals
+    try: controls=role_controls(home)
+    except (ValueError,OSError,subprocess.SubprocessError): controls={}
+    signals=read_signals(home)
+    for row in result['snapshot']['factoryAgents']:
+        ctrl=controls.get(row['id'])
+        row['sleeping']=is_sleeping(ctrl) if ctrl else None
+        row['last_result']=signals.get(row.get('runtime_id'),{})
+        if row['sleeping']:row['state']='sleeping'
+    from control_center.office_relations import interactions
+    result['snapshot']['interactions']=interactions(result['snapshot'],home)
     from control_center.factory_jobs import _config
     settings = _config(home).get('crewai', {})
     result['snapshot']['runtimeReady'] = bool(settings.get('enabled') and role in settings.get('roles', []) and Path(settings.get('python', '')).is_file())

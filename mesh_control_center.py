@@ -110,12 +110,17 @@ def register_gateway_agents(gateway_id, payload, registry):
                            'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         record['transport'] = 'connected'
+        status=item.get('mesh_runtime')
+        if isinstance(status,dict):
+            record['mesh_runtime']={k:status[k] for k in ('scope','sleeping','model','resident','preload_available','controls_available','last_result') if k in status}
     if host_activity is not None:
         activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
         observed = activity.get('state', host_activity.get('state', 'unknown'))
         host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
                          'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
+        status=host_activity.get('mesh_runtime')
+        if isinstance(status,dict):host['mesh_runtime']={k:status[k] for k in ('scope','sleeping','model','resident','preload_available','controls_available','last_result') if k in status}
 
     return True
 

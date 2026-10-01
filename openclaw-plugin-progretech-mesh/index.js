@@ -1,3 +1,4 @@
+import { recordInteraction, recordAgentResult } from "./interactions.js";
 import { forwardRoleCompletion } from './ide-client.js';
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -1046,6 +1047,14 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
     queueRetry("connect_timeout");
   }, RECONNECT_CONNECT_TIMEOUT_MS);
 
+  let rosterTimer=null, rosterBusy=false;
+  const syncRoster=async()=>{
+    if(rosterBusy || meshSocket!==socket || socket.readyState!==WebSocket.OPEN)return;
+    rosterBusy=true;
+    try{const agents=await discoverControlAgents(record.agent_id,ensureLocalAccessCredential().token);
+      if(meshSocket===socket && socket.readyState===WebSocket.OPEN && Array.isArray(agents))sendMeshGatewayMessage({type:'control_center_roster',payload:{agents,enrollment_restore_version:1,enrollment_receipts:enrollmentReceipts(STATE_DIR,record.agent_id)}});
+    }catch{}finally{rosterBusy=false;}
+  };
   socket.addEventListener("open", () => {
     opened = true;
     retryQueued = false;
@@ -1069,9 +1078,8 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       sendMeshGatewayMessage(heartbeatPayload());
     });
     sendMeshGatewayMessage(localRouteMessage());
-    void discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token).then((agents) => {
-      if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents, enrollment_restore_version: 1, enrollment_receipts: enrollmentReceipts(STATE_DIR, record.agent_id)}});
-    }).catch(() => {});
+    void syncRoster();
+    rosterTimer=setInterval(()=>void syncRoster(),10000);
     appendEvent({
       event_type: "gateway",
       channel: "mesh",
@@ -1145,6 +1153,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   });
 
   socket.addEventListener("close", (event) => {
+    clearInterval(rosterTimer);
     clearMeshConnectWatchdog();
     if (meshSocket === socket) meshSocket = null;
 
@@ -1446,6 +1455,7 @@ function registerObservationHooks(api) {
   });
 
   api.on("after_tool_call", (event, ctx) => {
+    try { recordInteraction(STATE_DIR,event,ctx); } catch {}
     appendEvent({
       event_type: "tool",
       channel: sessionLooksMesh(ctx) ? "mesh" : channelFromContext(ctx, "system"),
@@ -1463,6 +1473,7 @@ function registerObservationHooks(api) {
   });
 
   api.on("agent_end", (event, ctx) => {
+    try { recordAgentResult(STATE_DIR,event,ctx); } catch {}
     appendEvent({
       event_type: "agent",
       channel: sessionLooksMesh(ctx) ? "mesh" : channelFromContext(ctx, "system"),
