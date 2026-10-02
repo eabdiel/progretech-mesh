@@ -33,7 +33,7 @@
     arrange();
     $('floorEmpty').hidden = snapshot.agents.length + (snapshot.factoryAgents?.length || 0) > 0;
     const note=document.querySelector('.floor-footnote');if(note)note.hidden=Boolean(snapshot.factoryAgents?.length);
-    const live=(snapshot.factoryAgents || []).map(a => ({...a,name:a.id[0].toUpperCase()+a.id.slice(1),role:'Live OpenClaw role',id:'factory-'+a.id,isDirector:false,factoryObserved:true}));
+    const live=(snapshot.factoryAgents || []).map(a => ({...a,name:a.id[0].toUpperCase()+a.id.slice(1),role:a.role||'Live OpenClaw role',id:'factory-'+a.id,isDirector:false,factoryObserved:true}));
     const display=[...snapshot.agents,...live];
     live.forEach((a,i)=>{basePositions[a.id]={x:140+(i%4)*240,y:505+Math.floor(i/4)*115};positions[a.id]=manualPositions[a.id] || positions[a.id] || {...basePositions[a.id]};});
     const visible=new Set(display.map(a=>a.id));
@@ -107,7 +107,7 @@
     if(snapshot && !document.hidden && !reduced.matches) {
       $('floorNodes').querySelectorAll('[data-agent]').forEach((node,i)=>{
         const id=node.dataset.agent,p=basePositions[id];if(!p || manualPositions[id] || node.matches(':focus,:hover'))return;
-        const meeting=(chatter?.conversations||[]).find(c=>['approaching','first','second'].includes(c.state) && [c.a_role,c.b_role].includes(id.slice(8)));const q=meeting?{x:480+(meeting.a_role===id.slice(8)?-65:65),y:410}:p;const target={x:q.x+Math.sin(time/5400+i*1.7)*(meeting?10:40),y:q.y+Math.cos(time/6200+i*1.7)*(meeting?7:25)},current=positions[id]||p;positions[id]={x:current.x+(target.x-current.x)*.04,y:current.y+(target.y-current.y)*.04};
+        const meeting=(chatter?.conversations||[]).find(c=>['approaching','first','second','third','reply_wait'].includes(c.state) && [c.a_role,c.b_role,c.c_role].includes(id.slice(8)));const meetingIndex=meeting?(chatter.conversations||[]).filter(c=>['approaching','first','second','third','reply_wait'].includes(c.state)).indexOf(meeting):0;const participantIndex=meeting?[meeting.a_role,meeting.b_role,meeting.c_role].indexOf(id.slice(8)):0;const q=meeting?{x:260+(meetingIndex%2)*420+(participantIndex-1)*75,y:360+Math.floor(meetingIndex/2)*160}:p;const target={x:q.x+Math.sin(time/5400+i*1.7)*(meeting?10:40),y:q.y+Math.cos(time/6200+i*1.7)*(meeting?7:25)},current=positions[id]||p;positions[id]={x:current.x+(target.x-current.x)*.04,y:current.y+(target.y-current.y)*.04};
         node.style.left=positions[id].x+'px';node.style.top=positions[id].y+'px';
       });
       const links=snapshot.interactions||[];
@@ -270,18 +270,19 @@
     try {
       const fleetResponse=await fetch('/api/status');const fleetData=await fleetResponse.json();if(epoch!==hostEpoch)return;fleet=fleetData.agents||[];
       const r=await MeshRuntime.request(aid,'handoff.list');if(epoch!==hostEpoch)return;
-      handoffs=r.rules||[];chatter=r.chatter;$('officeChatter').checked=Boolean(chatter?.enabled);if(document.activeElement!==$('chatterMinutes'))$('chatterMinutes').value=chatter?.session_minutes||15;$('chatterMinutes').readOnly=!chatter?.enabled;renderShared();
+      handoffs=r.rules||[];chatter=r.chatter;$('officeChatter').checked=Boolean(chatter?.enabled);if(document.activeElement!==$('chatterMinutes'))$('chatterMinutes').value=chatter?.session_minutes||15;$('chatterMinutes').readOnly=!chatter?.enabled;$('chatterConcurrency').disabled=!chatter?.enabled;$('chatterGroup').disabled=!chatter?.enabled;if(document.activeElement!==$('chatterConcurrency'))$('chatterConcurrency').value=chatter?.max_conversations||1;$('chatterGroup').checked=Boolean(chatter?.experimental_group_chat);renderShared();
     } catch(e) {if(epoch===hostEpoch)$('chatterNotice').textContent=e.message;}
     finally {sharedPending=false;}
   }
   function renderShared() {
     if(snapshot)$('officeMessageCount').textContent=snapshot.messages.length+(chatter?.conversations||[]).reduce((n,c)=>n+c.messages.length,0);
-    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · serial conversations · repeating '+(chatter.session_minutes||15)+'-minute sessions · '+(chatter.admission||'Waiting for idle agents and capacity')+'.':'Chatter off. Enable to discuss shared projects with idle agents.';
-    $('chatterFeed').innerHTML=(chatter?.conversations||[]).slice().reverse().map(c=>`<li><strong>${escape(c.a_role)} ↔ ${escape(c.b_role)} · ${escape(c.topic)}</strong><p>${escape(c.state)}${c.note?' · '+escape(c.note):''}</p>${(c.memory||[]).map(m=>`<small>${escape(m.agent)} · ${escape(m.status)}${m.ids?.length?' · '+escape(m.ids.join(', ')):''}</small>`).join('')}${c.messages.map(m=>`<p><strong>${escape(m.agent)}</strong><br>${escape(m.text)}</p>`).join('')}<small>${escape(new Date(c.created*1000).toLocaleString())}</small></li>`).join('')||'<li>No office conversations recorded.</li>';
+    $('chatterNotice').textContent=chatter?.enabled?'Chatter on · idle agents only · '+(chatter.max_conversations||1)+' concurrent conversations · '+(chatter.experimental_group_chat?'3-agent groups':'pairs')+' · repeating '+(chatter.session_minutes||15)+'-minute sessions · '+(chatter.admission||'Waiting for idle agents and capacity')+'.':'Chatter off. Enable to discuss shared projects with idle agents.';
+    $('chatterFeed').innerHTML=(chatter?.conversations||[]).slice().reverse().map(c=>`<li><strong>${escape(c.a_role)} ↔ ${escape(c.b_role)}${c.c_role?' ↔ '+escape(c.c_role):''} · ${escape(c.topic)}</strong><p>${escape(c.state)}${c.note?' · '+escape(c.note):''}</p>${(c.memory||[]).map(m=>`<small>${escape(m.agent)} · ${escape(m.status)}${m.ids?.length?' · '+escape(m.ids.join(', ')):''}</small>`).join('')}${c.messages.map(m=>`<p><strong>${escape(m.agent)}</strong><br>${escape(m.text)}</p>`).join('')}<small>${escape(new Date(c.created*1000).toLocaleString())}</small></li>`).join('')||'<li>No office conversations recorded.</li>';
     $('handoffItems').innerHTML=handoffs.filter(r=>!selected || !selected.startsWith('factory-') || r.target===selectedRuntime()).map(r=>`<li><strong>${escape(r.source)} → ${escape(r.target_role)}</strong><p>${escape(r.text)}</p><p>${escape(r.state)} · ${escape(r.note||'')}</p>${r.artifact?'<p>Artifact: '+escape(r.artifact.name)+'</p>':''}${['waiting','paused'].includes(r.state)?`<button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="${r.state==='paused'?'waiting':'paused'}">${r.state==='paused'?'Resume':'Pause'}</button><button data-rule="${r.id}" data-target="${escape(r.target)}" data-state="cancelled">Cancel</button>`:''}</li>`).join('')||'<li>No conditional instructions.</li>';
     $('handoffItems').querySelectorAll('[data-rule]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await MeshRuntime.request(b.dataset.target,'handoff.control',{id:b.dataset.rule,state:b.dataset.state});loadShared();}catch(e){say(e.message);b.disabled=false;}});
   }
   $('officeChatter').onchange=async()=>{const b=$('officeChatter'),enabled=b.checked;b.disabled=true;try{await MeshRuntime.request(host(),'chatter.configure',{enabled});await loadShared();}catch(e){b.checked=!enabled;say(e.message);}finally{b.disabled=false;}};
+  for(const id of ['chatterConcurrency','chatterGroup'])$(id).onchange=async()=>{if(!chatter?.enabled||!$('chatterConcurrency').reportValidity())return;try{await MeshRuntime.request(host(),'chatter.configure',{enabled:true,max_conversations:Number($('chatterConcurrency').value),experimental_group_chat:$('chatterGroup').checked});await loadShared();}catch(e){say(e.message);await loadShared();}};
   $('chatterMinutes').onchange=async()=>{const input=$('chatterMinutes');if(!chatter?.enabled)return;if(!input.reportValidity())return;input.disabled=true;try{await MeshRuntime.request(host(),'chatter.configure',{enabled:true,session_minutes:Number(input.value)});await loadShared();}catch(e){input.value=chatter?.session_minutes||15;say(e.message);}finally{input.disabled=false;}};
   async function loadArtifacts() {
     const epoch=hostEpoch,aid=host();$('artifactStatus').textContent='Loading host files…';

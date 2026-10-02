@@ -39,8 +39,10 @@ def interactions(snapshot, home):
             source='factory-'+r['source'];target='factory-'+r['target_role']
             output.append({'id':'artifact-'+r['id'],'kind':'instruction','from':source,'to':target,'title':'Artifact handoff: '+r.get('artifact',{}).get('name','unreported'),'task_id':None,'parts':{source:'Published '+r.get('artifact',{}).get('name','artifact'),target:r['text']},'source':'Owner-authorized conditional instruction · '+r['state']})
         for c in state.get('chatter',{}).get('conversations',[])[-10:]:
-            if c['state'] not in {'queued','approaching','first','reply_wait','second'}:continue
-            a='factory-'+c['a_role'];b='factory-'+c['b_role']
-            output.append({'id':'chatter-'+c['id'],'chatter_id':c['id'],'topic_editable':c['state']!='complete','kind':'conversation','from':a,'to':b,'title':c['topic'],'task_id':None,'parts':{a:'\n'.join(m['text'] for m in c['messages'] if m['agent']==c['a_role']) or 'Reply pending',b:'\n'.join(m['text'] for m in c['messages'] if m['agent']==c['b_role']) or 'Reply pending'},'source':('Requested office chatter · ' if not c['messages'] else 'Observed office chatter · ')+c['state']})
+            if c['state'] not in {'queued','approaching','first','reply_wait','second','third'}:continue
+            roles=[c['a_role'],c['b_role']]+([c['c_role']] if c.get('c_role') else [])
+            for left,right in combinations(roles,2):
+                a='factory-'+left;b='factory-'+right
+                output.append({'id':'chatter-'+c['id']+'-'+left+'-'+right,'chatter_id':c['id'],'topic_editable':True,'kind':'conversation','from':a,'to':b,'title':c['topic'],'task_id':None,'parts':{a:'\n'.join(m['text'] for m in c['messages'] if m['agent']==left) or 'Reply pending',b:'\n'.join(m['text'] for m in c['messages'] if m['agent']==right) or 'Reply pending'},'source':('Experimental group chatter · ' if c.get('c_role') else 'Office chatter · ')+c['state']})
     except (OSError,ValueError,KeyError,TypeError):pass
     return output[-80:]

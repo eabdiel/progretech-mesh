@@ -27,3 +27,5 @@
 
 #chatterMinutes { width: 4.5rem; padding: .35rem .5rem; }
 #chatterMinutes[readonly] { opacity: .65; cursor: default; }
+
+#chatterConcurrency { width: 4.5rem; padding: .35rem .5rem; }

@@ -186,7 +186,7 @@ class MeshRuntime:
             if len(self.jobs)>=128: raise ValueError('mesh_jobs_full')
             ident=secrets.token_hex(16)
             self.jobs[ident]={'job_id':ident,'agent_id':agent,'kind':kind,'done':False,'phase':'queued',
-                'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[], 'specklet':track}
+                'detail':'Request accepted by your host','created_at':now,'updated_at':now,'milestones':[], 'specklet':track,'background':bool(background)}
             if capability:self.jobs[ident]['capability']=capability
         def run():
             try:

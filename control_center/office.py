@@ -102,6 +102,11 @@ def dispatch_office(home, role, args, agent_id=None):
         result['snapshot']['factoryObservedAt']=payload.get('updated_at')
         result['snapshot']['workdayTasks']=[{k:t.get(k) for k in ('id','role','phase','state','day','slot','started','finished')} for t in payload.get('tasks',[])][:30]
     except (OSError,ValueError): result['snapshot']['factoryAgents']=[]
+    try:
+        entries=json.loads((Path(home)/'.openclaw/openclaw.json').read_text())['agents']['entries']
+        if 'imagen' in entries and not any(a['id']=='imagen' for a in result['snapshot']['factoryAgents']):
+            result['snapshot']['factoryAgents'].append({'id':'imagen','runtime_id':'imagen','state':'unknown','role':'Image generation specialist','capability':'image_generation'})
+    except (OSError,ValueError,KeyError,TypeError):pass
     from control_center.mesh_runtime import role_controls, is_sleeping, read_signals
     try: controls=role_controls(home)
     except (ValueError,OSError,subprocess.SubprocessError): controls={}

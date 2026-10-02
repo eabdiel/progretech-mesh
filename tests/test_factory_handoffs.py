@@ -106,3 +106,67 @@ class HandoffTests(unittest.TestCase):
         tid=created['result']['id'];result=engine(self.home,'main','task.priority',{'id':tid,'priority':20});self.assertEqual(result['snapshot']['tasks'][0]['priority'],20)
         engine(self.home,'main','begin',{'id':tid})
         with self.assertRaisesRegex(ValueError,'task_not_ready'):engine(self.home,'main','task.priority',{'id':tid,'priority':21})
+
+    def test_concurrency_defaults_and_typed_bounded_settings(self):
+        self.assertEqual(self.h.data['chatter']['max_conversations'],1)
+        self.assertFalse(self.h.data['chatter']['experimental_group_chat'])
+        for value in [0,5,True,'2',1.5]:
+            with self.assertRaisesRegex(ValueError,'invalid_chatter_concurrency'):
+                self.h.dispatch('host','chatter.configure',{'enabled':True,'max_conversations':value})
+        with self.assertRaisesRegex(ValueError,'invalid_group_chat'):
+            self.h.dispatch('host','chatter.configure',{'enabled':True,'experimental_group_chat':1})
+        self.h.dispatch('host','chatter.configure',{'enabled':True,'max_conversations':3,'experimental_group_chat':True})
+        restored=Handoffs(self.provider,self.home,self.mesh)
+        self.assertEqual(restored.data['chatter']['max_conversations'],3)
+        self.assertTrue(restored.data['chatter']['experimental_group_chat'])
+
+    def test_concurrent_pairs_never_share_participants(self):
+        self.provider.bindings.update({'host--architect':'architect','host--fast':'fast','host--progre':'progre','host--coder':'coder'})
+        self.h.dispatch('host','chatter.configure',{'enabled':True,'max_conversations':3})
+        self.h.chatter_tick()
+        rows=self.h.data['chatter']['conversations']
+        self.assertEqual(len(rows),3)
+        people=[a for c in rows for a in self.h.participants(c)]
+        self.assertEqual(len(people),len(set(people)))
+        self.h.chatter_tick();self.assertEqual(len(rows),3)
+        self.h.dispatch('host','chatter.configure',{'enabled':False})
+        self.assertTrue(all(c['state']=='stopped' for c in rows))
+
+    def test_group_three_ordered_turns_and_proposal_notification(self):
+        self.provider.bindings['host--architect']='architect'
+        self.h.dispatch('host','chatter.configure',{'enabled':True,'experimental_group_chat':True})
+        self.h.chatter_tick();row=self.h.data['chatter']['conversations'][0]
+        row['approach_until']=0
+        people=self.h.participants(row);self.assertEqual(len(people),3)
+        self.h.chatter_tick()
+        for i,person in enumerate(people):
+            self.assertEqual(self.mesh.calls[i][0],person)
+            self.mesh.jobs[(person,str(i))].update(done=True,result={'reply':'Proposal turn '+str(i)})
+            self.h.chatter_tick()
+        self.assertEqual(row['state'],'complete');self.assertEqual(len(row['messages']),3)
+        self.assertTrue(row['director_notified'])
+        proposal=Path(row['proposal_path']);self.assertTrue(proposal.is_file())
+        self.assertIn('Proposal turn 2',proposal.read_text())
+        self.assertIn('have not been executed',proposal.read_text())
+        self.assertIn('Proposal turn 0',self.mesh.calls[2][1]);self.assertIn('Proposal turn 1',self.mesh.calls[2][1])
+        self.assertTrue(any('Lyra and Director' in n for n in self.notices))
+
+    def test_group_queue_requires_opt_in_distinct_bound_participants(self):
+        self.provider.bindings['host--architect']='architect'
+        args={'a':'host--designer','b':'host--reviewer','c':'host--architect','topic':'PWA preview proposal'}
+        self.h.dispatch('host','chatter.configure',{'enabled':True})
+        with self.assertRaisesRegex(ValueError,'group_chat_disabled'):self.h.dispatch('host','chatter.group',args)
+        self.h.dispatch('host','chatter.configure',{'enabled':True,'experimental_group_chat':True})
+        row=self.h.dispatch('host','chatter.group',args)
+        self.assertEqual(row['state'],'queued');self.assertEqual(row['c'],args['c'])
+        self.assertEqual(self.h.dispatch('host','chatter.group',args)['id'],row['id'])
+        with self.assertRaisesRegex(ValueError,'invalid_chatter_pair'):self.h.dispatch('host','chatter.group',{**args,'c':args['a']})
+        with self.assertRaisesRegex(ValueError,'invalid_chatter_pair'):self.h.dispatch('host','chatter.group',{**args,'c':'other--architect'})
+
+    def test_restart_does_not_replay_third_turn(self):
+        self.provider.bindings['host--architect']='architect'
+        row=self.h.conversation('host--designer','host--reviewer',c='host--architect')
+        row['state']='third';self.h.data['chatter']['conversations'].append(row);self.h.save()
+        restored=Handoffs(self.provider,self.home,self.mesh)
+        self.assertEqual(restored.data['chatter']['conversations'][0]['state'],'unconfirmed')
+        self.assertFalse(self.mesh.calls)

@@ -44,3 +44,9 @@ class RelationshipLifecycleTests(unittest.TestCase):
         self.assertEqual(len(interactions(snap, self.home)), 1)
         snap['factoryAgents'][1]['state'] = 'success'
         self.assertEqual(interactions(snap, self.home), [])
+
+    def test_group_projection_connects_all_three_and_clears_at_completion(self):
+        chat={'id':'group','a_role':'architect','b_role':'designer','c_role':'reviewer','topic':'PWA','messages':[],'state':'third'}
+        links=self.links(conversations=[chat]);self.assertEqual(len(links),3)
+        self.assertEqual({p for l in links for p in [l['from'],l['to']]},{'factory-architect','factory-designer','factory-reviewer'})
+        chat['state']='complete';self.assertEqual(self.links(conversations=[chat]),[])
