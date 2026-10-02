@@ -1,6 +1,6 @@
 {
   "name": "@progretech/openclaw-mesh",
-  "version": "0.9.7-specklet.2",
+  "version": "0.9.8-chatter-groups.1",
   "private": true,
   "type": "module",
   "description": "ProgreTech Mesh direct-first transport with offline same-LAN reconnect support.",
