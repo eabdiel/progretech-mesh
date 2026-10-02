@@ -59,8 +59,8 @@ class LocalHost:
                 registry[aid]={'id':aid,'name':r.get('name',aid),'role':r.get('role',''),
                     'owner_id':'local-edwin','trust_state':'verified','trust_valid':True,
                     'trust_reason':'authenticated-local-host-binding','local_host_binding':True,
-                    'state':'paused' if runtime.get('sleeping') else 'idle','transport':'connected',
-                    'task':'Local host connected','phase':'Authenticated local host · '+('Asleep' if runtime.get('sleeping') else 'Awake'),
+                    'state':'paused' if runtime.get('sleeping') is True else 'idle' if runtime.get('sleeping') is False else 'unknown','transport':'connected',
+                    'task':'Local host connected','phase':'Authenticated local host',
                     'runtime':'OpenClaw','model':runtime.get('model','Unknown'),'mesh_runtime':runtime,
                     'identified_agents':[{'id':x['id'],'name':x.get('name',x['id']),'role':x.get('role','')} for x in rows if x['id']!='rend'] if aid=='rend' else [],
                     **({'control_center_gateway':'rend','runtime_id':aid.split('--',1)[1]} if aid!='rend' else {})}

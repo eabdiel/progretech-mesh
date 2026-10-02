@@ -1016,7 +1016,7 @@
         <div class="task">
           <label>${agent.transport === "connected" ? "Live activity" : "Status"}</label>
           <strong>${escapeHtml(agent.task)}</strong>
-          <span>${escapeHtml(agent.phase)}${agent.mesh_runtime?.controls_available ? ` · ${agent.mesh_runtime.sleeping ? "Asleep" : "Awake"}` : ""}</span>
+          <span>${escapeHtml(agent.phase)}${agent.mesh_runtime ? ` · ${agent.mesh_runtime.sleeping === true ? "Asleep" : agent.mesh_runtime.sleeping === false ? "Awake" : "Availability unknown"}` : ""}</span>
         </div>
 
         <div class="progress"><i style="width:${Number(agent.progress || 0)}%"></i></div>
@@ -1037,7 +1037,7 @@
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.mesh_runtime?.controls_available ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}">${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
+        ${agent.mesh_runtime?.controls_available && typeof agent.mesh_runtime.sleeping === "boolean" ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}" ${agent.transport !== "connected" ? "disabled" : ""}>${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
         ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state === "error" ? `<div class="agent-actions"><button data-recover="${escapeHtml(agent.id)}">Try to resolve</button></div>` : ""}
         ${agent.transport === "connected" ? `<div class="agent-actions"><label><input type="checkbox" data-agent-specklet="${escapeHtml(agent.id)}" ${agent.mesh_runtime?.specklet_enabled?"checked":""}> Use Specklet</label><a href="/agents/${encodeURIComponent(agent.id)}/task-board">Task Board</a><button data-agent-memory="${escapeHtml(agent.id)}" data-memory-name="${escapeHtml(agent.name)}">Memory search</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
