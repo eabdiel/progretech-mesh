@@ -2,11 +2,36 @@
 import base64,hashlib,json,secrets,time,os
 from urllib.parse import urlencode
 from urllib.request import Request,urlopen
-from flask import abort,redirect,request,session,url_for
+from flask import abort,redirect,request,session,url_for,jsonify
 ISSUER='https://codeseal.progretech.com'
 CALLBACK='https://mesh.progretech.com/auth/progretech/callback'
 
 def register_progretech_auth(app):
+    app.config.setdefault('PROGRETECH_SECURITY_ENFORCED', os.getenv('PROGRETECH_SECURITY_ENFORCED','0').lower() in ('1','true'))
+    app.config.setdefault('PROGRETECH_SECURITY_STATUS_TOKEN', os.getenv('PROGRETECH_SECURITY_STATUS_TOKEN',''))
+
+    @app.before_request
+    def enforce_shared_account():
+        if not app.config.get('PROGRETECH_SECURITY_ENFORCED'):return
+        if request.endpoint == 'static' or request.path in ('/health','/healthz','/startupz','/ready','/readyz','/auth/progretech/login','/auth/progretech/callback','/logout'):return
+        if request.path in ('/api/auth/firebase/session','/login/dev'):
+            return jsonify(ok=False,error='shared_login_required',login='/auth/progretech/login'),401
+        user=session.get('mesh_user')
+        if not user:return  # Machine credentials are independently authenticated.
+        subject=user.get('progretech_user_id')
+        if not subject or type(user.get('session_version')) is not int:
+            session.clear()
+            return jsonify(ok=False,error='shared_login_required',login='/auth/progretech/login'),401
+        from mesh_account_security import account_status
+        try:state=account_status(subject)
+        except Exception:return jsonify(ok=False,error='account_security_unavailable'),503
+        if state['status']=='locked':
+            session.clear()
+            return jsonify(ok=False,error='account_locked',message='Your ProgreTech account is locked. Contact support@progretech.com for identity verification and recovery. Billing renewal pause has been requested.'),423
+        if state['session_version']!=user['session_version']:
+            session.clear()
+            return jsonify(ok=False,error='shared_login_required',login='/auth/progretech/login'),401
+
     @app.get('/auth/progretech/login')
     def progretech_login():
         verifier=secrets.token_urlsafe(48);state=secrets.token_urlsafe(32)
@@ -38,6 +63,8 @@ def register_progretech_auth(app):
                     pass
                 else:
                     abort(503)
+        if app.config.get('PROGRETECH_SECURITY_ENFORCED') and type(user.get('session_version')) is not int:abort(401)
         session.clear();session['mesh_user']={'id':owner_id,'progretech_user_id':user['sub'],'email':user['email'],'display_name':user['email'].split('@')[0],'auth_source':'progretech-shared','auth_strength':user['auth_strength']}
+        if type(user.get('session_version')) is int:session['mesh_user']['session_version']=user['session_version']
         session.permanent=True
         return redirect(url_for('index'))
