@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from unittest.mock import patch
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from mesh_gateway_agents import enrollment_binding
-from offline.registry import Registry
+from offline.registry import Registry, runtime_executable
 
 
 def pem():
@@ -60,6 +61,38 @@ class LocalGatewayTests(unittest.TestCase):
         self.exe=self.home/'openclaw';self.exe.write_text('');self.exe.chmod(0o700)
 
     def tearDown(self):self.directory.cleanup()
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX desktop/service PATH regression')
+    def test_boot_path_discovers_user_installed_gateway_without_shell_setup(self):
+        bindir=self.home/'.local/bin';bindir.mkdir(parents=True)
+        executable=bindir/'openclaw';executable.write_text('');executable.chmod(0o700)
+        def run(args, **kwargs):
+            self.assertEqual(args[0],str(executable))
+            return subprocess.CompletedProcess(args,0,json.dumps({'agents':[
+                {'id':'main','name':'Main','workspace':str(self.home)}]}),'')
+        with patch.dict(os.environ, {'PATH':str(self.home/'empty-path')}):
+            first=self.registry.discover_gateway(self.home,run)
+            restarted=Registry(self.home).discover_gateway(self.home,run)
+        self.assertTrue(first['available'])
+        self.assertEqual(first,restarted)
+        self.assertEqual(len(first['candidates']),1)
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX executable permissions')
+    def test_user_bin_fallback_is_allowlisted_and_requires_executable(self):
+        bindir=self.home/'.local/bin';bindir.mkdir(parents=True)
+        for kind in ('openclaw','hermes','claude','unapproved'):
+            executable=bindir/kind;executable.write_text('');executable.chmod(0o700)
+        with patch.dict(os.environ, {'PATH':str(self.home/'empty-path')}):
+            self.assertIsNone(runtime_executable('unapproved',self.home))
+            self.assertEqual({r['kind'] for r in self.registry.discover(self.home)}, {'hermes','claude'})
+            if os.name!='nt':
+                (bindir/'openclaw').chmod(0o600)
+                self.assertIsNone(runtime_executable('openclaw',self.home))
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX executable fixture')
+    def test_existing_path_selection_precedes_user_bin(self):
+        with patch.dict(os.environ, {'PATH':str(self.home)}):
+            self.assertEqual(runtime_executable('openclaw',self.home),str(self.exe))
 
     def test_live_inventory_is_public_only_and_does_not_auto_import(self):
         public={'id':'mak','name':'Mak','workspace':str(self.home), 'private_memory':'must-not-return', 'credential':'must-not-return'}
