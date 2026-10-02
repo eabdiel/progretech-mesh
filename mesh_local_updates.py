@@ -65,7 +65,7 @@ class LocalUpdates:
         if not isinstance(target,str) or not re.fullmatch('[a-f0-9]{40}',target):raise ValueError('invalid_update_revision')
         self.config();installed=self.installation();offer=read(self.state/'offer.json',{})
         if offer.get('target')!=target or not offer.get('available') or offer.get('current')!=installed['commit']:raise ValueError('check_for_updates_first')
-        if read(self.state/'job.json',{}).get('phase') in {'queued','preparing','installing','restarting'}:raise ValueError('update_already_running')
+        if read(self.state/'job.json',{}).get('phase') in {'queued','preparing','installing','waiting_for_idle','restarting'}:raise ValueError('update_already_running')
         if git(installed['source'],'status','--porcelain'):raise ValueError('local_changes_preserved_update_blocked')
         helper=Path(__file__).resolve().parent/'install/update-local-mesh.py'
         write(self.state/'job.json',{'phase':'queued','target':target})

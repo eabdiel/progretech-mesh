@@ -64,7 +64,11 @@ def install(state,target):
     write(state/'job.json',{'phase':'installing','target':target})
     subprocess.run([str(interpreter),'-m','pip','install','-r',str(update_dir/'requirements.txt')],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=600)
     subprocess.run([str(interpreter),'-m','compileall','-q',str(update_dir)],check=True,stdout=subprocess.DEVNULL,timeout=60)
-    if not host_idle():raise ValueError('active_mesh_work_update_deferred')
+    write(state/'job.json',{'phase':'waiting_for_idle','target':target})
+    deadline=time.monotonic()+180
+    while not host_idle():
+        if time.monotonic()>=deadline:raise ValueError('active_mesh_work_update_deferred')
+        time.sleep(2)
     if git(previous['source'],'status','--porcelain'):raise ValueError('local_changes_preserved_update_blocked')
     next_install={'source':str(update_dir),'python':str(interpreter),'commit':target,'version':version}
     write(state/'previous.json',previous)
