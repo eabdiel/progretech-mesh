@@ -26,26 +26,20 @@ if [[ "${LOGIN_CODE}" != "200" ]]; then
   rm -f /tmp/mesh-login.html
   exit 2
 fi
-if grep -q "Email me a sign-in link" /tmp/mesh-login.html; then
-  echo "Firebase email-link login surface: PASS"
+if grep -q "Sign in with ProgreTech" /tmp/mesh-login.html; then
+  echo "Shared ProgreTech login surface: PASS"
 else
-  echo "Firebase email-link login surface: FAIL"
+  echo "Shared ProgreTech login surface: FAIL"
   rm -f /tmp/mesh-login.html
   exit 3
 fi
 rm -f /tmp/mesh-login.html
 
-AUTH_CONFIG_CODE="$(curl -sS -o /tmp/mesh-auth-config.json -w '%{http_code}' "${SERVICE_URL}/api/auth/firebase/config")"
-if [[ "${AUTH_CONFIG_CODE}" == "200" ]]; then
-  python3 -m json.tool /tmp/mesh-auth-config.json
-  echo "Firebase public config endpoint: PASS"
-else
-  cat /tmp/mesh-auth-config.json
-  echo "Firebase public config endpoint: FAIL (${AUTH_CONFIG_CODE})"
-  rm -f /tmp/mesh-auth-config.json
+AUTH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' "${SERVICE_URL}/auth/progretech/login")"
+if [[ "${AUTH_CODE}" != "302" ]]; then
+  echo "Shared ProgreTech redirect: FAIL (${AUTH_CODE})"
   exit 4
 fi
-rm -f /tmp/mesh-auth-config.json
 
 curl -fsSI "${SERVICE_URL}/static/manifest.webmanifest" >/dev/null
 curl -fsSI "${SERVICE_URL}/static/sw.js" >/dev/null

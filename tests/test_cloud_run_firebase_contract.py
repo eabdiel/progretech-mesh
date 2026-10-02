@@ -9,7 +9,7 @@ class TestCloudRunFirebaseContract(unittest.TestCase):
         self.verify = (ROOT / "scripts" / "verify-cloud-run.sh").read_text(encoding="utf-8")
 
     def test_deploy_uses_firebase_email_link(self):
-        self.assertIn("MESH_AUTH_MODE=firebase-email-link", self.deploy)
+        self.assertIn("MESH_AUTH_MODE=progretech-shared", self.deploy)
         self.assertIn("MESH_FIREBASE_API_KEY", self.deploy)
         self.assertIn("MESH_FIREBASE_AUTH_READY", self.deploy)
         self.assertNotIn("MESH_OIDC_READY", self.deploy)
@@ -19,8 +19,8 @@ class TestCloudRunFirebaseContract(unittest.TestCase):
         self.assertIn("DEV_AUTH_ENABLED=0", self.deploy)
 
     def test_verify_checks_email_link_surface(self):
-        self.assertIn("Email me a sign-in link", self.verify)
-        self.assertIn("/api/auth/firebase/config", self.verify)
+        self.assertIn("Sign in with ProgreTech", self.verify)
+        self.assertIn("/auth/progretech/login", self.verify)
 
     def test_single_instance_constraint_preserved(self):
         self.assertIn("--max-instances 1", self.deploy)
