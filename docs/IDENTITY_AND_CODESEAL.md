@@ -118,3 +118,29 @@ contract. `MESH_CODESEAL_READY=1` must not be set until the live production
 acceptance suite confirms the verifier, HTTP identity path, CodeSeal evidence,
 and these deployment invariants together.
 
+
+## Shared account security locks
+
+Enable `PROGRETECH_SECURITY_ENFORCED=1` and mount the separate read-only
+`PROGRETECH_SECURITY_STATUS_TOKEN` in production. Authenticated browser requests
+validate the canonical subject and session version against CodeSeal's
+`POST /auth/sso/account-status` endpoint; only the current request memoizes a
+response. Locked or version-revoked cookies are cleared. Status outages and
+malformed/mismatched responses fail closed. Shared SSO userinfo supplies the
+session version. `PROGRETECH_SECURITY_STATUS_FETCH(subject)` is a test-fixture
+Flask-config callable and must not be configured for production.
+
+Legacy Firebase email-link and local development human sessions cannot establish
+canonical lock status and must sign in using ProgreTech shared login when this
+security setting is enabled. Shared login still maps the broker-verified email to
+an existing verified Firebase UID so ownership remains intact. New legacy human
+session issuance is disabled under enforcement. Existing machine credentials,
+robot identities and signed gateway connections remain separately authenticated.
+Browser WebSocket deliveries recheck status before every private send in a fresh
+app context; an already-open connection cannot continue receiving private events
+after lock, revocation or broker failure. An idle stream closes when its next
+private delivery is attempted. No account authorization is cached across sends.
+
+A lock requires support-assisted identity verification at support@progretech.com.
+An active account whose billing remains on hold can still use already-valid Mesh
+access; billing resumption is a separate, explicit support action.

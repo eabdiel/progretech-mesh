@@ -3386,6 +3386,10 @@ def create_app() -> Flask:
             ws.close(reason="agent_not_found")
             return
 
+        # Browser streams must lose private delivery when canonical account state
+        # changes, including connections opened before the lock.
+        from mesh_account_security import AccountBoundSocket
+        ws = AccountBoundSocket(ws, app, session.get("mesh_user") or {})
         with LIVE_LOCK:
             CLIENT_SOCKETS.setdefault(agent_id, []).append(ws)
             recent = list(EVENT_BUFFERS.get(agent_id, []))
