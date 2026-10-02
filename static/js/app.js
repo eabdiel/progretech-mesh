@@ -997,7 +997,7 @@
         <div class="task">
           <label>${agent.transport === "connected" ? "Live activity" : "Status"}</label>
           <strong>${escapeHtml(agent.task)}</strong>
-          <span>${escapeHtml(agent.phase)}</span>
+          <span>${escapeHtml(agent.phase)}${agent.mesh_runtime ? ` · ${MeshAvailability.label(agent.mesh_runtime)}` : ""}</span>
         </div>
 
         <div class="progress"><i style="width:${Number(agent.progress || 0)}%"></i></div>
@@ -1018,6 +1018,7 @@
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
+        ${agent.mesh_runtime?.controls_available && typeof agent.mesh_runtime.sleeping === "boolean" ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}" ${agent.transport !== "connected" ? "disabled" : ""}>${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
@@ -1034,6 +1035,16 @@
     }));
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
+    agentGrid.querySelectorAll('[data-power]').forEach(button => button.onclick = async () => {
+      const agent = fleet.find(a => a.id === button.dataset.power);
+      button.disabled = true;
+      try {
+        agent.mesh_runtime = await MeshAvailability.power(agent.id, agent.mesh_runtime.sleeping,
+          detail => { button.textContent = detail; });
+        if (agent.mesh_runtime.model) agent.model = agent.mesh_runtime.model;
+        renderFleet();
+      } catch (error) { showToast(error.message); button.disabled = false; }
+    });
     renderNotificationControls();
   }
 

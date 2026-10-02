@@ -36,9 +36,11 @@ def validate_args(action, args):
         raise ValueError('invalid_args')
     fields = {'profile.save': PROFILE_FIELDS, 'voice.preview': {'text'},
               'audio.set': {'source', 'sink'}, 'vision.analyze': {'prompt'},
-              'chatter.settings': {'enabled', 'quiet'}}.get(action, set())
+              'chatter.settings': {'enabled', 'quiet'}, 'communication.job': {'job_id'}}.get(action, set())
     if set(args) - fields:
         raise ValueError('unknown_fields')
+    if action == 'communication.job' and (set(args) != {'job_id'} or not isinstance(args['job_id'], str) or not re.fullmatch('[a-f0-9]{32}', args['job_id'])):
+        raise ValueError('invalid_job_id')
     if action == 'profile.save':
         if set(args) != PROFILE_FIELDS or not _text(args['role'], 160):
             raise ValueError('invalid_profile')

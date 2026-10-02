@@ -148,6 +148,26 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(self.post('voice.settings').status_code,400)
         self.assertEqual(self.post(args={'agent_id':'rend'}).status_code,400)
         self.assertFalse(self.sent)
+    def test_availability_controls_preserve_auth_origin_and_agent_scope(self):
+        self.assertEqual(self.post('runtime.wake').status_code,401)
+        self.login()
+        for action in ('runtime.status','runtime.wake','runtime.sleep'):
+            self.assertEqual(self.post(action).status_code,200)
+            self.assertEqual(self.sent[-1][1]['payload']['agent_id'],'lyra')
+            self.assertEqual(self.post(action,origin='https://evil.example').status_code,403)
+            self.assertEqual(self.post(action,args={'agent_id':'rend'}).status_code,400)
+        self.assertEqual(self.post('communication.job',{'job_id':'a'*32}).status_code,200)
+        self.assertEqual(self.post('communication.job',{'job_id':'bad'}).status_code,400)
+        self.login('other')
+        self.assertEqual(self.post('runtime.wake').status_code,404)
+
+    def test_availability_roster_does_not_invent_awake_or_expose_private_fields(self):
+        self.assertEqual(cloud.availability_status({}),{})
+        result=cloud.availability_status({'mesh_runtime':{'sleeping':None,'controls_available':False,'model':'configured','private':'hidden'}})
+        self.assertIsNone(result['sleeping'])
+        self.assertEqual(result['model'],'configured')
+        self.assertNotIn('private',result)
+
     def test_selected_agent_roundtrip(self):
         self.login();self.assertEqual(self.post().json['result']['agent_id'],'lyra')
         self.assertEqual(self.sent[0][0],'lyra');self.assertEqual(cloud.control_relay.pending,{})
@@ -182,7 +202,7 @@ class CloudTests(unittest.TestCase):
         self.assertEqual(self.registry['lyra--taken']['owner_id'],'other')
     def test_roster_discovers_without_enrolling_and_preserves_signed_identity(self):
         self.login()
-        payload={'agents':[{'id':'lyra--worker','name':'Worker'}]}
+        payload={'agents':[{'id':'lyra--worker','name':'Worker','mesh_runtime':{'sleeping':True,'controls_available':True,'model':'ollama/fixture'}}]}
         cloud.register_gateway_agents('lyra',payload,self.registry)
         self.assertNotIn('lyra--worker',self.registry)
         candidates=self.client.get('/api/gateways/identified-agents').json['candidates']
@@ -190,6 +210,8 @@ class CloudTests(unittest.TestCase):
         self.registry['lyra--worker']={'id':'lyra--worker','owner_id':'owner','control_center_gateway':'lyra','gateway_enrollment':True,'fingerprint':'own-key','public_key':'own-pem','codeseal_evidence':{'seal':'own'}}
         cloud.register_gateway_agents('lyra',payload,self.registry)
         self.assertEqual(self.registry['lyra--worker']['fingerprint'],'own-key')
+        self.assertTrue(self.registry['lyra--worker']['mesh_runtime']['sleeping'])
+        self.assertEqual(self.registry['lyra--worker']['model'],'ollama/fixture')
         self.assertEqual(self.client.get('/api/gateways/identified-agents').json['candidates'],[])
         cloud.register_gateway_agents('lyra',{'agents':[]},self.registry)
         self.assertIn('lyra--worker',self.registry)

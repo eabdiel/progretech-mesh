@@ -10,7 +10,8 @@ ACTIONS = {'profile.get', 'profile.save', 'voice.preview', 'host.system', 'model
            'audio.get', 'audio.set', 'voice.get', 'voice.start', 'voice.stop',
            'vision.get', 'vision.analyze', 'skills.list', 'mail.status',
            'orchestration.status', 'harness.status', 'grid.status', 'vllm.status',
-           'chatter.get', 'chatter.settings', 'chatter.test'}
+           'chatter.get', 'chatter.settings', 'chatter.test',
+           'runtime.status', 'runtime.wake', 'runtime.sleep', 'communication.job'}
 
 
 class ControlRelay:
@@ -109,7 +110,11 @@ def register_gateway_agents(gateway_id, payload, registry):
                            'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         record['transport'] = 'connected'
+        record['mesh_runtime'] = availability_status(item)
+        if record['mesh_runtime'].get('model'): record['model'] = record['mesh_runtime']['model']
     if host_activity is not None:
+        host['mesh_runtime'] = availability_status(host_activity)
+        if host['mesh_runtime'].get('model'): host['model'] = host['mesh_runtime']['model']
         activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
         observed = activity.get('state', host_activity.get('state', 'unknown'))
         host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
@@ -117,6 +122,17 @@ def register_gateway_agents(gateway_id, payload, registry):
         host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
 
     return True
+
+
+def availability_status(item):
+    """Only bounded public availability from an authenticated host roster."""
+    raw = item.get('mesh_runtime')
+    if not isinstance(raw, dict):
+        return {}
+    sleeping = raw.get('sleeping')
+    return {'sleeping': sleeping if type(sleeping) is bool else None,
+            'controls_available': raw.get('controls_available') is True,
+            'model': raw.get('model', '')[:160] if isinstance(raw.get('model'), str) else ''}
 
 
 def register_control_center_routes(app, require_session, user_id, registry, gateways, send):
