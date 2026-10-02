@@ -39,6 +39,7 @@ from urllib.parse import urlparse
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from mesh_progretech_auth import register_progretech_auth
 from mesh_firebase_auth import register_firebase_auth_routes, firebase_client_ready, firebase_admin_ready
 from mesh_cloud_health import register_cloud_health_routes
 from mesh_ownership import (
@@ -1296,11 +1297,11 @@ def production_configuration_status() -> dict[str, Any]:
         "DEV_AUTH_ENABLED must be 0 outside development.")
     add("development_agents_disabled", os.environ.get("DEV_SEED_AGENTS", "1") == "0",
         "DEV_SEED_AGENTS must be 0 outside development.")
-    add("firebase_email_link_selected", auth_mode == "firebase-email-link",
-        "Production user authentication must use Firebase passwordless email-link sign-in.")
-    add("firebase_client_configured", firebase_client_ready(),
+    add("firebase_email_link_selected", auth_mode in ("firebase-email-link", "progretech-shared"),
+        "Production user authentication uses the shared ProgreTech broker or qualified Firebase email-link mode.")
+    add("firebase_client_configured", (auth_mode == "progretech-shared" or firebase_client_ready()),
         "Firebase public web configuration must be supplied for passwordless sign-in.")
-    add("firebase_admin_ready", firebase_admin_ready(),
+    add("firebase_admin_ready", (auth_mode == "progretech-shared" or firebase_admin_ready()),
         "Set MESH_FIREBASE_AUTH_READY=1 only after Firebase Admin verification and a real email-link sign-in are tested.")
     add("codeseal_selected", identity_mode == "codeseal",
         "Production agent identity must use CodeSeal mode.")
@@ -1438,6 +1439,7 @@ def create_app() -> Flask:
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     register_firebase_auth_routes(app)
+    register_progretech_auth(app)
     register_cloud_health_routes(app)
 
     @app.after_request

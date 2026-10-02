@@ -41,7 +41,9 @@
         to enroll or communicate with signed agents.
       </p>
 
-      {% if auth_mode == "firebase-email-link" and not dev_auth_enabled %}
+      {% if auth_mode == "progretech-shared" and not dev_auth_enabled %}
+        <p>Use your shared ProgreTech account email and optional authenticator. Subscriptions and purchases remain separate for every app.</p><a class="login-button" href="{{ url_for('progretech_login') }}">Sign in with ProgreTech</a>
+      {% elif auth_mode == "firebase-email-link" and not dev_auth_enabled %}
         <div class="login-note">Passwordless cloud authentication is enabled. Enter your email and Mesh will send a one-time sign-in link.</div>
         <div data-firebase-email-link>
           <form data-email-form>

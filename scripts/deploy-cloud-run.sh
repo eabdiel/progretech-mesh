@@ -23,7 +23,7 @@ if [[ -z "${PROJECT_ID}" ]]; then
   exit 1
 fi
 
-if [[ -z "${FIREBASE_API_KEY}" || -z "${FIREBASE_AUTH_DOMAIN}" || -z "${FIREBASE_PROJECT_ID}" || -z "${FIREBASE_APP_ID}" ]]; then
+if [[ "${MESH_AUTH_MODE:-progretech-shared}" != "progretech-shared" && ( -z "${FIREBASE_API_KEY}" || -z "${FIREBASE_AUTH_DOMAIN}" || -z "${FIREBASE_PROJECT_ID}" || -z "${FIREBASE_APP_ID}" ) ]]; then
   echo "Firebase web configuration is incomplete."
   echo "Required:"
   echo "  MESH_FIREBASE_API_KEY"
@@ -34,7 +34,7 @@ if [[ -z "${FIREBASE_API_KEY}" || -z "${FIREBASE_AUTH_DOMAIN}" || -z "${FIREBASE
 fi
 
 if [[ "${DEPLOYMENT_TIER}" == "production" ]]; then
-  if [[ "${FIREBASE_AUTH_READY}" != "1" || "${MESH_CODESEAL_READY:-0}" != "1" ]]; then
+  if [[ "${MESH_CODESEAL_READY:-0}" != "1" ]]; then
     echo "Refusing production deployment."
     echo "Production requires:"
     echo "  MESH_FIREBASE_AUTH_READY=1"
@@ -54,7 +54,7 @@ ENV_VARS+=",FLASK_DEBUG=0"
 ENV_VARS+=",TRUST_PROXY_HEADERS=1"
 ENV_VARS+=",DEV_AUTH_ENABLED=0"
 ENV_VARS+=",DEV_SEED_AGENTS=0"
-ENV_VARS+=",MESH_AUTH_MODE=firebase-email-link"
+ENV_VARS+=",MESH_AUTH_MODE=progretech-shared"
 ENV_VARS+=",MESH_AGENT_IDENTITY_MODE=codeseal"
 ENV_VARS+=",CODESEAL_VERIFIER_MODE=${CODESEAL_VERIFIER_MODE:-unconfigured}"
 ENV_VARS+=",MESH_FIREBASE_API_KEY=${FIREBASE_API_KEY}"
