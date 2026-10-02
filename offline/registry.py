@@ -14,6 +14,18 @@ from pathlib import Path
 KINDS = {'openclaw', 'hermes', 'claude', 'pycharm'}
 
 
+def runtime_executable(kind, source_home):
+    """Resolve accepted CLIs even in a desktop/systemd login without shell PATH."""
+    if kind not in KINDS - {'pycharm'}:
+        return None
+    executable = shutil.which(kind)
+    if executable:
+        return executable
+    # Only the owner's standard install directory; never scan arbitrary projects
+    # or execute a candidate to decide whether it is a supported runtime.
+    return shutil.which(kind, path=str(Path(source_home) / '.local' / 'bin'))
+
+
 class Registry:
     def __init__(self, home):
         self.home = Path(home)
@@ -93,8 +105,8 @@ class Registry:
 
     def discover(self, source_home=None):
         candidates = []
-        executable = shutil.which('openclaw')
         source_home = Path(source_home or Path.home())
+        executable = runtime_executable('openclaw', source_home)
         config = source_home / '.openclaw/openclaw.json'
         if executable and config.is_file():
             try:
@@ -109,7 +121,7 @@ class Registry:
                             'runtime_id': item.get('id', 'main'), 'workspace': workspace, 'executable': executable})
             except (OSError, ValueError, TypeError): pass
         for kind in ('hermes', 'claude'):
-            executable = shutil.which(kind)
+            executable = runtime_executable(kind, source_home)
             if executable:
                 candidates.append({'kind': kind, 'name': kind.capitalize(), 'runtime_id': 'default' if kind == 'hermes' else 'main',
                     'workspace': str(source_home), 'executable': executable})
@@ -123,9 +135,9 @@ class Registry:
         return candidates
 
     def discover_gateway(self, source_home=None, run=subprocess.run):
-        executable = shutil.which('openclaw')
-        if not executable: return {'available':False, 'candidates':[], 'error':'openclaw_runtime_not_found'}
         source_home = Path(source_home or Path.home())
+        executable = runtime_executable('openclaw', source_home)
+        if not executable: return {'available':False, 'candidates':[], 'error':'openclaw_runtime_not_found'}
         port = 18789
         config = source_home / '.openclaw/openclaw.json'
         if config.is_file():
