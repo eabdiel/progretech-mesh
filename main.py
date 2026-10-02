@@ -1530,6 +1530,9 @@ def create_app() -> Flask:
                 return jsonify(ok=False,error='same_origin_required'),403
             local_host.refresh(DEV_AGENT_REGISTRY,GATEWAY_SOCKETS)
 
+    from mesh_local_updates import register_local_updates
+    register_local_updates(app, require_session)
+
     from mesh_office import register_office_routes
     register_office_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)
     register_management_routes(app, require_session, current_mesh_user_id, DEV_AGENT_REGISTRY, GATEWAY_SOCKETS, management_send)

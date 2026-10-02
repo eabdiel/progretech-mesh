@@ -29,7 +29,7 @@
         </div>
       </a>
 
-      <div class="top-actions">
+      <div class="top-actions">{% if local_updates_enabled %}<button id="localUpdateCheck" class="ghost-btn" type="button">Check for updates</button><script src="/static/js/local-updates.js?v={{ build_id }}" defer></script>{% endif %}
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
         <a href="/mission-control" class="ghost-btn factory-nav">Mission Control</a>
