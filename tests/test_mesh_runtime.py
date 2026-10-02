@@ -33,6 +33,28 @@ class RuntimeTests(unittest.TestCase):
             if value['done']:return value
             time.sleep(.01)
         self.fail('Job did not finish')
+    def test_imagen_wakes_from_paused_state_without_affecting_other_roles(self):
+        self.provider.bindings['host--imagen'] = 'imagen'
+        self.rows['imagen'] = {'mode':'paused','until':None}
+        self.assertTrue(self.runtime.status('host--imagen')['sleeping'])
+        self.assertTrue(self.runtime.status('host--imagen')['controls_available'])
+        self.runtime.idle = lambda: False  # Admission defers model preload, not wake.
+        def resume(command, **kwargs):
+            self.assertEqual(command[-3:], ['resume','--agent','imagen'])
+            self.rows['imagen']['mode'] = 'running'
+            return SimpleNamespace(returncode=0)
+        with patch('control_center.mesh_runtime.subprocess.run', side_effect=resume):
+            result=self.done('host--imagen',self.runtime.power('host--imagen',True))
+        self.assertFalse(result['result']['sleeping'])
+        self.assertEqual(self.rows['rend']['mode'],'running')
+
+    def test_unavailable_controls_preserve_configured_model_and_unknown_state(self):
+        self.rows.clear()
+        status=self.runtime.status('host')
+        self.assertIsNone(status['sleeping'])
+        self.assertFalse(status['controls_available'])
+        self.assertEqual(status['model'],'remote/model')
+
     def test_chatter_guard_precedes_loading_and_does_not_mark_error(self):
         self.runtime.prepare=lambda *a:self.fail('Deferred chatter must not load models')
         self.runtime.signal('host','success','reply_received')

@@ -44,6 +44,8 @@ class AgentMemoryTests(unittest.TestCase):
         h=LocalHost(self.home);reg={};gateways={}
         with patch.object(h,'call',return_value={'ok':True,'agents':[{'id':'rend','name':'Rend'},{'id':'rend--reviewer','name':'Reviewer','mesh_runtime':{'sleeping':False}}]}):h.refresh(reg,gateways)
         self.assertEqual(set(reg),{'rend','rend--reviewer'})
+        self.assertEqual(reg['rend']['state'],'unknown')
+        self.assertNotIn('Awake',reg['rend']['phase'])
         self.assertEqual(reg['rend--reviewer']['owner_id'],'local-edwin')
         self.assertEqual(h.send('rend',{'type':'control_center_request','payload':{'agent_id':'other'}}),(False,'agent_binding_required'))
         h.last=0

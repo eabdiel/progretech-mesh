@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 _CONTROL_CACHE = {}
 _CONTROL_LOCK = threading.Lock()
-ROLE_NAMES = {'main':'rend','researcher':'lyra','coder':'mak','architect':'architect','reviewer':'reviewer','fast':'fast','progre':'progre','designer':'designer'}
+ROLE_NAMES = {'main':'rend','researcher':'lyra','coder':'mak','architect':'architect','reviewer':'reviewer','fast':'fast','progre':'progre','designer':'designer','imagen':'imagen'}
 
 
 def role_controls(home, refresh=False):
@@ -133,16 +133,18 @@ class MeshRuntime:
         memory=memory_status(self.home,ROLE_NAMES.get(self.provider.bindings[agent],self.provider.bindings[agent]))
         signal=read_signals(self.home).get(self.provider.bindings[agent],{})
         health=self.health(agent) if signal.get('severity')=='error' else None
+        try: configured_model = self.config(agent)[2]
+        except (OSError, ValueError, KeyError): configured_model = ''
         try:asleep = self.sleeping(agent)
         except (ValueError,KeyError,OSError,subprocess.SubprocessError):
-            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False,'last_result':signal,'health':health}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent','sleeping':None,'model':configured_model,'resident':None,'preload_available':False,'controls_available':False,'last_result':signal,'health':health}
         try:
             model = self.model(agent)
             names = {m['name'] for m in self.api('ps').get('models',[])}
             resident = model in names
             return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':signal,'health':health}
         except (ValueError, KeyError, OSError, URLError):
-            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':signal,'health':health}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':configured_model, 'resident':None, 'preload_available':False,'controls_available':True,'last_result':signal,'health':health}
 
     def signal(self, agent, severity, code):
         with self.lock:
