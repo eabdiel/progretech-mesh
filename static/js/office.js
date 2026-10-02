@@ -40,9 +40,10 @@
     for(const id of Object.keys(positions))if(!visible.has(id)){delete positions[id];delete basePositions[id];}
     const markup = display.map(a => {
       const blocked = snapshot.tasks.some(t => t.assignee===a.id && t.status==='blocked');
-      const state = a.factoryObserved ? MeshRuntime.indicator(a).state : blocked ? 'blocked' : a.state;
+      const indicator=a.factoryObserved?MeshRuntime.indicator(a):null;
+      const state = indicator?indicator.state:blocked?'blocked':a.state;
       const p = positions[a.id];
-      return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
+      return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" title="${escape(indicator?.detail||a.role)}" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(indicator?.detail||state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(indicator?.label||state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
     }).join('');
     // Preserve live nodes, focus, pointer capture and CSS animation timelines.
     // Polling updates metadata, rather than resetting the animated coordinates.
@@ -124,10 +125,10 @@
     let taskButton=$('factoryTaskBoard');if(!taskButton){taskButton=document.createElement('a');taskButton.id='factoryTaskBoard';taskButton.textContent='Task Board';$('factoryMemoryStatus').after(taskButton);}taskButton.hidden=!live;const boardAgent=selectedRuntime();taskButton.href=boardAgent?'/agents/'+encodeURIComponent(boardAgent)+'/task-board':'#';
     let memoryButton=$('factoryMemorySearch');if(!memoryButton){memoryButton=document.createElement('button');memoryButton.id='factoryMemorySearch';memoryButton.textContent='Memory search';$('factoryMemoryStatus').after(memoryButton);memoryButton.onclick=()=>{const aid=selectedRuntime();if(aid)MeshMemory.open(aid,$('inspectorName').textContent);else say('Select an enrolled agent to search its memory.');};}memoryButton.hidden=!live;
     $('officeMailbox').hidden=!a || Boolean(live);
-    if(live){renderConversation();$('factoryRecovery').hidden=MeshRuntime.indicator(live).state!=='error';$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
+    if(live){renderConversation();$('factoryRecovery').hidden=!['error','warning'].includes(MeshRuntime.indicator(live).state);$('factoryRecovery').textContent=MeshRuntime.indicator(live).state==='warning'?'Check recovery options':'Try to resolve';const status=$('factoryRuntimeStatus');status.textContent=MeshRuntime.indicator(live).detail;status.className='runtime-status '+MeshRuntime.indicator(live).state;$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
     $('inspectorActions').hidden=!a || Boolean(live);
     $('inspectorName').textContent=a?.name || 'Choose an agent';
-    $('inspectorRole').textContent=a ? `${a.role} · ${a.state} · ${live ? (live.sleeping?'asleep':'awake') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
+    $('inspectorRole').textContent=a ? `${a.role} · ${live?MeshRuntime.indicator(live).label:a.state} · ${live ? (live.sleeping?'asleep':'awake') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
     $('inspectorGoal').textContent=a?.goal || '';
     $('agentWork').hidden=!a;
     if(a) {

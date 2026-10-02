@@ -29,3 +29,5 @@
 #chatterMinutes[readonly] { opacity: .65; cursor: default; }
 
 #chatterConcurrency { width: 4.5rem; padding: .35rem .5rem; }
+
+.floor-node.warning .node-orb{border-color:#eac36c;color:#eac36c;box-shadow:0 0 24px #eac36c22}.floor-node.warning .node-state{background:#eac36c}.runtime-status{padding:12px;border:1px solid #2a3d51;border-radius:8px;line-height:1.5;overflow-wrap:anywhere}.runtime-status.warning{border-color:#eac36c;color:#eac36c}.runtime-status.error{border-color:#e76868;color:#ffa3a3}

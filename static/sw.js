@@ -1,4 +1,4 @@
-const CACHE_NAME = "progretech-mesh-shell-v9-local-updates-mobile";
+const CACHE_NAME = "progretech-mesh-shell-v10-runtime-health";
 const SHELL_ASSETS = [
   "/",
   "/how-it-works",

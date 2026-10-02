@@ -35,6 +35,8 @@ def is_sleeping(row):
 
 
 def provider_error(exc):
+    if isinstance(exc,TimeoutError) or (isinstance(exc,URLError) and isinstance(exc.reason,TimeoutError)):
+        return 'mesh_reply_timeout'
     if isinstance(exc,HTTPError):
         text=exc.read(8192).decode('utf-8',errors='replace').lower()
         if any(word in text for word in ('context overflow','context size','context length','exceed_context','prompt too large')):
@@ -58,6 +60,7 @@ class MeshRuntime:
     def __init__(self, provider, home, opener=urlopen):
         self.provider, self.home, self.open = provider, home, opener
         self.jobs = {}
+        self.health_cache = {}
         self.lock = threading.RLock()
         self.inference = threading.Lock()
 
@@ -90,22 +93,56 @@ class MeshRuntime:
             raise ValueError('local_preload_unavailable')
         return chosen.split('/',1)[1]
 
+    def health(self, agent):
+        """Bounded read-only checks; no inference, replay, restart or signal writes."""
+        now=time.time()
+        try:
+            cfg,role,chosen=self.config(agent)
+            port=cfg.get('gateway',{}).get('port',18789)
+            if type(port) is not int or not 1<=port<=65535:raise ValueError('runtime_port_invalid')
+            if not isinstance(chosen,str):raise ValueError('model_not_configured')
+            key=(role,chosen,port)
+            with self.lock:
+                cached=self.health_cache.get(key)
+                if cached and now-cached['checked_at']<30:return copy.deepcopy(cached)
+            result={'state':'unknown','checked_at':now,'gateway_reachable':False,'model_provider_reachable':None,'configured_model_installed':None}
+            try:
+                with self.open(Request(f'http://127.0.0.1:{port}/healthz'),timeout=2) as response:
+                    data=json.loads(response.read(65536))
+                result['gateway_reachable']=isinstance(data,dict) and data.get('ok') is True
+            except (OSError,ValueError,URLError):pass
+            if chosen.startswith('ollama/'):
+                provider=cfg.get('models',{}).get('providers',{}).get('ollama',{})
+                if provider.get('baseUrl','').rstrip('/')=='http://127.0.0.1:11434':
+                    try:
+                        models=self.api('tags',timeout=2).get('models',[])
+                        result['model_provider_reachable']=True
+                        result['configured_model_installed']=chosen.split('/',1)[1] in {m['name'] for m in models}
+                    except (OSError,ValueError,URLError,KeyError,TypeError):result['model_provider_reachable']=False
+            if not result['gateway_reachable'] or result['model_provider_reachable'] is False or result['configured_model_installed'] is False:result['state']='unavailable'
+            elif result['model_provider_reachable'] and result['configured_model_installed']:result['state']='reachable'
+            with self.lock:self.health_cache[key]=result
+            return copy.deepcopy(result)
+        except (OSError,ValueError,KeyError):return {'state':'unknown','checked_at':now}
+
     def status(self, agent):
         from control_center.memory_status import memory_status
         from control_center.specklet import Board
         board=Board(self.provider,agent)
         with board.guarded():specklet=board.read()['enabled']
         memory=memory_status(self.home,ROLE_NAMES.get(self.provider.bindings[agent],self.provider.bindings[agent]))
+        signal=read_signals(self.home).get(self.provider.bindings[agent],{})
+        health=self.health(agent) if signal.get('severity')=='error' else None
         try:asleep = self.sleeping(agent)
         except (ValueError,KeyError,OSError,subprocess.SubprocessError):
-            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent','sleeping':None,'model':'','resident':None,'preload_available':False,'controls_available':False,'last_result':signal,'health':health}
         try:
             model = self.model(agent)
             names = {m['name'] for m in self.api('ps').get('models',[])}
             resident = model in names
-            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':model, 'resident':resident, 'preload_available':True,'controls_available':True,'last_result':signal,'health':health}
         except (ValueError, KeyError, OSError, URLError):
-            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':read_signals(self.home).get(self.provider.bindings[agent],{})}
+            return {'specklet_enabled':specklet,'specklet_error':getattr(self.provider,'specklet_observer_error',None),'memory':memory,'scope':'agent', 'sleeping':asleep, 'model':'', 'resident':None, 'preload_available':False,'controls_available':True,'last_result':signal,'health':health}
 
     def signal(self, agent, severity, code):
         with self.lock:
@@ -322,7 +359,7 @@ class MeshRuntime:
                     add('provider_request','needs_attention','The previous failure has no confirmed request-level repair. Check provider format/context settings or send a new bounded request when ready.')
             finally:self.inference.release()
             outcome='needs_attention' if any(s['state']=='needs_attention' for s in steps) else 'checks_passed'
-            return {'outcome':outcome,'steps':steps,'note':'These are recovery checks, not a retried task. The red status remains until a later successful agent turn.'}
+            return {'outcome':outcome,'steps':steps,'note':'Connectivity and model checks completed; the previous task was not replayed. Its failure remains in history. Current provider health and that earlier result are shown separately.'}
         return self.start(agent,'recovery',worker)
 
     def context(self, agent, text):

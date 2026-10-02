@@ -23,6 +23,7 @@ class RuntimeTests(unittest.TestCase):
         self.provider=AgentControlProvider(self.home/'profiles',{'host':'main','host--main':'main','host--architect':'architect'},lambda r:{},lambda *a:{})
         self.runtime=MeshRuntime(self.provider,self.home)
         self.runtime.idle=lambda:True
+        self.runtime.health=lambda a:{"state":"unknown","checked_at":time.time()}
         self.rows={'rend':{'mode':'running','until':None},'architect':{'mode':'running','until':None}}
         self.controls=patch('control_center.mesh_runtime.role_controls',side_effect=lambda *a,**k:self.rows);self.controls.start();self.addCleanup(self.controls.stop)
     def done(self,agent,job):
@@ -133,6 +134,25 @@ class RuntimeTests(unittest.TestCase):
         for action,args in [('runtime.sleep',{'command':'sh'}),('communication.job',{'job_id':'../a'}),('runtime.snapshot',{'kind':'shell'})]:
             with self.assertRaises(ValueError):validate_management(action,args)
 
+
+    def test_read_only_health_cache_does_not_clear_failure_or_load_models(self):
+        cfg=json.loads((self.home/'.openclaw/openclaw.json').read_text());cfg['agents']['entries']['main']['model']='ollama/fixture';cfg['models']={'providers':{'ollama':{'baseUrl':'http://127.0.0.1:11434'}}};(self.home/'.openclaw/openclaw.json').write_text(json.dumps(cfg))
+        self.runtime.signal('host','error','mesh_provider_unavailable')
+        self.runtime.prepare=lambda *a:self.fail('Read-only health must not preload')
+        calls=[]
+        self.runtime.open=lambda request,**kwargs:calls.append(request.full_url) or io.BytesIO(b'{"ok":true}')
+        self.runtime.api=lambda path,**kwargs:{'models':[{'name':'fixture'}]}
+        first=MeshRuntime.health(self.runtime,'host');second=MeshRuntime.health(self.runtime,'host')
+        self.assertEqual(first['state'],'reachable');self.assertEqual(first,second);self.assertEqual(len(calls),1)
+        self.assertEqual(self.runtime.status('host')['last_result']['severity'],'error')
+        self.runtime.health_cache.clear();self.runtime.api=lambda *a,**k:{'models':[]}
+        self.assertEqual(MeshRuntime.health(self.runtime,'host')['state'],'unavailable')
+
+    def test_timeout_diagnostics_do_not_mislabel_a_slow_reply_as_provider_offline(self):
+        from urllib.error import URLError
+        self.assertEqual(provider_error(TimeoutError()),'mesh_reply_timeout')
+        self.assertEqual(provider_error(URLError(TimeoutError())),'mesh_reply_timeout')
+        self.assertEqual(provider_error(URLError(ConnectionRefusedError())),'mesh_provider_unavailable')
 
 class RelationshipTests(unittest.TestCase):
     def test_only_same_active_task_creates_collaboration(self):

@@ -76,7 +76,15 @@ def install(host, home=None):
         if action=='runtime.snapshot':return mesh.snapshot(agent,args['kind'])
         if action.startswith('factory.'):
             from control_center.factory_jobs import dispatch_factory
-            return dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
+            result=dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
+            if action=='factory.office':
+                from control_center.mesh_runtime import ROLE_NAMES
+                for row in result.get('snapshot',{}).get('factoryAgents',[]):
+                    if row.get('last_result',{}).get('severity')!='error':continue
+                    runtime=row.get('runtime_id') or next((r for r,name in ROLE_NAMES.items() if name==row['id']),None)
+                    binding=next((a for a,r in provider.bindings.items() if r==runtime and a.startswith(agent.split('--')[0]+'--')),None)
+                    if binding:row['health']=mesh.health(binding)
+            return result
         if action == 'communication.chat':
             from control_center.management import preferences
             cfg = json.loads((home / '.openclaw/openclaw.json').read_text())

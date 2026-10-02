@@ -21,3 +21,13 @@ test('memory indicator never turns unavailable logging into verified activity',(
  assert.match(label({latest_status:'no_change',recall_verified:true,memory_id:'fixture',activity_kind:'reviewed_activity'}),/reviewed activity/);
  assert.match(label({recall_verified:false,memory_id:'fixture'}),/no verified/);
 });
+
+test('fresh connectivity downgrades historical provider failure without claiming a successful reply',()=>{
+ const now=Date.now()/1000;const a={state:'idle',mesh_runtime:{last_result:{severity:'error',code:'mesh_provider_unavailable',at:now-120},health:{state:'reachable',checked_at:now}}};
+ assert.equal(indicator(a).state,'warning');assert.match(indicator(a).detail,/failed request was not retried/);assert.match(indicator(a).detail,/reachable/);
+ a.mesh_runtime.health.checked_at=now-50;assert.equal(indicator(a).state,'error');
+ a.mesh_runtime.health.checked_at=now-200;assert.equal(indicator(a).state,'error');
+ a.mesh_runtime.health={state:'unavailable',checked_at:now};assert.equal(indicator(a).state,'error');
+ a.mesh_runtime.last_result.code='mesh_context_limit';a.mesh_runtime.health.state='reachable';assert.equal(indicator(a).state,'error');
+ a.mesh_runtime.last_result.code='mesh_provider_unavailable';a.state='active';assert.equal(indicator(a).state,'busy');
+});

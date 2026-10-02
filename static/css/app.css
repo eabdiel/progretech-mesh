@@ -496,3 +496,5 @@ h1{font-size:clamp(30px,5vw,58px);line-height:1.02;margin:14px 0 12px;letter-spa
 #localUpdateCheck{display:inline-flex!important;white-space:nowrap}
 .office-body .topbar nav{flex-wrap:wrap}
 @media(max-width:640px){.topbar{flex-wrap:wrap}.top-actions{flex:1 1 100%;flex-wrap:wrap;justify-content:flex-start;margin-left:0}}
+
+.agent-state.warning{background:#eac36c;box-shadow:0 0 12px #eac36c55}

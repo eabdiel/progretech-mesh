@@ -8,7 +8,7 @@
     mesh_agent_busy:'This agent already has a request in progress.',
     mesh_context_limit:'The conversation exceeds the local model context. Start a new conversation; existing history is preserved.',
     mesh_provider_rejected:'The model rejected the request format or context. Try a new conversation. If it persists, check the local provider configuration.',
-    mesh_provider_unavailable:'The local model provider is unavailable. Check the host connection.',
+    mesh_provider_unavailable:'The earlier request could not reach or complete with the local model provider.',
     mesh_image_provider_unavailable:'No approved local image provider is active. No image was generated.',
     mesh_image_generation_failed:'Local image generation failed. No deliverable was published.',
     mesh_image_validation_failed:'The generated file failed image validation.',
@@ -46,7 +46,12 @@
     if(monitoring)return {state:'monitoring',label:'Monitoring',detail:'Purple: passive host monitoring is active.'+(last?' Previous result: '+last:'')};
     if(runtime.sleeping)return {state:'sleeping',label:'Asleep',detail:'Amber: this agent is asleep in Mesh and Factory.'+(last?' Previous result: '+last:'')};
     if(['active','working','processing'].includes(agent.state))return {state:'busy',label:'Working',detail:'Blue: the host reports active work.'+(last?' Previous result: '+last:'')};
-    if(result.severity==='error')return {state:'error',label:'Last action failed',detail:'Red: '+(last || 'The last Mesh request failed; see its error in this conversation.')};
+    const health=runtime.health;
+    const healthAge=health?Date.now()/1000-health.checked_at:Infinity;
+    const current=health?' Current check: gateway '+(health.gateway_reachable?'reachable':'unavailable')+', model provider '+(health.model_provider_reachable===true?'reachable':health.model_provider_reachable===false?'unavailable':'not verified')+(health.configured_model_installed===false?', configured model missing':'')+'.':'';
+    const fresh=health?.state==='reachable' && health.checked_at>=Number(result.at||0) && healthAge>=-5 && healthAge<45;
+    if(result.severity==='error' && result.code==='mesh_provider_unavailable' && fresh)return {state:'warning',label:'Previous request failed',detail:'Amber: '+last+' Current gateway and model provider are reachable; the configured model is installed. The failed request was not retried.'};
+    if(result.severity==='error')return {state:'error',label:'Last action failed',detail:'Red: '+(last || 'The last Mesh request failed; see its error in this conversation.')+current};
     if(agent.transport && agent.transport!=='connected')return {state:'idle',label:'Offline',detail:'Gray: the gateway is offline.'+(last?' Previous result: '+last:'')};
     if(result.severity==='success')return {state:'success',label:'Last action completed',detail:'Green: '+(last || 'The last reply completed.')};
     return {state:'idle',label:'Idle',detail:'Gray: no current work or recorded result is reported.'};
