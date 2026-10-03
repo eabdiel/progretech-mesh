@@ -38,3 +38,9 @@ test('emoji-only messages respect Telegram UTF-16 limits without breaking charac
  const text='🐱'.repeat(5000),parts=chunks(text);
  assert.equal(parts.join(''),text);assert.ok(parts.every(x=>x.length<=3400 && !/^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/.test(x)));
 });
+
+test('explicit native owner conversations sync; internal provenance does not',()=>{
+ const ctx={sessionKey:'agent:main:explicit:conversation',channel:'webchat',inputProvenance:{kind:'external_user'}};
+ assert.equal(route(ctx,cfg).origin,'openclaw');
+ assert.equal(route({...ctx,inputProvenance:{kind:'internal_system'}},cfg),null);
+});

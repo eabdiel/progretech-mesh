@@ -14,7 +14,7 @@ export function route(ctx, config) {
     if (!binding || sender!==String(binding.owner)) return null;
     return {agent,origin:'telegram',session:key,project:'ProgreTech'};
   }
-  if ((tail==='main' || tail.startsWith('dashboard:')) && (!ctx.channel || ['webchat','openclaw'].includes(ctx.channel)))
+  if ((tail==='main' || tail.startsWith('dashboard:') || tail.startsWith('explicit:')) && (!ctx.channel || ['webchat','openclaw'].includes(ctx.channel)))
     return {agent,origin:'openclaw',session:key,project:'ProgreTech'};
   return null;
 }
