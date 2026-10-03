@@ -78,6 +78,17 @@ switch (body.operation) {
         hive.atomicWriteJson(join(hive.root(),'registry.json'),reg);
       }
     }
+    // A brand-new office starts with a reserved placeholder, not a second agent.
+    // Adopt the explicitly bound host runtime only while that placeholder is pristine.
+    const initial=hive.registry(), candidate=args.agents.find(a=>a.runtime_id===args.host_runtime);
+    if (candidate && !Object.keys(settings.runtimeBindings).length && Object.keys(initial.agents).length===1 &&
+        initial.godId==='orchestrator' && initial.agents.orchestrator.name==='Director' &&
+        !hive.tasks().tasks.length && !hive.inboxBacklog('orchestrator')) {
+      settings.runtimeBindings.orchestrator=args.host_runtime;
+      initial.agents.orchestrator.name=candidate.name;
+      initial.agents.orchestrator.role=candidate.role || candidate.name;
+      hive.atomicWriteJson(join(hive.root(),'registry.json'),initial);
+    }
     for (const row of args.agents) {
       let id = Object.keys(settings.runtimeBindings).find(id => settings.runtimeBindings[id] === row.runtime_id);
       if (!id) {

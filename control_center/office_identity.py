@@ -12,7 +12,7 @@ def synchronize(home, runtime, gateway, rows):
     except FileNotFoundError:
         migrations = {}
     return engine(home, namespace(runtime, gateway), 'runtime.sync',
-                  {'agents': rows, 'bindings': migrations})['snapshot']
+                  {'agents': rows, 'bindings': migrations, 'host_runtime': runtime})['snapshot']
 
 
 def project(snapshot, rows, gateway, host_runtime):
