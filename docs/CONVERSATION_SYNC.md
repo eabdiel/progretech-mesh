@@ -29,8 +29,9 @@ Mirrors contain text and absolute file paths only. Media directives and Markdown
 image embeds are converted to file notices. Telegram uses text-only `sendMessage`.
 Originating Mesh replies receive download buttons; other Mesh tabs do not receive
 automatic attachment cards. Native channel attachments retain their original
-channel delivery. OpenHands retains its existing output-file capabilities; this
-adapter does not add a binary attachment protocol to ACP.
+channel delivery. OpenHands adds download links and validated image previews only
+to the originating conversation, using its existing authenticated file API.
+Published files up to 10 MB are eligible; other surfaces retain only the paths.
 
 New Mesh generated files go to `/mnt/pt-context/deliverables/mesh-<agent>/`;
 Mesh prompt uploads go to `/mnt/pt-context/job-artifacts/mesh-attachments-<runtime>/`.

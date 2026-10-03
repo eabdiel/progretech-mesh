@@ -57,6 +57,14 @@ def install(evidence):
     if router.read_bytes()!=after:
         if router.read_bytes()!=before:raise RuntimeError('OpenHands event router changed; rebase the reviewed patch')
         backup(router,private);write(router,after.decode())
+    canvas=HOME/'.local/share/progretech-openhands/node_modules/@openhands/agent-canvas'
+    if json.loads((canvas/'package.json').read_text())['version']!='1.24.0':raise RuntimeError('Revalidate Agent Canvas attachment UI')
+    index=canvas/'build/index.html';markup=index.read_text()
+    tag='<script src="/progretech-files.js" defer></script>'
+    if tag not in markup:
+        if '</body>' not in markup:raise RuntimeError('Unexpected Agent Canvas HTML')
+        backup(index,private);write(index,markup.replace('</body>',tag+'</body>'))
+    shutil.copy2(ROOT/'openhands-files.js',canvas/'build/progretech-files.js')
     backup(runtime_path,private)
     runtime.setdefault('plugins',{}).setdefault('entries',{})['progretech-conversation-sync']={'enabled':True}
     if runtime_path.read_bytes()!=runtime_before:raise RuntimeError('Runtime settings changed during installation; rebase configuration')
