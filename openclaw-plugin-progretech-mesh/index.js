@@ -6,6 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { createReleaseWatch, closeForRelease } from "./release-watch.js";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
 import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.8-chatter-groups.1";
 
@@ -1056,7 +1057,12 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       if(meshSocket===socket && socket.readyState===WebSocket.OPEN && Array.isArray(agents))sendMeshGatewayMessage({type:'control_center_roster',payload:{agents,enrollment_restore_version:1,enrollment_receipts:enrollmentReceipts(STATE_DIR,record.agent_id)}});
     }catch{}finally{rosterBusy=false;}
   };
+  let activeMeshRequests=0;
+  const releaseWatch=createReleaseWatch({mesh:record.mesh,
+    idle:()=>meshSocket===socket && socket.readyState===WebSocket.OPEN && activeMeshRequests===0,
+    reconnect:()=>closeForRelease(socket)});
   socket.addEventListener("open", () => {
+    releaseWatch.start();
     opened = true;
     retryQueued = false;
     clearMeshConnectWatchdog();
@@ -1093,8 +1099,10 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
 
   socket.addEventListener("message", (event) => {
     void (async () => {
+      activeMeshRequests++;
       try {
         const msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+        if(msg?.type === "paired")releaseWatch.paired(msg.build_id);
         if (msg?.type === "control_center_request") {
           if (msg.payload?.action === 'identity.enrollment.save') {
             try {
@@ -1149,11 +1157,12 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error);
         appendEvent({ event_type: "gateway_command", channel: "mesh", state: "error", direction: "input", summary: "Mesh gateway command handling failed", payload: { error: trimText(detail, 500) } });
-      }
+      } finally {activeMeshRequests--;}
     })();
   });
 
   socket.addEventListener("close", (event) => {
+    releaseWatch.stop();
     clearInterval(rosterTimer);
     clearMeshConnectWatchdog();
     if (meshSocket === socket) meshSocket = null;
