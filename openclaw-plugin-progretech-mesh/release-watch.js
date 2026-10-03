@@ -25,4 +25,6 @@ export function createReleaseWatch({mesh, idle, reconnect, fetchImpl=fetch, inte
   return {paired,poll,start(){void poll();timer=setInterval(()=>void poll(),intervalMs);timer.unref?.();},stop(){stopped=true;if(timer)clearInterval(timer);}};
 }
 
-export function closeForRelease(socket){socket.close(4001,"mesh_release_changed");}
+export function closeForRelease(socket){socket.close(1000,"mesh_release_changed");}
+
+export function isAuthenticationClose(code){return [4001,4003,4401,4403].includes(Number(code));}
