@@ -7,9 +7,11 @@ from itertools import combinations
 
 def interactions(snapshot, home):
     output=[]
-    for m in snapshot.get('messages',[])[:40]:
-        if m.get('archived'):continue
-        output.append({'id':'mail-'+m['id'],'kind':'instruction','from':m['from'],'to':'orchestrator' if m['to']=='god' else m['to'], 'title':m.get('subject') or 'Mailbox handoff','task_id':None,'parts':{},'source':'office mailbox','at':m.get('created_at')})
+    tasks={t['id']:t for t in snapshot.get('tasks',[])}
+    for e in snapshot.get('events',[]):
+        if e.get('kind') != 'delegation' or tasks.get(e.get('taskId'),{}).get('status') != 'doing': continue
+        if not e.get('to'): continue
+        output.append({'id':'delegation-'+e['taskId']+'-'+e['agentId']+'-'+e['to'], 'kind':'instruction', 'from':e['agentId'], 'to':e['to'], 'title':e.get('summary') or 'Active delegation', 'task_id':e['taskId'], 'parts':{}, 'source':'active mission'})
     active={}
     for e in snapshot.get('events',[]):
         if e.get('kind')=='agent.start':active[e.get('agentId')]=e.get('taskId')

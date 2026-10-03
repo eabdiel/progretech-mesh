@@ -816,6 +816,7 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         for key, value in record.items()
         if key not in {"codeseal_key", "owner_id"}
     }
+    public["gateway_agent"] = not record.get("control_center_gateway")
     public["control_center_available"] = bool(record.get("owner_id")) and record.get("trust_state") == "verified"
     if record.get("control_center_gateway"):
         host = DEV_AGENT_REGISTRY.get(record["control_center_gateway"], {})
@@ -835,6 +836,9 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         payload = latest.get('payload') or {}
         public['last_event'] = {'type': latest.get('type'), 'timestamp': latest.get('timestamp'),
                                 'payload': {k: payload[k] for k in ('direction', 'severity') if isinstance(payload.get(k), str)}}
+    host_id = record.get('control_center_gateway')
+    host = DEV_AGENT_REGISTRY.get(host_id, {}) if host_id else {}
+    public['identity_alias'] = bool(host_id and host.get('runtime_id') and record['id'] == host_id+'--'+host['runtime_id'])
     public["owner_bound"] = bool(str(record.get("owner_id") or "").strip())
     public["ownership_state"] = "owned" if public["owner_bound"] else "legacy-unowned"
     return public
@@ -1567,7 +1571,7 @@ def create_app() -> Flask:
         parts = request.path.split("/")
         if len(parts) >= 4 and parts[1:3] == ["api", "agents"]:
             record = DEV_AGENT_REGISTRY.get(parts[3], {})
-            if record.get("control_center_gateway") and parts[4:] not in (["control-center"], ["management"], ["message"]):
+            if record.get("control_center_gateway") and parts[4:] not in (["control-center"], ["management"], ["message"], ["office"]):
                 return jsonify(ok=False, error="linked_role_uses_host_identity"), 409
 
 
@@ -2702,6 +2706,7 @@ def create_app() -> Flask:
     @require_session
     def api_status():
         agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values() if ownership_visible(a, current_mesh_user_id())]
+        agents = [a for a in agents if not a.get("identity_alias") and not a.get("office_archived")]
         return jsonify(
             server_time=unix_now(),
             session={
@@ -2716,13 +2721,14 @@ def create_app() -> Flask:
                 "linked": sum(1 for a in agents if a.get("control_center_gateway") and not a.get("gateway_enrollment")),
                 "total": len(agents),
             },
-            agents=agents,
+            agents=[a for a in agents if not a.get("identity_alias") and not a.get("office_archived")],
         )
 
     @app.get("/api/agents")
     @require_session
     def list_agents():
         agents = [public_agent(a) for a in DEV_AGENT_REGISTRY.values() if ownership_visible(a, current_mesh_user_id())]
+        agents = [a for a in agents if not a.get("identity_alias") and not a.get("office_archived")]
         agents.sort(key=lambda a: (a["name"].lower(), a["id"]))
         return jsonify(ok=True, storage="ephemeral-in-process", agents=agents)
 

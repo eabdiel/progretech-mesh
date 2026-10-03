@@ -43,3 +43,14 @@ class OfficeRouteTests(unittest.TestCase):
             self.assertEqual(relay.call_args.args[1], 'factory.office')
             self.assertEqual(self.call({'operation': 'shell', 'args': {}}).status_code, 400)
             relay.assert_called_once()
+
+    def test_linked_role_uses_same_host_office_and_cannot_cross_owner(self):
+        self.login()
+        self.registry['host--codex']={'owner_id':'owner','trust_state':'verified','control_center_gateway':'host'}
+        with patch('mesh_office.control_relay.dispatch',return_value=({'ok':True},200)) as relay:
+            r=self.client.post('/api/agents/host--codex/office',json={'operation':'orchestrator.set','args':{'id':'runtime-codex'}},headers={'Origin':'http://localhost'})
+            self.assertEqual(r.status_code,200)
+            self.assertEqual(relay.call_args.args[0],'host')
+        self.registry['host']['owner_id']='other'
+        r=self.client.post('/api/agents/host--codex/office',json={'operation':'snapshot','args':{}},headers={'Origin':'http://localhost'})
+        self.assertEqual(r.status_code,403)

@@ -5,7 +5,7 @@ import re
 
 ACTIONS = {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job', 'factory.office'}
 ACTIONS |= {'communication.start', 'communication.job', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot'}
-ACTIONS.add('communication.new')
+ACTIONS |= {'communication.new','context.read'}
 ACTIONS |= {'memory.status', 'memory.share', 'memory.search'}
 ACTIONS |= {'specklet.get', 'specklet.toggle', 'specklet.import', 'specklet.task'}
 ACTIONS |= {'chatter.configure','chatter.history','chatter.pair','chatter.group','chatter.topic','handoff.create','handoff.list','handoff.control'}

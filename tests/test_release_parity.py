@@ -25,5 +25,5 @@ class ReleaseParityTests(unittest.TestCase):
             self.assertIn(control,office)
         for page in ('index','office'):
             self.assertIn('runtime-client.js',(ROOT/f'templates/{page}.html').read_text())
-        self.assertIn('MeshRuntime.factoryRoster', (ROOT/'static/js/office.js').read_text())
+        self.assertIn('MeshRuntime.unifiedOffice', (ROOT/'static/js/office.js').read_text())
         self.assertIn('MeshRuntime.terminalDirection', (ROOT/'static/js/app.js').read_text())

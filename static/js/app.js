@@ -219,7 +219,7 @@
 
   function renderBuddyAgentOptions() {
     if (!buddyAgentSelect) return;
-    buddyAgentSelect.innerHTML = '<option value="">Not assigned</option>' + fleet.map((agent) =>
+    buddyAgentSelect.innerHTML = '<option value="">Not assigned</option>' + fleet.filter(a=>!a.identity_alias && !a.office_archived).map((agent) =>
       `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}${agent.transport === "connected" ? " · connected" : " · offline"}</option>`
     ).join("");
     buddyAgentSelect.value = buddySettings.agentId || "";
@@ -1000,19 +1000,21 @@
   }
   function renderFleet() {
     renderAgentStatus();
-    agentGrid.innerHTML = fleet.map((agent) => `
+    agentGrid.innerHTML = fleet.filter(a=>!a.identity_alias && !a.office_archived).map((agent) => `
       <article tabindex="0" data-agent-card="${escapeHtml(agent.id)}" class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
           <div class="agent-id">
             <div class="avatar ${["rend","lyra","mak"].includes(agent.id) ? agent.id : "rend"}"></div>
             <div class="agent-name">
               <strong>${escapeHtml(agent.name)}</strong>
-              <span>${escapeHtml(agent.role)}</span>
+              <span>${escapeHtml(agent.role)}${agent.is_orchestrator?" · Orchestrator":""}</span>
             </div>
           </div>
           <span class="agent-state ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state}" title="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail)}" aria-label="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).label)}"></span>
         </div>
 
+        ${agent.office_agent_id?`<div class="agent-actions"><button data-orchestrator="${escapeHtml(agent.id)}" ${agent.is_orchestrator?'disabled':''}>${agent.is_orchestrator?'Orchestrator':'Make Orchestrator'}</button><button data-office-remove="${escapeHtml(agent.id)}" ${agent.is_orchestrator?'disabled':''}>Remove from office</button></div>`:''}
+        <div class="agent-actions"><a class="ghost-btn" target="_blank" rel="noopener" href="/agents/${encodeURIComponent(agent.id)}/terminal">Terminal view</a></div>
         <div class="task">
           <label>${agent.transport === "connected" ? "Live activity" : "Status"}</label>
           <strong>${escapeHtml(MeshRuntime.indicator(agent).label)}</strong>
@@ -1044,6 +1046,10 @@
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
     `).join("") + '<button type="button" class="agent-card onboarding-tile" data-onboarding><span aria-hidden="true">+</span><strong>Agent onboarding</strong><small>Connect your personally hosted agent</small></button>';
+    for(const button of agentGrid.querySelectorAll('[data-orchestrator],[data-office-remove]'))button.onclick=async e=>{
+      e.stopPropagation();const id=button.dataset.orchestrator || button.dataset.officeRemove,agent=fleet.find(a=>a.id===id);button.disabled=true;
+      try{const r=await fetch('/api/agents/'+encodeURIComponent(id)+'/office',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:button.dataset.orchestrator?'orchestrator.set':'archive',args:{id:agent.office_agent_id}})});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Office action failed');const status=await fetch('/api/status');const data=await status.json();fleet=data.agents||[];renderFleet();}catch(error){button.disabled=false;alert(error.message);}
+    };
     agentGrid.querySelector('[data-onboarding]').addEventListener('click', () => window.MeshOnboarding.open());
 
     document.querySelectorAll("[data-claim-owner]").forEach((b) => b.addEventListener("click", () => claimLegacyAgentOwnership(b.dataset.claimOwner)));
@@ -1051,6 +1057,7 @@
     document.querySelectorAll("[data-pair]").forEach((b) => b.addEventListener("click", () => pairGateway(b.dataset.pair)));
     document.querySelectorAll("[data-monitor]").forEach((b) => b.addEventListener("click", () => monitorAgent(b.dataset.monitor)));
     document.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
+      if(fleet.find(a=>a.id===b.dataset.message)?.office_worker){window.open('/agents/'+encodeURIComponent(b.dataset.message)+'/terminal','_blank','noopener');return;}
       monitorAgent(b.dataset.message);
       setTimeout(() => messageInput.focus(), 150);
     }));

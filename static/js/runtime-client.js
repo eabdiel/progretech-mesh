@@ -53,10 +53,26 @@
   }
   function factoryRoster(rows,fleet,host) {
     const all=[...rows];
-    for(const agent of fleet.filter(a=>a.control_center_gateway===host).map(a=>({...a,runtime_id:a.runtime_id || a.id.slice(host.length+2)}))){
+    for(const agent of fleet.filter(a=>a.control_center_gateway===host && !a.office_worker && !a.office_archived).map(a=>({...a,runtime_id:a.runtime_id || a.id.slice(host.length+2)}))){
       if(!all.some(row=>row.runtime_id===agent.runtime_id))all.push({id:agent.runtime_id,runtime_id:agent.runtime_id,state:'unknown'});
     }
-    return all.map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));
+    return all.filter((row,i)=>all.findIndex(a=>a.runtime_id===row.runtime_id)===i).map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));
+  }
+  function unifiedOffice(snapshot,fleet,host) {
+    const observed=factoryRoster(snapshot.factoryAgents || [],fleet,host);
+    const aliases={};
+    const agents=snapshot.agents.map(agent=>{
+      const live=observed.find(row=>row.runtime_id===agent.runtime_id);
+      if(!live)return agent;
+      aliases['factory-'+live.id]=agent.id;
+      return {...agent,native:live,mesh_agent_id:live.id===host?host:(fleet.find(a=>a.runtime_id===agent.runtime_id && (a.control_center_gateway===host||a.id===host))?.id),state:live.state};
+    });
+    const bound=new Set(agents.map(a=>a.runtime_id).filter(Boolean));
+    const archived=new Set((snapshot.archivedAgents||[]).map(a=>a.runtime_id).filter(Boolean));
+    snapshot.agents=agents;
+    snapshot.factoryAgents=observed.filter(a=>!bound.has(a.runtime_id)&&!archived.has(a.runtime_id));
+    snapshot.interactions=(snapshot.interactions||[]).map(l=>({...l,from:aliases[l.from]||l.from,to:aliases[l.to]||l.to,parts:Object.fromEntries(Object.entries(l.parts||{}).map(([id,text])=>[aliases[id]||id,text]))})).filter(l=>l.from!==l.to);
+    return snapshot;
   }
   function indicator(agent, {monitoring=false}={}) {
     const runtime=agent.mesh_runtime || agent;
@@ -74,6 +90,7 @@
     if(result.severity==='error' && result.code==='mesh_provider_unavailable' && fresh)return {state:'warning',label:'Previous request failed',detail:'Amber: '+last+' Current gateway and model provider are reachable; the configured model is installed. The failed request was not retried.'};
     if(result.severity==='error')return {state:'error',label:'Last action failed',detail:'Red: '+(last || 'The last Mesh request failed; see its error in this conversation.')+current};
     if(agent.transport && agent.transport!=='connected')return {state:'idle',label:'Offline',detail:'Gray: the gateway is offline.'+(last?' Previous result: '+last:'')};
+    if((monitoring || agent.gateway_agent) && agent.transport==='connected')return {state:'monitoring',label:'Gateway connected',detail:'Purple: the host gateway is connected.'+(last?' Last result: '+last:'')};
     if(agent.last_event){
       const direction=terminalDirection(agent.last_event),state={SYS:'monitoring',IN:'success',OUT:'busy',ERR:'error',FILE:'warning'}[direction.label];
       return {state,label:direction.label+' activity',detail:'Latest stream event: '+direction.label+'. The light matches the terminal.'};
@@ -91,5 +108,5 @@
     const result=await run(agent,'runtime.recover',{},progress);
     return (result.steps || []).map(s=>s.name+' · '+s.state+': '+s.detail).join('\n')+'\n'+result.note;
   }
-  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent,factoryRoster};
+  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent,factoryRoster,unifiedOffice};
 })();

@@ -59,6 +59,7 @@ class LocalHost:
                 observed=(r.get('activity') or {}).get('state',r.get('state','unknown'))
                 state={'active':'working','working':'working','idle':'idle','paused':'paused','stopped':'paused','sleeping':'paused','blocked':'blocked'}.get(observed,'unknown')
                 registry[aid]={'id':aid,'name':r.get('name',aid),'role':r.get('role',''),
+                    'office_archived':r.get('office_archived') is True, 'office_agent_id':r.get('office_agent_id'), 'is_orchestrator':r.get('is_orchestrator') is True, 'office_worker':r.get('office_worker') is True, 'runtime_id':r.get('runtime_id'),
                     'owner_id':'local-edwin','trust_state':'verified','trust_valid':True,
                     'trust_reason':'authenticated-local-host-binding','local_host_binding':True,
                     'state':'paused' if runtime.get('sleeping') is True else state,'transport':'connected',
@@ -79,6 +80,7 @@ class LocalHost:
             data=self.call('/api/mesh/control-center',{'agent_id':target,'action':payload.get('action'),'args':payload.get('args',{})})
         except Exception:
             data={'ok':False,'error':'local_host_action_failed'}
+        if data.get('ok') and payload.get('action')=='factory.office':self.last=0
         control_relay.resolve('rend',{'type':'control_center_response','request_id':message['request_id'],'payload':data})
         return True,None
 

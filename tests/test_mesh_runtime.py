@@ -48,6 +48,13 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(result['result']['sleeping'])
         self.assertEqual(self.rows['rend']['mode'],'running')
 
+    def test_unscheduled_codex_can_chat_without_claiming_scheduler_availability(self):
+        self.provider.bindings['host--codex']='codex'
+        self.assertFalse(self.runtime.chat_sleeping('host--codex'))
+        self.assertIsNone(self.runtime.status('host--codex')['sleeping'])
+        self.rows['codex']={'mode':'paused','until':None}
+        self.assertTrue(self.runtime.chat_sleeping('host--codex'))
+
     def test_unavailable_controls_preserve_configured_model_and_unknown_state(self):
         self.rows.clear()
         status=self.runtime.status('host')
