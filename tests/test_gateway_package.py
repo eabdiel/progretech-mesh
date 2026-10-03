@@ -20,3 +20,9 @@ class GatewayPackageTests(unittest.TestCase):
     elif isinstance(obj,list):
      for value in obj:check(value)
    check(json.loads((ROOT/'distribution'/name).read_text()))
+ def test_published_adapter_contains_current_control_protocol(self):
+  import tarfile
+  index=json.loads((ROOT/'distribution/openclaw-plugin-index.json').read_text())
+  with tarfile.open(ROOT/'distribution'/index['filename']) as archive:
+   for filename in ['control-center.js','package.json']:
+    self.assertEqual(archive.extractfile('package/'+filename).read(),(ROOT/'openclaw-plugin-progretech-mesh'/filename).read_bytes())
