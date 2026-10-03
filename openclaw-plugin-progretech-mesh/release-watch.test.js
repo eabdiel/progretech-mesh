@@ -6,3 +6,10 @@ function fixture(){let build='release-a',busy=false,broken=false;const reconnect
 test('release changes need two observations and wait for idle relay work',async()=>{const f=fixture();f.watch.paired('release-a');f.setBuild('release-b');await f.watch.poll();assert.equal(f.reconnects.length,0);f.setBusy(true);await f.watch.poll();assert.equal(f.reconnects.length,0);f.setBusy(false);await f.watch.poll();assert.deepEqual(f.reconnects,[{from:'release-a',to:'release-b'}]);await f.watch.poll();assert.equal(f.reconnects.length,1);});
 test('stable release and network failures do not reconnect',async()=>{const f=fixture();await f.watch.poll();await f.watch.poll();f.break();await f.watch.poll();assert.equal(f.reconnects.length,0);});
 test('transient mixed rollout and stopped watcher do not reconnect',async()=>{const f=fixture();f.watch.paired('release-a');f.setBuild('release-b');await f.watch.poll();f.setBuild('release-a');await f.watch.poll();f.setBuild('release-b');await f.watch.poll();assert.equal(f.reconnects.length,0);f.watch.stop();await f.watch.poll();assert.equal(f.reconnects.length,0);});
+
+ test('release reconnect uses a client-legal close code', async()=>{
+  const {closeForRelease}=await import('./release-watch.js');
+  const socket=new WebSocket('ws://127.0.0.1:1');
+  socket.addEventListener('error',()=>{});
+  assert.doesNotThrow(()=>closeForRelease(socket));
+ });
