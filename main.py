@@ -3388,6 +3388,7 @@ def create_app() -> Flask:
         try:
             ws.send(json.dumps({
                 "type": "paired",
+                "build_id": app.config["BUILD_ID"],
                 "agent_id": agent_id,
                 "timestamp": utcnow(),
                 "auth_mode": auth_mode,
