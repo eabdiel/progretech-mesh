@@ -35,7 +35,8 @@
     const note=document.querySelector('.floor-footnote');if(note)note.hidden=Boolean(snapshot.factoryAgents?.length);
     const live=(snapshot.factoryAgents || []).map(a => ({...a,name:a.name || a.id[0].toUpperCase()+a.id.slice(1),role:a.role||'Live OpenClaw role',id:'factory-'+a.id,isDirector:false,factoryObserved:true}));
     const display=[...snapshot.agents,...live];
-    live.forEach((a,i)=>{basePositions[a.id]={x:140+(i%4)*240,y:505+Math.floor(i/4)*115};positions[a.id]=manualPositions[a.id] || positions[a.id] || {...basePositions[a.id]};});
+    const liveRows=Math.ceil(live.length/4),rowGap=Math.min(115,250/Math.max(1,liveRows-1)),firstRow=Math.min(505,620-rowGap*(liveRows-1));
+    live.forEach((a,i)=>{basePositions[a.id]={x:140+(i%4)*240,y:firstRow+Math.floor(i/4)*rowGap};positions[a.id]=manualPositions[a.id] || positions[a.id] || {...basePositions[a.id]};});
     const visible=new Set(display.map(a=>a.id));
     for(const id of Object.keys(positions))if(!visible.has(id)){delete positions[id];delete basePositions[id];}
     const markup = display.map(a => {
