@@ -176,6 +176,14 @@ class MeshRuntime:
         if role not in rows:raise ValueError('runtime_controls_unavailable')
         return is_sleeping(rows[role])
 
+    def chat_sleeping(self, agent):
+        # Codex is a bound OpenClaw runtime but is not managed by the local-model
+        # workday scheduler. Missing scheduler controls do not disable its chat.
+        try:return self.sleeping(agent)
+        except ValueError as exc:
+            if self.provider.bindings.get(agent)=='codex' and str(exc)=='runtime_controls_unavailable':return False
+            raise
+
     def control(self, agent, awake):
         role=ROLE_NAMES.get(self.provider.bindings[agent])
         if not role:raise ValueError('runtime_controls_unavailable')
@@ -216,7 +224,7 @@ class MeshRuntime:
             return copy.deepcopy(job)
 
     def start(self, agent, kind, worker, background=False, queue_timeout=600, capability=None, track=False):
-        if kind=='chat' and self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
+        if kind=='chat' and self.chat_sleeping(agent):raise ValueError('mesh_agent_sleeping')
         with self.lock:
             now=time.time()
             self.jobs={k:v for k,v in self.jobs.items() if not v['done'] or now-v['updated_at']<1800}
@@ -401,7 +409,7 @@ class MeshRuntime:
             if admission:admission(ident)
             cfg,role,chosen=self.config(agent)
             if not self.settings(agent).get('enabled',True):raise ValueError('mesh_enrollment_removed')
-            if self.sleeping(agent):raise ValueError('mesh_agent_sleeping')
+            if self.chat_sleeping(agent):raise ValueError('mesh_agent_sleeping')
             if media:
                 from control_center.media_jobs import generate
                 return generate(self,agent,text,ident)

@@ -5,7 +5,7 @@
  async function refresh(){if(busy)return;try{
   const r=await fetch('/api/status');if(!r.ok)throw Error('Sign in to reconnect');agent=(await r.json()).agents.find(a=>a.id===id);if(!agent)throw Error('Agent is unavailable');
   const snapshot=(await office('snapshot')).snapshot;
-  const tasks=snapshot.tasks.filter(t=>agent.is_orchestrator || t.assignee===agent.office_agent_id);
+  const tasks=snapshot.tasks.filter(t=>snapshot.orchestratorId===agent.office_agent_id || t.assignee===agent.office_agent_id);
   let text=tasks.map(t=>`${t.title} · ${t.status}\n${t.result||t.description||''}`).join('\n\n');
   if(!agent.office_worker){const c=await MeshRuntime.request(id,'context.read');text=[c.text&&`Reviewed handoff · ${c.author} · ${c.updated_at}\n${c.text}`,text].filter(Boolean).join('\n\n');}
   $('context').textContent=text||'No reviewed handoff or mission result recorded.';$('status').textContent=MeshRuntime.indicator(agent).detail;

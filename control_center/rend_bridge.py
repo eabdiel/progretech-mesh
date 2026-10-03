@@ -68,7 +68,7 @@ def install(host, home=None):
             return result
         if action in {'context.read', 'communication.start'}:
             from control_center.shared_context import read_context, mission_context
-            gateway=agent.split('--')[0]
+            gateway=agent if agent in trusted_gateways and not any(agent.startswith(k+'--') for k in trusted_gateways) else agent.rsplit('--',1)[0]
             context=read_context(home,gateway,runtime_id)
             results=mission_context(home,gateway,provider.bindings.get(gateway,runtime_id),runtime_id)
             if action=='context.read':return dict(context,mission_results=results)
@@ -84,7 +84,7 @@ def install(host, home=None):
         if action=='runtime.snapshot':return mesh.snapshot(agent,args['kind'])
         if action == 'factory.office':
             # All Fleet/Factory selections address the owning host's same office.
-            gateway = agent.split('--')[0]
+            gateway = agent if agent in trusted_gateways and not any(agent.startswith(k+'--') for k in trusted_gateways) else agent.rsplit('--',1)[0]
             host_runtime = provider.bindings.get(gateway, runtime_id)
             roster(gateway)
             from control_center.office import dispatch_office
@@ -93,13 +93,6 @@ def install(host, home=None):
 
             from control_center.factory_jobs import dispatch_factory
             result=dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
-            if action=='factory.office':
-                from control_center.mesh_runtime import ROLE_NAMES
-                for row in result.get('snapshot',{}).get('factoryAgents',[]):
-                    if row.get('last_result',{}).get('severity')!='error':continue
-                    runtime=row.get('runtime_id') or next((r for r,name in ROLE_NAMES.items() if name==row['id']),None)
-                    binding=next((a for a,r in provider.bindings.items() if r==runtime and a.startswith(agent.split('--')[0]+'--')),None)
-                    if binding:row['health']=mesh.health(binding)
             return result
         if action == 'communication.chat':
             from control_center.management import preferences
@@ -194,7 +187,7 @@ def install(host, home=None):
             if aid in trusted_gateways and trusted_gateways[aid] != runtime:
                 raise ValueError('runtime_binding_conflict')
             additions[aid] = runtime
-            agents.append({'id': aid, 'name': item['name'], 'role': discover(runtime).get('role') or item['name'], 'runtime_id':runtime})
+            agents.append({'id': aid, 'name': item['name'], 'role': (discover(runtime).get('role') or item['name'])[:160], 'runtime_id':runtime})
         with provider.lock:
             prefix = gateway_id + '--'
             # Old runtime targets stop being controllable immediately. Saved

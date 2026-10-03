@@ -71,7 +71,7 @@
     const archived=new Set((snapshot.archivedAgents||[]).map(a=>a.runtime_id).filter(Boolean));
     snapshot.agents=agents;
     snapshot.factoryAgents=observed.filter(a=>!bound.has(a.runtime_id)&&!archived.has(a.runtime_id));
-    snapshot.interactions=(snapshot.interactions||[]).map(l=>({...l,from:aliases[l.from]||l.from,to:aliases[l.to]||l.to})).filter(l=>l.from!==l.to);
+    snapshot.interactions=(snapshot.interactions||[]).map(l=>({...l,from:aliases[l.from]||l.from,to:aliases[l.to]||l.to,parts:Object.fromEntries(Object.entries(l.parts||{}).map(([id,text])=>[aliases[id]||id,text]))})).filter(l=>l.from!==l.to);
     return snapshot;
   }
   function indicator(agent, {monitoring=false}={}) {
@@ -90,6 +90,7 @@
     if(result.severity==='error' && result.code==='mesh_provider_unavailable' && fresh)return {state:'warning',label:'Previous request failed',detail:'Amber: '+last+' Current gateway and model provider are reachable; the configured model is installed. The failed request was not retried.'};
     if(result.severity==='error')return {state:'error',label:'Last action failed',detail:'Red: '+(last || 'The last Mesh request failed; see its error in this conversation.')+current};
     if(agent.transport && agent.transport!=='connected')return {state:'idle',label:'Offline',detail:'Gray: the gateway is offline.'+(last?' Previous result: '+last:'')};
+    if((monitoring || agent.gateway_agent) && agent.transport==='connected')return {state:'monitoring',label:'Gateway connected',detail:'Purple: the host gateway is connected.'+(last?' Last result: '+last:'')};
     if(agent.last_event){
       const direction=terminalDirection(agent.last_event),state={SYS:'monitoring',IN:'success',OUT:'busy',ERR:'error',FILE:'warning'}[direction.label];
       return {state,label:direction.label+' activity',detail:'Latest stream event: '+direction.label+'. The light matches the terminal.'};

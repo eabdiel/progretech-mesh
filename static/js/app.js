@@ -1057,6 +1057,7 @@
     document.querySelectorAll("[data-pair]").forEach((b) => b.addEventListener("click", () => pairGateway(b.dataset.pair)));
     document.querySelectorAll("[data-monitor]").forEach((b) => b.addEventListener("click", () => monitorAgent(b.dataset.monitor)));
     document.querySelectorAll("[data-message]").forEach((b) => b.addEventListener("click", () => {
+      if(fleet.find(a=>a.id===b.dataset.message)?.office_worker){window.open('/agents/'+encodeURIComponent(b.dataset.message)+'/terminal','_blank','noopener');return;}
       monitorAgent(b.dataset.message);
       setTimeout(() => messageInput.focus(), 150);
     }));

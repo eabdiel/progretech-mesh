@@ -80,6 +80,7 @@ class LocalHost:
             data=self.call('/api/mesh/control-center',{'agent_id':target,'action':payload.get('action'),'args':payload.get('args',{})})
         except Exception:
             data={'ok':False,'error':'local_host_action_failed'}
+        if data.get('ok') and payload.get('action')=='factory.office':self.last=0
         control_relay.resolve('rend',{'type':'control_center_response','request_id':message['request_id'],'payload':data})
         return True,None
 

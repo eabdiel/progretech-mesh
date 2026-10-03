@@ -168,3 +168,9 @@ The host's office, runtime bindings, communication preferences and enrollment
 receipts are application data and must survive release installation. Cloud roster
 projections are rebuilt by the authenticated gateway; they are not the identity or
 memory authority. Local and hosted UI must use the same release plus host adapter.
+
+For installations managed by the local release updater, the host service can use
+`install/mesh-host-server.py` with its existing host Python interpreter. It reads
+the installed release manifest instead of pinning an older development worktree.
+Restart the host bridge after updating its release; wait for active requests to
+finish before restarting the gateway adapter.

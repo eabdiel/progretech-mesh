@@ -816,6 +816,7 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         for key, value in record.items()
         if key not in {"codeseal_key", "owner_id"}
     }
+    public["gateway_agent"] = not record.get("control_center_gateway")
     public["control_center_available"] = bool(record.get("owner_id")) and record.get("trust_state") == "verified"
     if record.get("control_center_gateway"):
         host = DEV_AGENT_REGISTRY.get(record["control_center_gateway"], {})
@@ -1570,7 +1571,7 @@ def create_app() -> Flask:
         parts = request.path.split("/")
         if len(parts) >= 4 and parts[1:3] == ["api", "agents"]:
             record = DEV_AGENT_REGISTRY.get(parts[3], {})
-            if record.get("control_center_gateway") and parts[4:] not in (["control-center"], ["management"], ["message"]):
+            if record.get("control_center_gateway") and parts[4:] not in (["control-center"], ["management"], ["message"], ["office"]):
                 return jsonify(ok=False, error="linked_role_uses_host_identity"), 409
 
 
