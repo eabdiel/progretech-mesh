@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {route,finalText,chunks,eventKey} from './hooks.js';
+import {route,finalText,chunks,eventKey,telegramBinding} from './hooks.js';
 const cfg={agents:['main','imagen'],telegram:[{agent:'main',account:'default',owner:'123'}]};
 test('unknown roles and internal jobs are excluded',()=>{
  for(const key of ['agent:reviewer:main','agent:main:subagent:xyz','agent:main:mesh-chatter:abc','agent:main:cron:abc'])assert.equal(route({sessionKey:key},cfg),null);
@@ -23,4 +23,13 @@ test('chunks preserve all Unicode text and order',()=>{
 });
 test('separate runs of the same prompt are distinct',()=>{
  assert.notEqual(eventKey({runId:'a'},{prompt:'hello'}),eventKey({runId:'b'},{prompt:'hello'}));
+});
+
+test('Telegram sent hooks are owner-bound even when SDK omits session key',()=>{
+ const ctx={channelId:'telegram',accountId:'default',conversationId:'123'};
+ assert.equal(telegramBinding({to:'123'},ctx,cfg,true).agent,'main');
+ assert.equal(telegramBinding({to:'telegram:123'},ctx,cfg,true).agent,'main');
+ assert.equal(telegramBinding({to:'456'},ctx,cfg,true),null);
+ assert.equal(telegramBinding({from:'telegram:123',senderId:'123'},ctx,cfg).agent,'main');
+ assert.equal(telegramBinding({from:'telegram:group:-100',senderId:'123'},{...ctx,conversationId:'-100'},cfg),null);
 });

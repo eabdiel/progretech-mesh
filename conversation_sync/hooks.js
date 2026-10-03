@@ -33,3 +33,11 @@ export function chunks(text, size=3400) {
   for(let i=0;i<chars.length;i+=size)out.push(chars.slice(i,i+size).join(''));
   return out;
 }
+
+export function telegramBinding(event,ctx,config,outbound=false){
+  if(ctx.channelId!=='telegram')return null;
+  const normalize=value=>String(value??'').replace(/^telegram:/,'');
+  const target=normalize(outbound?event.to:(ctx.conversationId||event.from));
+  const sender=normalize(event.senderId||event.from);
+  return config.telegram?.find(b=>config.agents?.includes(b.agent) && b.account===(ctx.accountId||'default') && String(b.owner)===target && (outbound || String(b.owner)===sender)) || null;
+}
