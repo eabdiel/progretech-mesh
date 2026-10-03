@@ -53,7 +53,7 @@
   }
   function factoryRoster(rows,fleet,host) {
     const all=[...rows];
-    for(const agent of fleet.filter(a=>a.control_center_gateway===host && a.runtime_id)){
+    for(const agent of fleet.filter(a=>a.control_center_gateway===host).map(a=>({...a,runtime_id:a.runtime_id || a.id.slice(host.length+2)}))){
       if(!all.some(row=>row.runtime_id===agent.runtime_id))all.push({id:agent.runtime_id,runtime_id:agent.runtime_id,state:'unknown'});
     }
     return all.map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));

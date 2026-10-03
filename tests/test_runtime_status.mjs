@@ -22,3 +22,8 @@ test('newly enrolled roles appear even before an older workday snapshot observes
  const rows=api.factoryRoster([],fleet,'rend');assert.equal(rows.length,1);assert.equal(rows[0].name,'Odexi');assert.equal(rows[0].state,'unknown');
  assert.equal(api.factoryRoster(rows,fleet,'rend').length,1);
 });
+
+test('signed restored records without runtime metadata remain visible on the floor',()=>{
+ const fleet=[{id:'rend--codex',control_center_gateway:'rend',name:'Odexi',state:'unknown',transport:'connected'}];
+ const rows=api.factoryRoster([],fleet,'rend');assert.equal(rows.length,1);assert.equal(rows[0].runtime_id,'codex');assert.equal(rows[0].name,'Odexi');
+});
