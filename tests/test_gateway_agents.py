@@ -141,6 +141,11 @@ class HostRosterTests(unittest.TestCase):
         from types import SimpleNamespace
         from flask import Flask
         from control_center.rend_bridge import install
+        # This test verifies host binding admission, independent of the host-only
+        # Node coordination runtime. Real Hive persistence is exercised by
+        # test_office_engine and test_office_identity on the host/CI runtime.
+        office = patch('control_center.office_identity.synchronize', return_value={'agents': []})
+        office.start(); self.addCleanup(office.stop)
         with tempfile.TemporaryDirectory() as directory:
             home=Path(directory);(home/'.progretech-mesh').mkdir();(home/'.openclaw').mkdir()
             (home/'.progretech-mesh/control-center-bindings.json').write_text(json.dumps({'host':'main'}))
