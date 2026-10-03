@@ -40,3 +40,11 @@ class IdentityTests(unittest.TestCase):
         rows=project(snap,[{'id':'rend--main','runtime_id':'main'},{'id':'rend--codex','runtime_id':'codex'}],'rend','main')
         self.assertEqual([r['id'] for r in rows],['rend','rend--codex','rend--worker-one'])
         self.assertEqual([r['id'] for r in rows if r['is_orchestrator']],['rend--codex'])
+
+    def test_fresh_office_adopts_host_without_synthetic_director(self):
+        rows=[{'runtime_id':'main','name':'Rend','role':'SRE'}, {'runtime_id':'codex','name':'Odexi','role':'Architect'}]
+        snap=synchronize(self.home,'main','new-host',rows)
+        self.assertEqual(len(snap['agents']),2)
+        self.assertEqual([(a['name'],a['runtime_id']) for a in snap['agents'] if a['isDirector']],[('Rend','main')])
+        again=synchronize(self.home,'main','new-host',rows)
+        self.assertEqual([a['id'] for a in snap['agents']],[a['id'] for a in again['agents']])
