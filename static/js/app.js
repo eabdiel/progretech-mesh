@@ -1015,7 +1015,7 @@
 
         <div class="task">
           <label>${agent.transport === "connected" ? "Live activity" : "Status"}</label>
-          <strong>${escapeHtml(agent.task)}</strong>
+          <strong>${escapeHtml(MeshRuntime.indicator(agent).label)}</strong>
           <span>${escapeHtml(agent.phase)}${agent.mesh_runtime ? ` · ${MeshAvailability.label(agent.mesh_runtime)}` : ""}</span>
         </div>
 
