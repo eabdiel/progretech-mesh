@@ -1004,7 +1004,7 @@
       <article tabindex="0" data-agent-card="${escapeHtml(agent.id)}" class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
           <div class="agent-id">
-            ${agent.runtime_id === "coder" || agent.id === "mak" ? `<img class="avatar" src="/static/avatars/mak-avatar.jpg" alt="" style="object-fit:cover">` : agent.runtime_id === "progre" || agent.id === "progre" ? `<img class="avatar" src="/static/avatars/progre.png" alt="" style="object-fit:cover">` : `<div class="avatar ${["rend","lyra","mak"].includes(agent.id) ? agent.id : "rend"}"></div>`}
+            ${MeshAvatar.source(agent) ? `<img class="avatar" src="${MeshAvatar.source(agent)}" alt="" style="object-fit:cover">` : `<div class="avatar ${["rend","lyra","mak"].includes(agent.id) ? agent.id : "rend"}"></div>`}
             <div class="agent-name">
               <strong>${escapeHtml(agent.name)}</strong>
               <span>${escapeHtml(agent.role)}${agent.is_orchestrator?" · Orchestrator":""}</span>
