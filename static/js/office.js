@@ -128,7 +128,7 @@
     if(live){renderConversation();$('factoryRecovery').hidden=!['error','warning'].includes(MeshRuntime.indicator(live).state);$('factoryRecovery').textContent=MeshRuntime.indicator(live).state==='warning'?'Check recovery options':'Try to resolve';const status=$('factoryRuntimeStatus');status.textContent=MeshRuntime.indicator(live).detail;status.className='runtime-status '+MeshRuntime.indicator(live).state;$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
     $('inspectorActions').hidden=!a || Boolean(live);
     $('inspectorName').textContent=a?.name || 'Choose an agent';
-    $('inspectorRole').textContent=a ? `${a.role} · ${live?MeshRuntime.indicator(live).label:a.state} · ${live ? (live.sleeping?'asleep':'awake') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
+    $('inspectorRole').textContent=a ? `${a.role} · ${live?MeshRuntime.indicator(live).label:a.state} · ${live ? (live.sleeping===true?'asleep':live.sleeping===false?'awake':'availability unknown') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
     $('inspectorGoal').textContent=a?.goal || '';
     $('agentWork').hidden=!a;
     if(a) {
