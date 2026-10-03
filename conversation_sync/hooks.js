@@ -29,8 +29,9 @@ export function finalText(messages) {
 }
 export const eventKey=(ctx,event)=>ctx.runId || event.currentUserMessageId || crypto.createHash('sha256').update(ctx.sessionKey+'\0'+event.prompt).digest('hex');
 export function chunks(text, size=3400) {
-  const chars=Array.from(text),out=[];
-  for(let i=0;i<chars.length;i+=size)out.push(chars.slice(i,i+size).join(''));
+  const out=[];let chunk='';
+  for(const character of text){if(chunk.length+character.length>size){out.push(chunk);chunk='';}chunk+=character;}
+  if(chunk)out.push(chunk);
   return out;
 }
 
