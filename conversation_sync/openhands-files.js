@@ -1,5 +1,14 @@
 /* Origin-only attachment links. Reuse Agent Canvas's existing local auth. */
 (() => {
+  let syncing=false;
+  setInterval(async()=>{
+    const match=/^\/conversations\/([0-9a-f-]{32,36})(?:\/|$)/i.exec(location.pathname);
+    const key=window.__AGENT_CANVAS_SESSION_API_KEY__;
+    if(!match || !key || syncing || document.hidden)return;
+    syncing=true;
+    try{await fetch('/api/conversations/'+match[1]+'/events/sync',{method:'POST',headers:{'X-Session-API-Key':key},signal:AbortSignal.timeout(10000)});}catch{/* Preserve the last displayed feed while disconnected. */}
+    finally{syncing=false;}
+  },5000);
   document.addEventListener('click',async event=>{
     const anchor=event.target.closest?.('a[href^="#progretech-file="]');
     if(!anchor)return;

@@ -21,7 +21,8 @@ OpenHands Agent Server 1.49.6 has an authenticated POST
 `/api/conversations/{id}/events/sync` display projection for the exact named-role ACP
 bridge. It appends deterministic assistant display events under the SDK state lock,
 without calling `send_message`, `run`, or changing task/goal state. The adapter
-updates the most recent conversation for each role. Busy conversations are deferred.
+updates the most recent conversation for each role and any older conversation
+currently open in the browser. Busy conversations are deferred.
 SDK upgrades require revalidating the small event-router patch. Existing OpenHands
 bridge edits are preserved by before/after hash checks during installation.
 
