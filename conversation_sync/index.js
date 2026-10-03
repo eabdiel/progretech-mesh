@@ -40,7 +40,9 @@ export default definePluginEntry({id:'progretech-conversation-sync',name:'Progre
   });
   api.on('reply_payload_sending',(event,ctx)=>{
     const session=event.sessionKey||ctx.sessionKey;
-    if(!session || !config().agents?.includes(session.split(':')[1]))return;
+    const settings=config();
+    const agent=session?.split(':')[1] || telegramBinding({to:ctx.conversationId},ctx,settings,true)?.agent;
+    if(!agent || !settings.agents?.includes(agent))return;
     const payload=event.payload||{},paths=[payload.mediaUrl,...(payload.mediaUrls||[])].filter(p=>typeof p==='string' && path.isAbsolute(p));
     const missing=paths.filter(p=>!(payload.text||'').includes(p));
     if(missing.length)return {payload:{...payload,text:[payload.text,...missing.map(p=>'File: '+p)].filter(Boolean).join('\n')}};
