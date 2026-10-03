@@ -4065,6 +4065,14 @@ switch (body.operation) {
         settings.runtimeBindings[id] = row.runtime_id;
         settings.goals[id] = row.role || row.name;
       }
+      const current = hive.registry().agents[id];
+      const role = row.role || row.name;
+      if (current && current.role !== role) {
+        const previousRole = current.role;
+        const patched = hive.patchAgentRole(id, role);
+        if (!patched.ok) throw Error("office_role_refresh_failed");
+        if (settings.goals[id] === previousRole) settings.goals[id] = role;
+      }
     }
     save();
     break;
