@@ -29,7 +29,7 @@
         </div>
       </a>
 
-      <div class="top-actions">
+      <div class="top-actions">{% if local_updates_enabled %}<button id="localUpdateCheck" class="ghost-btn" type="button">Check for updates</button><script src="/static/js/local-updates.js?v={{ build_id }}" defer></script>{% endif %}
         <button id="installButton" class="ghost-btn" hidden>Install PWA</button>
         <button id="guidedTrainingButton" class="ghost-btn">Guided Training</button>
         <a href="/mission-control" class="ghost-btn factory-nav">Mission Control</a>
@@ -271,6 +271,14 @@
       </div>
 
       <form id="agentEnrollmentForm" class="enrollment-form">
+        <details>
+          <summary>Import prepared signed identities</summary>
+          <p>Import public identity bundles prepared on your agent host. Review the names, then verify and enroll them in this account. Private keys stay on the host.</p>
+          <label>Public identity bundle JSON<input id="preparedIdentityFile" type="file" accept="application/json,.json" /></label>
+          <ul id="preparedIdentityList"></ul>
+          <button type="button" class="primary-btn" id="enrollPreparedIdentities" disabled>Verify and enroll imported identities</button>
+          <p id="preparedIdentityStatus" role="status"></p>
+        </details>
         <label>Select identified agents from gateway<select id="gatewayAgentPicker"><option value="">Add an independent agent</option></select></label>
         <p id="gatewayPickerStatus" role="status">Choose one agent at a time. Each receives its own PEM and CodeSeal identity.</p>
         <input name="gateway_id" type="hidden"><input name="gateway_candidate_id" type="hidden">
@@ -285,8 +293,8 @@
         <details><summary>Need an identity or CodeSeal key?</summary>
           <p>Generate a new identity only for a new agent. Download its private key immediately and place it on that agent. A CodeSeal seal is a registry-signed record bound to the public key, not a password or a made-up CS- string.</p>
           <button type="button" class="ghost-btn" id="generateAgentIdentity">Generate identity & download private key</button>
-          <label>CodeSeal personal API token<input id="codeSealApiToken" type="password" autocomplete="off" placeholder="ptcs_live_…" /></label>
-          <p><a href="https://codeseal.progretech.com/account/api-tokens" target="_blank" rel="noopener">Create a CodeSeal account and API token</a>. The token is used for this request only and is not saved by Mesh.</p>
+          <label>CodeSeal personal API token (optional)<input id="codeSealApiToken" type="password" autocomplete="off" placeholder="Leave blank for automatic issuance" /></label>
+          <p>Leave the token blank to use the configured automatic issuer. You can also <a href="https://codeseal.progretech.com/account/api-tokens" target="_blank" rel="noopener">use your own CodeSeal account</a>. A supplied token is used for this request only.</p>
           <button type="button" class="ghost-btn" id="issueAgentSeal">Generate CodeSeal key</button>
           <p id="agentIdentityStatus" role="status"></p>
         </details>
@@ -408,7 +416,9 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="{{ url_for('static', filename='js/availability.js', v=build_id) }}" defer></script>
+  <script src="{{ url_for('static', filename='js/runtime-client.js', v=build_id) }}" defer></script>
   <script src="{{ url_for('static', filename='js/app.js', v=build_id) }}" defer></script>
+  <script type="module" src="{{ url_for('static', filename='js/signed-import.mjs', v=build_id) }}"></script>
   <script src="{{ url_for('static', filename='js/buddy.js', v=build_id) }}" defer></script>
 
   <dialog id="notificationSettingsDialog" class="mesh-dialog notification-dialog">
@@ -473,5 +483,5 @@
   </div>
 
 <script src="{{ url_for('static', filename='js/agent-management.js') }}?v={{ build_id }}" defer></script>
-</body>
+<script src="/static/js/agent-memory.js" defer></script></body>
 </html>

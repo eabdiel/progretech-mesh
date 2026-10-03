@@ -56,7 +56,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
     @app.post('/api/agents/<agent_id>/management')
     @require_session
     def manage_agent(agent_id):
-        if request.content_length and request.content_length > 16384:
+        if request.content_length and request.content_length > 550000:
             return jsonify(ok=False, error='payload_too_large'), 413
         if not same_origin():
             return jsonify(ok=False, error='same_origin_required'), 403
@@ -75,7 +75,7 @@ def register_management_routes(app, require_session, user_id, registry, gateways
         if not isinstance(body, dict) or set(body) - {'action', 'args'}:
             return jsonify(ok=False, error='invalid_request'), 400
         action = body.get('action')
-        if action not in {'communication.get', 'communication.save', 'communication.chat', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
+        if action not in {'specklet.get', 'specklet.toggle', 'specklet.import', 'specklet.task', 'memory.status', 'memory.share', 'memory.search', 'chatter.configure', 'chatter.history', 'chatter.pair', 'chatter.topic', 'handoff.create', 'handoff.list', 'handoff.control', 'files.begin', 'files.chunk', 'files.finish', 'files.cancel', 'files.list', 'files.read', 'files.reference', 'communication.get', 'communication.save', 'communication.chat', 'communication.start', 'communication.job', 'communication.new', 'runtime.status', 'runtime.wake', 'runtime.sleep', 'runtime.context', 'runtime.recover', 'runtime.snapshot', 'enrollment.remove', 'factory.providers', 'factory.run', 'factory.job'}:
             return jsonify(ok=False, error='unknown_action'), 400
         from control_center.management import validate_management
         try:
@@ -92,7 +92,11 @@ def register_management_routes(app, require_session, user_id, registry, gateways
                 if socket:
                     try: socket.close()
                     except (RuntimeError, OSError): pass
-        return jsonify(result), status
+        response=jsonify(result)
+        if action.startswith(('memory.','specklet.')):
+            response.headers['Cache-Control']='no-store, private'
+            response.headers['Pragma']='no-cache'
+        return response, status
 
     @app.post('/api/enrollment/codeseal')
     @require_session
@@ -102,19 +106,17 @@ def register_management_routes(app, require_session, user_id, registry, gateways
         if request.content_length and request.content_length > 16384:
             return jsonify(ok=False, error='payload_too_large'), 413
         body = request.get_json(silent=True)
-        if not isinstance(body, dict) or set(body) != {'identity', 'signature', 'api_token'} or not isinstance(body['api_token'], str) or not body['api_token'].startswith('ptcs_live_'):
-            return jsonify(ok=False, error='codeseal_api_token_required'), 400
-        # Fixed administrator configuration, never a user-supplied URL.
-        base = os.environ.get('CODESEAL_API_URL', 'https://codeseal.progretech.com/api/v1').rstrip('/')
-        target = urlsplit(base)
-        local = os.environ.get('APP_ENV') != 'production' and target.hostname in {'127.0.0.1', 'localhost', '::1'}
-        if target.scheme != 'https' and not (target.scheme == 'http' and local):
-            return jsonify(ok=False, error='codeseal_url_invalid'), 503
-        payload = json.dumps({'identity': body['identity'], 'signature': body['signature']}).encode()
-        req = Request(base + '/mesh/identities', data=payload, headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + body['api_token']})
+        if not isinstance(body, dict) or set(body) - {'identity', 'signature', 'api_token'} or not {'identity', 'signature'} <= set(body):
+            return jsonify(ok=False, error='invalid_issuance_request'), 400
+        token = body.get('api_token', '')
+        if not isinstance(token, str) or (token and not token.startswith('ptcs_live_')):
+            return jsonify(ok=False, error='invalid_codeseal_api_token'), 400
         try:
-            with build_opener(NoRedirect).open(req, timeout=20) as response:
-                evidence = json.loads(response.read(65536))
+            evidence = request_codeseal_identity(body['identity'], body['signature'], token or None)
             return jsonify(ok=True, evidence=evidence)
+        except ValueError as exc:
+            if str(exc) in {'codeseal_issuer_not_configured', 'codeseal_url_invalid'}:
+                return jsonify(ok=False, error=str(exc)), 503
+            return jsonify(ok=False, error='invalid_issuance_request'), 400
         except Exception:
-            return jsonify(ok=False, error='codeseal_issuance_unavailable', detail='Check your CodeSeal API token and that the registry supports Mesh identity issuance.'), 502
+            return jsonify(ok=False, error='codeseal_issuance_unavailable', detail='CodeSeal issuance is temporarily unavailable. Try again.'), 502

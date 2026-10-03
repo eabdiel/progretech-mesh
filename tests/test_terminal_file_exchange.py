@@ -17,8 +17,8 @@ class TestTerminalFileExchange(unittest.TestCase):
         self.assertIn("white-space:pre-wrap", CSS)
         self.assertIn("overflow-wrap:anywhere", CSS)
         self.assertIn("terminalDirection", APP)
-        self.assertIn('label:"IN"', APP)
-        self.assertIn('label:"OUT"', APP)
+        self.assertIn('MeshRuntime.terminalDirection(message)', APP)
+        self.assertIn("label:'OUT'", (ROOT/'static/js/runtime-client.js').read_text())
 
     def test_terminal_payload_details_are_expandable(self):
         self.assertIn("safeDetailPayload", APP)

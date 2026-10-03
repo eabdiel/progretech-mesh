@@ -66,6 +66,7 @@
   let installPrompt = null;
   let fleet = [];
   let selectedAgentId = null;
+  const roleConversations = new Map();
   let monitorSocket = null;
   let monitorReconnectTimer = null;
   let monitorReconnectAttempt = 0;
@@ -875,6 +876,16 @@
       return;
     }
 
+    if (['request_task_snapshot','request_terminal_snapshot','task_snapshot','terminal_snapshot','task.snapshot','terminal.snapshot'].includes(actionType)) {
+      const id=selectedAgentId;
+      try {
+        const result=await MeshRuntime.request(id,'runtime.snapshot',{kind:actionType.includes('task')?'task':'terminal'});
+        const event={type:'runtime_snapshot',message:result.lines.join('\n'),timestamp:new Date().toISOString(),payload:{sender:'Host',scope:result.scope}};
+        const messages=roleConversations.get(id)||[];roleConversations.set(id,messages);messages.push(event);
+        if(selectedAgentId===id) {appendLiveEvent(event);}
+      } catch(e){showToast(e.message);}
+      return;
+    }
     const response = await fetch(`/api/agents/${encodeURIComponent(selectedAgentId)}/actions/request`, {
       method: "POST",
       headers: {"Accept":"application/json","Content-Type":"application/json"},
@@ -980,9 +991,17 @@
       state === "revoked" ? "Revoked" : "Invalid";
   }
 
+  function renderAgentStatus() {
+    let detail=document.getElementById('agentStatusDetail');
+    if(!detail){detail=document.createElement('div');detail.id='agentStatusDetail';detail.className='agent-status-detail';detail.setAttribute('role','status');eventList.before(detail);}
+    const agent=fleet.find(a=>a.id===selectedAgentId);
+    detail.hidden=!agent;
+    if(agent)detail.textContent=MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail+' '+MeshRuntime.memoryLabel(agent.mesh_runtime?.memory);
+  }
   function renderFleet() {
+    renderAgentStatus();
     agentGrid.innerHTML = fleet.map((agent) => `
-      <article class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
+      <article tabindex="0" data-agent-card="${escapeHtml(agent.id)}" class="agent-card ${selectedAgentId === agent.id ? "active" : ""}">
         <div class="agent-top">
           <div class="agent-id">
             <div class="avatar ${["rend","lyra","mak"].includes(agent.id) ? agent.id : "rend"}"></div>
@@ -991,7 +1010,7 @@
               <span>${escapeHtml(agent.role)}</span>
             </div>
           </div>
-          <span class="agent-state ${agent.transport === "connected" ? (agent.state === "working" ? "busy" : "") : "idle"}"></span>
+          <span class="agent-state ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state}" title="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).detail)}" aria-label="${escapeHtml(MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).label)}"></span>
         </div>
 
         <div class="task">
@@ -1008,7 +1027,7 @@
         </div>
 
         <div class="agent-identity-row">
-          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${agent.control_center_gateway ? "Linked through verified host" : trustLabel(agent.trust_state)}</span>
+          <span class="trust-badge ${escapeHtml(agent.trust_state)}">${agent.local_host_binding ? "Authenticated local host" : agent.control_center_gateway && !agent.gateway_enrollment ? "Linked through verified host" : trustLabel(agent.trust_state)}</span>
           <span class="transport-pill ${escapeHtml(agent.transport)}">${agent.transport === "connected" ? "Gateway live" : "Gateway offline"}</span>
           <button class="identity-link" data-identity="${agent.id}">Identity</button>
         </div>
@@ -1018,7 +1037,9 @@
           <button data-monitor="${agent.id}" class="monitor" ${agent.control_center_gateway ? "disabled" : ""}>Monitor live</button>
           <button data-message="${agent.id}" ${agent.transport !== "connected" ? "disabled" : ""}>Message</button>
         </div>
-        ${agent.mesh_runtime?.controls_available && typeof agent.mesh_runtime.sleeping === "boolean" ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}" ${agent.transport !== "connected" ? "disabled" : ""}>${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button></div>` : ""}
+        ${agent.mesh_runtime?.controls_available && typeof agent.mesh_runtime.sleeping === "boolean" ? `<div class="agent-actions"><button data-power="${escapeHtml(agent.id)}" ${agent.transport !== "connected" ? "disabled" : ""}>${agent.mesh_runtime.sleeping ? "Wake up" : "Sleep"}</button><button data-new-conversation="${escapeHtml(agent.id)}">New chat</button></div>` : ""}
+        ${MeshRuntime.indicator(agent,{monitoring:!agent.control_center_gateway && agent.transport==='connected'}).state === "error" ? `<div class="agent-actions"><button data-recover="${escapeHtml(agent.id)}">Try to resolve</button></div>` : ""}
+        ${agent.transport === "connected" ? `<div class="agent-actions"><label><input type="checkbox" data-agent-specklet="${escapeHtml(agent.id)}" ${agent.mesh_runtime?.specklet_enabled?"checked":""}> Use Specklet</label><a href="/agents/${encodeURIComponent(agent.id)}/task-board">Task Board</a><button data-agent-memory="${escapeHtml(agent.id)}" data-memory-name="${escapeHtml(agent.name)}">Memory search</button></div>` : ""}
         ${agent.control_center_available ? `<div class="agent-actions"><a class="ghost-btn" href="/agents/${encodeURIComponent(agent.id)}/control-center">ProgreTech Control Center</a></div>` : ""}
         ${agent.owner_bound && !agent.control_center_gateway ? `<div class="agent-actions"><button data-ide-access="${agent.id}">Copy IDE relay setup</button></div>` : ""}
       </article>
@@ -1035,15 +1056,23 @@
     }));
     document.querySelectorAll("[data-identity]").forEach((b) => b.addEventListener("click", () => showIdentity(b.dataset.identity)));
 
-    agentGrid.querySelectorAll('[data-power]').forEach(button => button.onclick = async () => {
-      const agent = fleet.find(a => a.id === button.dataset.power);
-      button.disabled = true;
-      try {
-        agent.mesh_runtime = await MeshAvailability.power(agent.id, agent.mesh_runtime.sleeping,
-          detail => { button.textContent = detail; });
-        if (agent.mesh_runtime.model) agent.model = agent.mesh_runtime.model;
-        renderFleet();
-      } catch (error) { showToast(error.message); button.disabled = false; }
+    agentGrid.querySelectorAll('[data-agent-card]').forEach(card => {
+      card.onclick=e=>{if(!e.target.closest('button,a,input,select,textarea'))monitorAgent(card.dataset.agentCard);};
+      card.onkeydown=e=>{if(e.target===card && ['Enter',' '].includes(e.key)){e.preventDefault();monitorAgent(card.dataset.agentCard);}};
+    });
+    agentGrid.querySelectorAll('[data-power]').forEach(b=>b.onclick=async()=>{
+      const a=fleet.find(a=>a.id===b.dataset.power);b.disabled=true;
+      try{a.mesh_runtime=await MeshRuntime.run(a.id,a.mesh_runtime.sleeping?'runtime.wake':'runtime.sleep',{},j=>{b.textContent=j.detail;});renderFleet();}
+      catch(e){showToast(e.message);b.disabled=false;}
+    });
+    agentGrid.querySelectorAll('[data-recover]').forEach(b=>b.onclick=async()=>{
+      const id=b.dataset.recover;b.disabled=true;
+      try{const text=await MeshRuntime.recover(id,j=>{b.textContent=j.detail;});const messages=roleConversations.get(id)||[];roleConversations.set(id,messages);messages.push({type:'recovery_report',timestamp:new Date().toISOString(),message:text,payload:{sender:'Host',severity:'info'}});monitorAgent(id);}
+      catch(e){showToast(e.message);}finally{b.disabled=false;}
+    });
+    agentGrid.querySelectorAll('[data-new-conversation]').forEach(b=>b.onclick=async()=>{
+      try{await MeshRuntime.request(b.dataset.newConversation,'communication.new');showToast('New conversation ready. Previous runtime history is preserved.');}
+      catch(e){showToast(e.message);}
     });
     renderNotificationControls();
   }
@@ -1095,6 +1124,8 @@
       window.prompt("Copy this ownership payload and send it to the agent through your existing chat:", payload);
     }
   }
+
+  window.addEventListener('mesh-enrollment-completed', () => refreshFleet());
 
   async function refreshFleet() {
     const response = await fetch("/api/status", {headers:{"Accept":"application/json"}});
@@ -1455,6 +1486,8 @@
         monitorSocket.close();
       } catch (_) {}
     }
+    monitorSocket = null;
+    liveEvents = [];
 
     const agent = fleet.find((a) => a.id === agentId);
     if (!reconnecting) {
@@ -1475,7 +1508,10 @@
     if (agent?.control_center_gateway) {
       closeDirectTransport();
       document.getElementById("eventStreamLabel").textContent = `${agent.name} · conversation through verified host`;
-      eventList.innerHTML = '<div class="empty-stream">Messages go to this role in its own Mesh conversation. Host monitoring stays on the gateway tile.</div>';
+      const messages = roleConversations.get(agentId) || [];
+      if (messages.length) renderEvents(messages);
+      else eventList.innerHTML = '<div class="empty-stream">Messages go to this role in its own Mesh conversation. Host monitoring stays on the gateway tile.</div>';
+      renderTelemetry(agent);
       return;
     }
     const socket = new WebSocket(`${scheme}://${location.host}/ws/client/${encodeURIComponent(agentId)}`);
@@ -1501,7 +1537,7 @@
         fleet = fleet.map((item) => item.id === agentId ? data.agent : item);
         renderFleet();
         renderTelemetry(data.agent);
-        renderEvents(data.events || []);
+        renderEvents([...(data.events || []), ...(roleConversations.get(agentId) || [])]);
         return;
       }
 
@@ -1614,18 +1650,7 @@
     rerenderFilteredEvents();
   }
 
-  function terminalDirection(message) {
-    const type = String(message?.type || "event");
-    const payload = message?.payload || {};
-    const direction = String(payload.direction || "").toLowerCase();
-    const severity = String(payload.severity || "").toLowerCase();
-    if (severity === "error" || type === "direct_error") return {label:"ERR", cls:"dir-err"};
-    if (type.startsWith("file_") || type === "file" || type === "file_transfer") return {label:"FILE", cls:"dir-file"};
-    if (["user_message","group_message"].includes(type) || direction === "input" || direction === "out" || direction === "outbound") return {label:"OUT", cls:"dir-out"};
-    if (type === "message_response" || direction === "output" || direction === "in" || direction === "inbound") return {label:"IN", cls:"dir-in"};
-    if (type === "command_ack") return {label:"IN", cls:"dir-in"};
-    return {label:"SYS", cls:"dir-sys"};
-  }
+  function terminalDirection(message) { return MeshRuntime.terminalDirection(message); }
 
   function safeDetailPayload(message) {
     const payload = {...(message?.payload || {})};
@@ -1684,7 +1709,7 @@
 
     if (type === "file_offer_ready" && message.file) appendTerminalFileCard(item, message.file);
     eventList.appendChild(item);
-    if (type === "message_response") speakAgentReply(message.message || "");
+    if (type === "message_response" && track) speakAgentReply(message.message || "");
 
     while (eventList.children.length > 80) eventList.firstElementChild.remove();
     eventList.lastElementChild?.scrollIntoView({block:"nearest"});
@@ -1694,14 +1719,32 @@
     const agent=fleet.find((a)=>a.id===selectedAgentId);
     if (!agent) { showToast("Select an agent first."); return; }
     if (agent.transport!=="connected") { showToast(`${agent.name}'s gateway is offline.`); return; }
-    appendLiveEvent({type:'user_message',message:text,payload:{sender:'You'}});
+    const messages = roleConversations.get(agent.id) || [];
+    roleConversations.set(agent.id, messages);
+    const sent = {type:'user_message',message:text,timestamp:new Date().toISOString(),payload:{sender:'You'}};
+    const reply = {type:'message_pending',message:`Waiting for ${agent.name} to reply…`,timestamp:new Date().toISOString(),payload:{sender:agent.name}};
+    messages.push(sent, reply);
+    if (messages.length > 160) messages.splice(0, messages.length - 160);
+    appendLiveEvent(sent);
+    appendLiveEvent(reply);
     messageInput.value='';
     try {
-      const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/management`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'communication.chat',args:{text}})});
-      const data=await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || response.status);
-      appendLiveEvent({type:'message_response',message:data.result.reply,payload:{sender:agent.name}});
-    } catch(error) { showToast(`Message failed: ${error.message}. No automatic retry was sent.`); }
+      const result=await MeshRuntime.run(agent.id,'communication.start',{text},job=>{
+        reply.message=`${agent.name}: ${job.detail} · ${Math.max(0,Math.floor(Date.now()/1000-job.created_at))}s`;
+        reply.payload={sender:agent.name,phase:job.phase,milestones:job.milestones};
+        if(selectedAgentId===agent.id)renderEvents(agent.control_center_gateway ? messages : liveEvents);
+      });
+      agent.mesh_runtime={...agent.mesh_runtime,last_result:{severity:'success'}};
+      renderFleet();
+      Object.assign(reply, {type:'message_response',message:result.reply,timestamp:new Date().toISOString()});
+      if (selectedAgentId === agent.id) { renderEvents(agent.control_center_gateway ? messages : liveEvents); speakAgentReply(reply.message || ''); }
+      else showToast(`${agent.name} replied. Open their Message view to read it.`);
+    } catch(error) {
+      agent.mesh_runtime={...agent.mesh_runtime,last_result:{severity:'error'}};renderFleet();
+      Object.assign(reply, {type:'message_error',message:`Message failed: ${error.message}. No automatic retry was sent.`,payload:{sender:agent.name,severity:'error'}});
+      if (selectedAgentId === agent.id) renderEvents(agent.control_center_gateway ? messages : liveEvents);
+      showToast(`${agent.name}: ${reply.message}`);
+    }
 
   }
 
@@ -2229,4 +2272,3 @@ configureVoice();
   }
 
 })();
-

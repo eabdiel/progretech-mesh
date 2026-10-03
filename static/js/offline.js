@@ -6,7 +6,7 @@
   function status(s){$('localStatus').textContent=s;}
   async function refresh(){
     agents=(await api('local/agents')).agents;
-    $('localFleet').innerHTML=agents.map(a=>`<article class="local-tile"><span class="local-dot ${a.awake?'awake':''}"></span>${a.awake?'Answered':'Not checked'}<h2>${escape(a.name)}</h2><p>${escape(a.kind)} · ${escape(a.runtime_id)}</p><p>${escape(a.workspace)}</p><button data-chat="${escape(a.id)}">Ask agent</button><button data-remove="${escape(a.id)}">Unlink</button></article>`).join('')+'<button class="local-add" id="openLocalOnboarding"><span>+</span>Agent onboarding</button>';
+    $('localFleet').innerHTML=agents.map(a=>`<article class="local-tile"><span class="local-dot ${a.awake?'awake':''}"></span>${a.awake?'Answered':'Not checked'}<h2>${escape(a.name)}</h2><p>${escape(a.kind)} · ${escape(a.runtime_id)}</p><p>${escape(a.workspace)}</p><button data-chat="${escape(a.id)}">Ask agent</button><button data-agent-memory="${escape(a.id)}" data-memory-name="${escape(a.name)}">Memory search</button><button data-remove="${escape(a.id)}">Unlink</button></article>`).join('')+'<button class="local-add" id="openLocalOnboarding"><span>+</span>Agent onboarding</button>';
     $('openLocalOnboarding').onclick=()=>{$('localOnboarding').showModal();loadGatewayAgents();};
     $('localFleet').querySelectorAll('[data-chat]').forEach(b=>b.onclick=()=>{chatId=b.dataset.chat;$('chatName').textContent=agents.find(a=>a.id===chatId).name;$('chatAnswer').textContent='';$('localChat').showModal();});
     $('localFleet').querySelectorAll('[data-remove]').forEach(b=>b.onclick=async()=>{try{await api(`local/agents/${b.dataset.remove}/remove`,{});await refresh();}catch(e){status(e.message);}});

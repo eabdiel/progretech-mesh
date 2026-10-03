@@ -1,3 +1,5 @@
+import { registerSpecklet } from './specklet.js';
+import { recordInteraction, recordAgentResult } from "./interactions.js";
 import { forwardRoleCompletion } from './ide-client.js';
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -6,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { createReleaseWatch, closeForRelease, isAuthenticationClose } from "./release-watch.js";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
-import { forwardControlCenter, discoverControlAgents } from "./control-center.js";
+import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.8-chatter-groups.1";
 
 import { definePluginEntry } from "openclaw/plugin-sdk/core";
 
@@ -1047,6 +1049,14 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
     queueRetry("connect_timeout");
   }, RECONNECT_CONNECT_TIMEOUT_MS);
 
+  let rosterTimer=null, rosterBusy=false;
+  const syncRoster=async()=>{
+    if(rosterBusy || meshSocket!==socket || socket.readyState!==WebSocket.OPEN)return;
+    rosterBusy=true;
+    try{const agents=await discoverControlAgents(record.agent_id,ensureLocalAccessCredential().token);
+      if(meshSocket===socket && socket.readyState===WebSocket.OPEN && Array.isArray(agents))sendMeshGatewayMessage({type:'control_center_roster',payload:{agents,enrollment_restore_version:1,enrollment_receipts:enrollmentReceipts(STATE_DIR,record.agent_id)}});
+    }catch{}finally{rosterBusy=false;}
+  };
   let activeMeshRequests=0;
   const releaseWatch=createReleaseWatch({mesh:record.mesh,
     idle:()=>meshSocket===socket && socket.readyState===WebSocket.OPEN && activeMeshRequests===0,
@@ -1075,9 +1085,8 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
       sendMeshGatewayMessage(heartbeatPayload());
     });
     sendMeshGatewayMessage(localRouteMessage());
-    void discoverControlAgents(record.agent_id, ensureLocalAccessCredential().token).then((agents) => {
-      if (Array.isArray(agents)) sendMeshGatewayMessage({type: "control_center_roster", payload: {agents, enrollment_restore_version: 1, enrollment_receipts: enrollmentReceipts(STATE_DIR, record.agent_id)}});
-    }).catch(() => {});
+    void syncRoster();
+    rosterTimer=setInterval(()=>void syncRoster(),10000);
     appendEvent({
       event_type: "gateway",
       channel: "mesh",
@@ -1102,7 +1111,6 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
             } catch { sendMeshGatewayMessage({type:'control_center_response', request_id:msg.request_id, payload:{ok:false,error:'gateway_enrollment_cache_failed'}}); }
             return;
           }
-
           let payload;
           try {
             payload = await forwardControlCenter(msg.payload, record.agent_id, ensureLocalAccessCredential().token);
@@ -1155,6 +1163,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
 
   socket.addEventListener("close", (event) => {
     releaseWatch.stop();
+    clearInterval(rosterTimer);
     clearMeshConnectWatchdog();
     if (meshSocket === socket) meshSocket = null;
 
@@ -1456,6 +1465,7 @@ function registerObservationHooks(api) {
   });
 
   api.on("after_tool_call", (event, ctx) => {
+    try { recordInteraction(STATE_DIR,event,ctx); } catch {}
     appendEvent({
       event_type: "tool",
       channel: sessionLooksMesh(ctx) ? "mesh" : channelFromContext(ctx, "system"),
@@ -1473,6 +1483,7 @@ function registerObservationHooks(api) {
   });
 
   api.on("agent_end", (event, ctx) => {
+    try { recordAgentResult(STATE_DIR,event,ctx); } catch {}
     appendEvent({
       event_type: "agent",
       channel: sessionLooksMesh(ctx) ? "mesh" : channelFromContext(ctx, "system"),
@@ -1639,6 +1650,7 @@ export default definePluginEntry({
   name: "ProgreTech Mesh",
   description: "Direct-first Mesh transport with offline same-LAN reconnect support.",
   register(api) {
+    registerSpecklet(api, () => process.env.PROGRETECH_MESH_LOCAL_TOKEN?.trim() || ensureLocalAccessCredential().token);
     registerObservationHooks(api);
     registerConversationBridge(api);
     startLocalSignalServer(api);
