@@ -23,6 +23,9 @@ function renderStatus(data) {
   $('#agents').replaceChildren(); $('#controller').replaceChildren();
   for (const agent of agents) {
     const card = element('article','', 'factory-agent');
+    if (agent.id === 'progre' || agent.runtime_id === 'progre') {
+      const avatar = document.createElement('img'); avatar.src='/static/avatars/progre.png'; avatar.alt=''; avatar.width=64; avatar.height=64; avatar.style.objectFit='cover'; card.append(avatar);
+    }
     card.append(element('h3',agent.name || agent.id),element('p',agent.role || 'Role not reported'));
     card.append(element('span',agent.controller ? 'Controller' : 'Worker','badge'));
     card.append(element('span',agent.workspace_ready ? 'Workspace ready' : 'Workspace not ready','badge'));
@@ -36,7 +39,10 @@ function renderStatus(data) {
   }
   for (const id of ['rend','lyra','mak']) {
     if (!agents.some(a => a.id === id)) {
-      const card = element('article','', 'factory-agent'); card.append(element('h3',id[0].toUpperCase()+id.slice(1)),element('p','Not reported by this workstation.','muted')); $('#agents').append(card);
+      const card = element('article','', 'factory-agent');
+    if (agent.id === 'progre' || agent.runtime_id === 'progre') {
+      const avatar = document.createElement('img'); avatar.src='/static/avatars/progre.png'; avatar.alt=''; avatar.width=64; avatar.height=64; avatar.style.objectFit='cover'; card.append(avatar);
+    } card.append(element('h3',id[0].toUpperCase()+id.slice(1)),element('p','Not reported by this workstation.','muted')); $('#agents').append(card);
     }
   }
   $('#providers').replaceChildren();

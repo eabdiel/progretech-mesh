@@ -1,9 +1,9 @@
 import {createHash, randomUUID} from 'node:crypto';
 
 export const IDE_ROLE_ALIASES = Object.freeze({
-  rend:'main', lyra:'researcher', mak:'coder', progre:'progre', designer:'designer',
-  architect:'architect', reviewer:'reviewer', fast:'fast',
-  'rend-code':'coder', 'rend-fast':'fast', 'rend-llama-review':'reviewer',
+  rend:'main', lyra:'researcher', mak:'coder', progre:'progre',
+  architect:'architect', tec:'architect', reviewer:'reviewer', revie:'reviewer', imagen:'imagen', codex:'codex', odexi:'codex',
+  'rend-code':'coder', 'rend-llama-review':'reviewer',
   'rend-architect':'architect', 'rend-research':'researcher',
 });
 const FIELDS = new Set(['model','messages','stream','temperature','top_p','max_tokens','max_completion_tokens',
