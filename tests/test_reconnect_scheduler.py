@@ -28,7 +28,7 @@ class TestReconnectScheduler(unittest.TestCase):
         self.assertIn('reconnect_state: "connected"', self.source)
 
     def test_auth_rejection_still_fails_closed(self):
-        self.assertIn("[4001, 4003, 4401, 4403]", self.source)
+        self.assertIn("isAuthenticationClose(event?.code)", self.source)
         self.assertIn("Mesh authentication rejected; re-enrollment required", self.source)
 
 if __name__ == "__main__":
