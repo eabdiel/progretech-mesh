@@ -27,3 +27,8 @@ test('signed restored records without runtime metadata remain visible on the flo
  const fleet=[{id:'rend--codex',control_center_gateway:'rend',name:'Odexi',state:'unknown',transport:'connected'}];
  const rows=api.factoryRoster([],fleet,'rend');assert.equal(rows.length,1);assert.equal(rows[0].runtime_id,'codex');assert.equal(rows[0].name,'Odexi');
 });
+test('unified office keeps saved IDs but removes native aliases and uses native state',()=>{
+ const fleet=[{id:'rend',runtime_id:'main',state:'idle',transport:'connected'}, {id:'rend--codex',runtime_id:'codex',control_center_gateway:'rend',state:'working',transport:'connected'}];
+ const snapshot={agents:[{id:'orchestrator',runtime_id:'codex',isDirector:true},{id:'runtime-main',runtime_id:'main'}],factoryAgents:[{id:'codex',runtime_id:'codex'},{id:'rend',runtime_id:'main'}],interactions:[{from:'factory-codex',to:'factory-rend'}]};
+ const result=api.unifiedOffice(snapshot,fleet,'rend');assert.equal(result.agents.length,2);assert.equal(result.factoryAgents.length,0);assert.equal(result.agents[0].mesh_agent_id,'rend--codex');assert.equal(result.agents[0].native.state,'working');assert.equal(result.interactions[0].from,'orchestrator');assert.equal(result.interactions[0].to,'runtime-main');
+});

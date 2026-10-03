@@ -112,6 +112,12 @@ def register_gateway_agents(gateway_id, payload, registry):
             return False
         accepted[aid] = item
     # A roster is discovery, not enrollment or proof of each role's identity.
+    # The gateway and its intake runtime are one agent. Keep signed receipts
+    # intact, but exclude its former child alias from discovery and display.
+    host_runtime = (host_activity or {}).get('runtime_id')
+    if isinstance(host_runtime, str):
+        host['runtime_id'] = host_runtime
+        accepted.pop(gateway_id+'--'+host_runtime, None)
     host['identified_agents'] = [{'id': aid, 'name': item['name'], 'role': item.get('role', '')}
         for aid, item in accepted.items()]
     # Retire old automatically linked records. Explicitly signed agents survive
@@ -121,24 +127,34 @@ def register_gateway_agents(gateway_id, payload, registry):
             del registry[aid]
     for aid, item in accepted.items():
         record = registry.get(aid)
-        if not record or not record.get('gateway_enrollment'):
+        if item.get('office_worker') is True and not record:
+            record = registry[aid] = {'id':aid, 'name':item['name'], 'role':item.get('role',''),
+                'owner_id':host['owner_id'], 'control_center_gateway':gateway_id,
+                'trust_state':'verified', 'office_worker':True, 'runtime':'Factory worker',
+                'phase':'Host-owned office worker', 'task':'Office worker', 'model':'Office execution model'}
+        if not record or not (record.get('gateway_enrollment') or record.get('office_worker')):
             continue
         activity = item.get('activity') if isinstance(item.get('activity'), dict) else {}
         observed = activity.get('state', item.get('state', 'unknown'))
-        record['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
+        record['state'] = {'active':'working','working':'working','idle':'idle','paused':'paused','stopped':'paused',
                            'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         record['transport'] = 'connected'
         record['runtime_id'] = aid[len(gateway_id)+2:]
+        record['office_archived'] = item.get('office_archived') is True
+        record['office_agent_id'] = item.get('office_agent_id')
+        record['is_orchestrator'] = item.get('is_orchestrator') is True
         record['mesh_runtime'] = public_runtime_status(item.get('mesh_runtime') or {})
         record['mesh_runtime'].update(availability_status(item))
         if record['mesh_runtime'].get('model'): record['model'] = record['mesh_runtime']['model']
     if host_activity is not None:
+        host['office_agent_id'] = host_activity.get('office_agent_id')
+        host['is_orchestrator'] = host_activity.get('is_orchestrator') is True
         host['mesh_runtime'] = availability_status(host_activity)
         if host['mesh_runtime'].get('model'): host['model'] = host['mesh_runtime']['model']
         activity = host_activity.get('activity') if isinstance(host_activity.get('activity'), dict) else {}
         observed = activity.get('state', host_activity.get('state', 'unknown'))
-        host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
+        host['state'] = {'active':'working','working':'working','idle':'idle','paused':'paused','stopped':'paused',
                          'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         status=host_activity.get('mesh_runtime')

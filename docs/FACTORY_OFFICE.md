@@ -139,3 +139,32 @@ arguments and provider payloads never cross this status endpoint. The local
 MemPalace hook 1.2.1 provides explicitly enabled, host-scoped automatic completion
 logging for registered unsandboxed roles; model-requested lesson writes retain
 their separate permission and invocation checks.
+
+## Unified identity and orchestrator assignment
+
+Fleet and Factory share a host-local office roster. Native entries bind to runtime
+IDs; the gateway's intake runtime appears on its existing gateway card. Existing
+signed credentials and archived history are retained. Legacy office aliases are
+bound explicitly through `~/.progretech-mesh/office-runtime-bindings.json`, keyed by
+gateway ID and office ID; display names are never used as identity keys.
+
+**Make Orchestrator** transfers open assignments and pending coordination mail to
+one selected agent. Specialist roles, private memory and completed-task attribution
+stay unchanged. An interrupted handoff is replayed under the office lock. A running
+model invocation finishes with its original execution context; result delivery uses
+the current orchestrator. Archived workers remain archived through discovery and
+redeployment; **Hire worker → Return to office** restores them. Office-only hires
+are shown as host-owned Factory workers in Fleet, not as separately signed runtimes.
+
+**Terminal view** opens scoped agent input/output and delivered mission results.
+It does not attach to an existing CLI process. Reviewed cross-client context can be
+published with `scripts/share-agent-context.py --gateway HOST --runtime RUNTIME
+--author AUTHOR --file REVIEWED_FILE`. These notes stay on the host and are included
+in the selected agent's next Mesh chat along with its relevant mission results.
+Only explicitly reviewed notes are published; CLI transcripts are not automatically
+imported. Unknown runtime activity remains unknown when no observation is available.
+
+The host's office, runtime bindings, communication preferences and enrollment
+receipts are application data and must survive release installation. Cloud roster
+projections are rebuilt by the authenticated gateway; they are not the identity or
+memory authority. Local and hosted UI must use the same release plus host adapter.

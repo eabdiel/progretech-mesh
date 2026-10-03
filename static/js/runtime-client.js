@@ -53,10 +53,26 @@
   }
   function factoryRoster(rows,fleet,host) {
     const all=[...rows];
-    for(const agent of fleet.filter(a=>a.control_center_gateway===host).map(a=>({...a,runtime_id:a.runtime_id || a.id.slice(host.length+2)}))){
+    for(const agent of fleet.filter(a=>a.control_center_gateway===host && !a.office_worker && !a.office_archived).map(a=>({...a,runtime_id:a.runtime_id || a.id.slice(host.length+2)}))){
       if(!all.some(row=>row.runtime_id===agent.runtime_id))all.push({id:agent.runtime_id,runtime_id:agent.runtime_id,state:'unknown'});
     }
-    return all.map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));
+    return all.filter((row,i)=>all.findIndex(a=>a.runtime_id===row.runtime_id)===i).map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));
+  }
+  function unifiedOffice(snapshot,fleet,host) {
+    const observed=factoryRoster(snapshot.factoryAgents || [],fleet,host);
+    const aliases={};
+    const agents=snapshot.agents.map(agent=>{
+      const live=observed.find(row=>row.runtime_id===agent.runtime_id);
+      if(!live)return agent;
+      aliases['factory-'+live.id]=agent.id;
+      return {...agent,native:live,mesh_agent_id:live.id===host?host:(fleet.find(a=>a.runtime_id===agent.runtime_id && (a.control_center_gateway===host||a.id===host))?.id),state:live.state};
+    });
+    const bound=new Set(agents.map(a=>a.runtime_id).filter(Boolean));
+    const archived=new Set((snapshot.archivedAgents||[]).map(a=>a.runtime_id).filter(Boolean));
+    snapshot.agents=agents;
+    snapshot.factoryAgents=observed.filter(a=>!bound.has(a.runtime_id)&&!archived.has(a.runtime_id));
+    snapshot.interactions=(snapshot.interactions||[]).map(l=>({...l,from:aliases[l.from]||l.from,to:aliases[l.to]||l.to})).filter(l=>l.from!==l.to);
+    return snapshot;
   }
   function indicator(agent, {monitoring=false}={}) {
     const runtime=agent.mesh_runtime || agent;
@@ -91,5 +107,5 @@
     const result=await run(agent,'runtime.recover',{},progress);
     return (result.steps || []).map(s=>s.name+' · '+s.state+': '+s.detail).join('\n')+'\n'+result.note;
   }
-  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent,factoryRoster};
+  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent,factoryRoster,unifiedOffice};
 })();

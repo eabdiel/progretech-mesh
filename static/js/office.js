@@ -41,7 +41,7 @@
     for(const id of Object.keys(positions))if(!visible.has(id)){delete positions[id];delete basePositions[id];}
     const markup = display.map(a => {
       const blocked = snapshot.tasks.some(t => t.assignee===a.id && t.status==='blocked');
-      const indicator=a.factoryObserved?MeshRuntime.indicator(a):null;
+      const indicator=a.native?MeshRuntime.indicator(a.native):a.factoryObserved?MeshRuntime.indicator(a):null;
       const state = indicator?indicator.state:blocked?'blocked':a.state;
       const p = positions[a.id];
       return `<button class="floor-node ${a.isDirector?'director':''} ${state==='active'?'working':escape(state)} ${a.id===selected?'selected':''}" data-agent="${escape(a.id)}" ${a.factoryObserved?'data-factory-role="'+escape(a.id.slice(8))+'"':''} style="left:${p.x}px;top:${p.y}px" title="${escape(indicator?.detail||a.role)}" aria-label="${escape(a.name)}, ${escape(a.role)}, ${escape(indicator?.detail||state)}"><span class="node-orb">${a.isDirector?'◈':escape(a.name.slice(0,2).toUpperCase())}</span><span class="node-state" aria-hidden="true"></span><span class="node-name">${escape(a.name)} · ${escape(indicator?.label||state)}</span><span class="node-role">${escape(a.role)}</span></button>`;
@@ -59,7 +59,7 @@
     });
     for(const node of previous.values())node.remove();
     $('floorNodes').querySelectorAll('[data-agent]').forEach(node => {
-      node.onclick = () => { if (node.dataset.dragged==='true') {node.dataset.dragged='false'; return;} selected=node.dataset.agent;selectedLink=null;runtimeState=null; renderInspector(); renderFloor(); if(node.dataset.factoryRole)loadRuntime();else loadMailbox(); };
+      node.onclick = () => { if (node.dataset.dragged==='true') {node.dataset.dragged='false'; return;} selected=node.dataset.agent;selectedLink=null;runtimeState=null; renderInspector(); renderFloor(); if(node.dataset.factoryRole || snapshot.agents.find(a=>a.id===selected)?.native)loadRuntime();loadMailbox(); };
       node.onpointerdown = e => {
         if(e.button!==0)return;
         const start={x:e.clientX,y:e.clientY},id=node.dataset.agent,original={...positions[id]};
@@ -119,27 +119,32 @@
   }
   animation=requestAnimationFrame(float);
   function renderInspector() {
-    const live=snapshot?.factoryAgents?.find(a=>'factory-'+a.id===selected);
-    const a=live ? {...live,name:live.id[0].toUpperCase()+live.id.slice(1),role:'Local agent'} : snapshot?.agents.find(a=>a.id===selected);
+    const officeAgent=snapshot?.agents.find(a=>a.id===selected);
+    const live=officeAgent?.native || snapshot?.factoryAgents?.find(a=>'factory-'+a.id===selected);
+    const a=officeAgent || (live ? {...live,name:live.name||live.id,role:live.role||'Local agent'} : null);
     $('factoryChat').hidden=!live;
     let tracking=$('factorySpeckletToggle');if(!tracking){const label=document.createElement('label');tracking=document.createElement('input');tracking.type='checkbox';tracking.id='factorySpeckletToggle';label.append(tracking,document.createTextNode(' Use Specklet'));$('factoryMemoryStatus').after(label);tracking.onchange=async()=>{const aid=selectedRuntime(),selection=selected,wanted=tracking.checked;if(!aid)return;tracking.disabled=true;try{const r=await fetch('/api/agents/'+encodeURIComponent(aid)+'/management',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'specklet.toggle',args:{enabled:wanted}})});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||'Specklet unavailable');if(selected===selection){runtimeState={...(runtimeState||{}),specklet_enabled:d.result.enabled};say(d.result.enabled?'Specklet enabled':'Specklet off; board retained');}}catch(e){if(selected===selection){tracking.checked=!wanted;say(e.message);}}finally{tracking.disabled=false;}};}tracking.parentElement.hidden=!live;tracking.checked=Boolean(runtimeState?.specklet_enabled);
     let taskButton=$('factoryTaskBoard');if(!taskButton){taskButton=document.createElement('a');taskButton.id='factoryTaskBoard';taskButton.textContent='Task Board';$('factoryMemoryStatus').after(taskButton);}taskButton.hidden=!live;const boardAgent=selectedRuntime();taskButton.href=boardAgent?'/agents/'+encodeURIComponent(boardAgent)+'/task-board':'#';
     let memoryButton=$('factoryMemorySearch');if(!memoryButton){memoryButton=document.createElement('button');memoryButton.id='factoryMemorySearch';memoryButton.textContent='Memory search';$('factoryMemoryStatus').after(memoryButton);memoryButton.onclick=()=>{const aid=selectedRuntime();if(aid)MeshMemory.open(aid,$('inspectorName').textContent);else say('Select an enrolled agent to search its memory.');};}memoryButton.hidden=!live;
-    $('officeMailbox').hidden=!a || Boolean(live);
+    $('officeMailbox').hidden=!officeAgent;
     if(live){renderConversation();$('factoryRecovery').hidden=!['error','warning'].includes(MeshRuntime.indicator(live).state);$('factoryRecovery').textContent=MeshRuntime.indicator(live).state==='warning'?'Check recovery options':'Try to resolve';const status=$('factoryRuntimeStatus');status.textContent=MeshRuntime.indicator(live).detail;status.className='runtime-status '+MeshRuntime.indicator(live).state;$('factoryMemoryStatus').textContent=MeshRuntime.memoryLabel(live.memory);}
-    $('inspectorActions').hidden=!a || Boolean(live);
+    $('inspectorActions').hidden=!officeAgent;
     $('inspectorName').textContent=a?.name || 'Choose an agent';
     $('inspectorRole').textContent=a ? `${a.role} · ${live?MeshRuntime.indicator(live).label:a.state} · ${live ? (live.sleeping===true?'asleep':live.sleeping===false?'awake':'availability unknown') : a.pendingMessages+' mailbox messages'}` : 'Select a circle to follow its work and send guidance.';
     $('inspectorGoal').textContent=a?.goal || '';
+    let directorButton=$('makeOrchestrator');
+    if(!directorButton){directorButton=document.createElement('button');directorButton.id='makeOrchestrator';$('inspectorGoal').after(directorButton);directorButton.onclick=async()=>{directorButton.disabled=true;try{await api('orchestrator.set',{id:selected});await refresh();}catch(e){say(e.message);directorButton.disabled=false;}};}
+    let terminal=$('officeTerminalView');if(!terminal){terminal=document.createElement('a');terminal.id='officeTerminalView';terminal.textContent='Terminal view';terminal.target='_blank';terminal.rel='noopener';directorButton.after(terminal);}terminal.hidden=!a;terminal.href='/agents/'+encodeURIComponent(selectedRuntime() || host())+'/terminal';
+    directorButton.hidden=!officeAgent;directorButton.disabled=!online || Boolean(a?.isDirector);directorButton.textContent=a?.isDirector?'Orchestrator':'Make Orchestrator';
     $('agentWork').hidden=!a;
     if(a) {
-      const tasks=live ? (snapshot.workdayTasks||[]).filter(t=>t.role===live.id).sort((a,b)=>(a.day+' '+a.slot).localeCompare(b.day+' '+b.slot)) : snapshot.tasks.filter(t=>a.isDirector || t.assignee===a.id);
-      $('agentAssignments').innerHTML=tasks.map(t=>`<li><strong>${escape(t.title||t.phase||t.id)}</strong><br>${escape(t.status||t.state)} · ${live?'Scheduled '+escape(t.day)+' '+escape(t.slot):'Assigned to '+escape(snapshot.agents.find(a=>a.id===t.assignee)?.name||t.assignee||'unassigned')}${t.description?'<details><summary>Task brief</summary>'+escape(t.description)+'</details>':''}${t.dependsOn?.length?'<br>Depends on '+escape(t.dependsOn.join(', ')):''}</li>`).join('') || '<li>No recorded assignment. Mailbox context alone does not start a mission.</li>';
+      const tasks=!officeAgent && live ? (snapshot.workdayTasks||[]).filter(t=>t.role===live.id).sort((a,b)=>(a.day+' '+a.slot).localeCompare(b.day+' '+b.slot)) : snapshot.tasks.filter(t=>a.isDirector || t.assignee===a.id);
+      $('agentAssignments').innerHTML=tasks.map(t=>`<li><strong>${escape(t.title||t.phase||t.id)}</strong><br>${escape(t.status||t.state)} · ${!officeAgent && live?'Scheduled '+escape(t.day)+' '+escape(t.slot):'Assigned to '+escape(snapshot.agents.find(a=>a.id===t.assignee)?.name||t.assignee||'unassigned')}${t.description?'<details><summary>Task brief</summary>'+escape(t.description)+'</details>':''}${t.dependsOn?.length?'<br>Depends on '+escape(t.dependsOn.join(', ')):''}</li>`).join('') || '<li>No recorded assignment. Mailbox context alone does not start a mission.</li>';
       const links=(snapshot.interactions||[]).filter(l=>l.from===selected || l.to===selected);
       const delegations=(snapshot.events||[]).filter(e=>e.kind==='delegation' && (e.agentId===selected||e.to===selected));
       $('agentPartners').innerHTML=links.map(l=>`<li>${escape(l.kind)} · ${escape((l.from===selected?l.to:l.from).replace('factory-',''))}<br>${escape(l.title)}${l.parts?.[selected]?'<br>My part: '+escape(l.parts[selected]):''}</li>`).join('')+delegations.slice(-8).map(e=>`<li>Delegation · ${escape(e.agentId)} → ${escape(e.to)}<br>${escape(e.summary||e.taskId||'')}</li>`).join('') || '<li>No recorded collaboration or delegation.</li>';
     }
-    $('archiveWorker').disabled=!a || a.isDirector || Boolean(live) || !online;
+    $('archiveWorker').disabled=!a || a.isDirector || !officeAgent || !online;
     $('officeActivity').innerHTML=(snapshot?.events || []).filter(e=>!selected||e.agentId===selected||e.from===selected||e.to===selected).slice(-10).reverse().map(e=>`<li>${escape(e.kind)}${e.summary?'<br>'+escape(e.summary):''}${e.taskId?'<br>'+escape(e.taskId):''}</li>`).join('') || (live ? `<li>${escape(live.state)}${live.task_id?'<br>'+escape(live.task_id):''}${live.last_result?.severity==='error'?'<br>Recorded failure: '+escape(live.last_result.code):''}</li>` : '<li>No recent activity.</li>');
     if(live)$('officeActivity').insertAdjacentHTML('afterbegin',`<li>${escape(MeshRuntime.indicator(live).detail)}</li>`);
     if(live && !powerBusy) {if(runtimeState)runtimeState.sleeping=live.sleeping;const asleep=live.sleeping;$('factoryPower').textContent=asleep?'Wake up':'Sleep';$('factoryPower').disabled=asleep===null || !online;$('factoryPowerStatus').textContent=asleep===null?'Availability unknown':asleep?'Asleep in Mesh and Factory':'Awake in Mesh and Factory';}
@@ -168,11 +173,12 @@
     if(document.activeElement!==$('maxIterations'))$('maxIterations').value=snapshot.maxIterations;
     renderFloor();renderBoard();renderInspector();
   }
-  const selectedRuntime=()=>{
+  function selectedRuntime() {
+    const office=snapshot?.agents.find(a=>a.id===selected);
+    if(office?.mesh_agent_id)return office.mesh_agent_id;
     const row=snapshot?.factoryAgents?.find(a=>'factory-'+a.id===selected);
-    if(!row || !row.runtime_id)return null;
-    return fleet.find(a=>a.control_center_gateway===host() && a.runtime_id===row.runtime_id)?.id || fleet.find(a=>a.id===host()+'--'+row.runtime_id)?.id;
-  };
+    return fleet.find(a=>(a.control_center_gateway===host()||a.id===host()) && a.runtime_id===row?.runtime_id)?.id;
+  }
   async function loadRuntime() {
     const id=selected;try{const response=await fetch('/api/status');const data=await response.json();fleet=data.agents||[];const aid=selectedRuntime();if(!aid)throw Error('Enroll this signed agent in the fleet to use live chat and wake controls.');const state=await MeshRuntime.request(aid,'runtime.status');if(selected===id){runtimeState=state;renderInspector();}}
     catch(e){if(selected===id){$('factoryPower').disabled=true;$('factoryPowerStatus').textContent=e.message;}}
@@ -189,7 +195,7 @@
     catch(error){say(error.message);button.disabled=false;return;}
     if(epoch!==hostEpoch){say('Execution host changed; prompt was not sent.');button.disabled=false;return;}
     if(source){try{const rule=await MeshRuntime.request(aid,'handoff.create',{source,text});say(rule.note);if(selected===id)e.target.reset();await loadShared();}catch(error){say(error.message);}finally{button.disabled=false;}return;}
-    const rows=conversations.get(id)||[];conversations.set(id,rows);rows.push({sender:'You',text});const reply={sender:id.slice(8),text:'Requesting host…'};rows.push(reply);if(rows.length>80)rows.splice(0,rows.length-80);if(selected===id){e.target.reset();renderConversation();}
+    const rows=conversations.get(id)||[];conversations.set(id,rows);rows.push({sender:'You',text});const reply={sender:snapshot.agents.find(a=>a.id===id)?.name || id.slice(8),text:'Requesting host…'};rows.push(reply);if(rows.length>80)rows.splice(0,rows.length-80);if(selected===id){e.target.reset();renderConversation();}
     try{const result=await MeshRuntime.run(aid,'communication.start',{text},job=>{reply.text=job.detail;if(selected===id)renderConversation();});reply.text=result.reply;}
     catch(e){reply.text=e.message;reply.error=true;}
     button.disabled=false;if(selected===id)renderConversation();refresh();
@@ -208,11 +214,11 @@
   };
   $('factoryPower').onclick=async()=>{
     const aid=selectedRuntime(),id=selected;if(!aid)return;powerBusy=true;$('factoryPower').disabled=true;
-    try{const state=await MeshRuntime.run(aid,snapshot.factoryAgents.find(a=>'factory-'+a.id===id)?.sleeping?'runtime.wake':'runtime.sleep',{},j=>{if(selected===id)$('factoryPowerStatus').textContent=j.detail;});if(selected===id)runtimeState=state;}
+    try{const state=await MeshRuntime.run(aid,(snapshot.agents.find(a=>a.id===id)?.native || snapshot.factoryAgents.find(a=>'factory-'+a.id===id))?.sleeping?'runtime.wake':'runtime.sleep',{},j=>{if(selected===id)$('factoryPowerStatus').textContent=j.detail;});if(selected===id)runtimeState=state;}
     catch(e){say(e.message);}finally{powerBusy=false;refresh();}
   };
   for(const action of ['pause','resume'])$('factory'+(action==='pause'?'Pause':'Resume')).onclick=async()=>{
-    const id=selected,row=snapshot.factoryAgents.find(a=>'factory-'+a.id===id);if(!row)return;
+    const id=selected,row=snapshot.agents.find(a=>a.id===id)?.native || snapshot.factoryAgents.find(a=>'factory-'+a.id===id);if(!row)return;
     try{await api('workday.control',{action,role:row.id,duration:'1s'});await refresh();say(action==='pause'?'Activity paused across Mesh and Factory. Active work was asked to stop; completed actions remain.':'Activity resumed across Mesh and Factory. Interrupted work remains visible for review.');}catch(e){say(e.message);}
   };
   $('factoryWorkSummary').onclick=async()=>{
@@ -239,7 +245,7 @@
   }
   async function refresh() {
     if(pending)return;pending=true;const epoch=hostEpoch;
-    try{const [result,status]=await Promise.all([api('snapshot'),fetch('/api/status').then(async r=>{if(!r.ok)throw Error('Fleet status unavailable');return r.json();})]);if(epoch!==hostEpoch)return;fleet=status.agents || [];snapshot=result.snapshot;snapshot.factoryAgents=MeshRuntime.factoryRoster(snapshot.factoryAgents || [],fleet,host());online=true;render();if(selected && !selected.startsWith('factory-'))loadMailbox();say(snapshot.paused?'Office paused · coordination remains available':'Office connected · live state from your host');}
+    try{const [result,status]=await Promise.all([api('snapshot'),fetch('/api/status').then(async r=>{if(!r.ok)throw Error('Fleet status unavailable');return r.json();})]);if(epoch!==hostEpoch)return;fleet=status.agents || [];snapshot=MeshRuntime.unifiedOffice(result.snapshot,fleet,host());online=true;render();if(selected && !selected.startsWith('factory-'))loadMailbox();say(snapshot.paused?'Office paused · coordination remains available':'Office connected · live state from your host');}
     catch(e){if(epoch!==hostEpoch)return;online=false;$('officeSignal').classList.remove('online');say(e.message);for(const id of ['openHire','openMission','officePause','saveOfficeSettings'])$(id).disabled=true;if(snapshot){snapshot.agents.forEach(a=>a.state='offline');render();}}
     finally{pending=false;}
   }
@@ -248,7 +254,10 @@
   $('zoomIn').onclick=()=>{zoom=Math.min(1.8,zoom+.15);fit();};$('zoomOut').onclick=()=>{zoom=Math.max(.6,zoom-.15);fit();};$('zoomReset').onclick=()=>{zoom=1;fit();};
   new ResizeObserver(fit).observe($('officeFloor'));
   document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
-  $('openHire').onclick=()=>$('hireDialog').showModal();
+  $('openHire').onclick=()=>{
+    let restore=$('restoreWorkers');if(!restore){restore=document.createElement('div');restore.id='restoreWorkers';$('hireDialog').append(restore);}
+    restore.innerHTML=(snapshot.archivedAgents||[]).map(a=>`<p>${escape(a.name)} <button data-restore="${escape(a.id)}">Return to office</button></p>`).join('');
+    restore.querySelectorAll('button').forEach(b=>b.onclick=async()=>{try{await api('restore',{id:b.dataset.restore});$('hireDialog').close();await refresh();}catch(e){say(e.message);}});$('hireDialog').showModal();};
   $('openMission').onclick=()=>{
     $('missionForm').elements.assignee.innerHTML=snapshot.agents.map(a=>`<option value="${escape(a.id)}">${escape(a.name)} · ${escape(a.role)}</option>`).join('');
     $('missionForm').elements.dependsOn.innerHTML=snapshot.tasks.filter(t=>t.status!=='done').map(t=>`<option value="${escape(t.id)}">${escape(t.title)}</option>`).join('');

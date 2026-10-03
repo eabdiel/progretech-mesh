@@ -1,9 +1,9 @@
-// office/engine.ts
-import { readFileSync as readFileSync2, writeFileSync as writeFileSync2 } from "node:fs";
+// engine.ts
+import { readFileSync as readFileSync2, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, renameSync as renameSync2, unlinkSync as unlinkSync2 } from "node:fs";
 import { join as join3, isAbsolute as isAbsolute3 } from "node:path";
 import { randomUUID } from "node:crypto";
 
-// vendor/munder-difflin/src/main/hive.ts
+// ../vendor/munder-difflin/src/main/hive.ts
 import {
   existsSync,
   mkdirSync,
@@ -27,7 +27,7 @@ import { homedir as homedir2 } from "node:os";
 import { spawnSync, spawn } from "node:child_process";
 import { randomBytes, createHash } from "node:crypto";
 
-// vendor/munder-difflin/src/shared/claudeCommands.ts
+// ../vendor/munder-difflin/src/shared/claudeCommands.ts
 var COMMAND_GROUPS = [
   {
     title: "SESSION",
@@ -153,7 +153,7 @@ var COMMAND_GROUPS = [
   }
 ];
 
-// vendor/munder-difflin/src/shared/codexCommands.ts
+// ../vendor/munder-difflin/src/shared/codexCommands.ts
 var CODEX_COMMAND_GROUPS = [
   {
     title: "SESSION",
@@ -210,7 +210,7 @@ var CODEX_COMMAND_GROUPS = [
   }
 ];
 
-// vendor/munder-difflin/src/shared/grokCommands.ts
+// ../vendor/munder-difflin/src/shared/grokCommands.ts
 var GROK_COMMAND_GROUPS = [
   {
     title: "SESSION",
@@ -241,7 +241,7 @@ var GROK_COMMAND_GROUPS = [
   }
 ];
 
-// vendor/munder-difflin/src/shared/agentProvider.ts
+// ../vendor/munder-difflin/src/shared/agentProvider.ts
 var AGENT_PROVIDER_PRESETS = [
   {
     id: "claude",
@@ -693,7 +693,7 @@ function bridgeOf(provider) {
   return void 0;
 }
 
-// vendor/munder-difflin/src/shared/mcpCatalog.ts
+// ../vendor/munder-difflin/src/shared/mcpCatalog.ts
 var MCP_CATALOG = [
   // ─── Safe, read-only, no-secret — shipped ON ──────────────────────────────
   {
@@ -796,7 +796,7 @@ var MCP_CATALOG = [
   }
 ];
 
-// vendor/munder-difflin/src/shared/broadcast.ts
+// ../vendor/munder-difflin/src/shared/broadcast.ts
 function selectBroadcastTargets(agents, fromId) {
   return Object.keys(agents).filter((id) => {
     const agent2 = agents[id];
@@ -808,7 +808,7 @@ function selectBroadcastTargets(agents, fromId) {
   });
 }
 
-// vendor/munder-difflin/src/shared/agentRole.ts
+// ../vendor/munder-difflin/src/shared/agentRole.ts
 var TRANSIENT_ROLE_RE = /^(on\s+)?standby$|^(idle|awaiting|paused|resumed|working|thinking|archived|starting up|reconnecting…?|running the floor|a fresh harness)$/i;
 function isDurableRole(text) {
   const value = (text ?? "").trim();
@@ -825,7 +825,7 @@ function preferredAgentRole(candidate, fallback, isGod = false) {
   return isGod ? "orchestrator (god)" : "agent";
 }
 
-// vendor/munder-difflin/src/shared/taskLedger.ts
+// ../vendor/munder-difflin/src/shared/taskLedger.ts
 function isRawTask(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -849,7 +849,7 @@ function mergeTaskLedger(existing, incoming) {
   });
 }
 
-// vendor/munder-difflin/src/main/fs.ts
+// ../vendor/munder-difflin/src/main/fs.ts
 import { constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
@@ -868,14 +868,14 @@ function expandTilde(p) {
   return resolve(out);
 }
 
-// vendor/munder-difflin/src/shared/godIdentity.ts
+// ../vendor/munder-difflin/src/shared/godIdentity.ts
 var DEFAULT_GOD_NAME = "Michael";
 function resolveGodName(persistedName) {
   const trimmed = persistedName?.trim();
   return trimmed ? trimmed : DEFAULT_GOD_NAME;
 }
 
-// vendor/munder-difflin/src/main/hive.ts
+// ../vendor/munder-difflin/src/main/hive.ts
 var HOP_CAP = 12;
 function sleepSync(ms) {
   const sab = new SharedArrayBuffer(4);
@@ -3637,7 +3637,7 @@ process.stdin.on('end', () => {
 });
 `;
 
-// vendor/munder-difflin/src/main/breaker.ts
+// ../vendor/munder-difflin/src/main/breaker.ts
 import { createHash as createHash2 } from "node:crypto";
 var LEVELS = ["healthy", "steering", "constrained", "stopped"];
 var rank = (l) => LEVELS.indexOf(l);
@@ -3876,7 +3876,7 @@ var CircuitBreaker = class {
   }
 };
 
-// vendor/munder-difflin/src/main/control.ts
+// ../vendor/munder-difflin/src/main/control.ts
 var MAX_PENDING_STEERS = 20;
 var ControlRegistry = class {
   map = /* @__PURE__ */ new Map();
@@ -3970,7 +3970,7 @@ var ControlRegistry = class {
   }
 };
 
-// office/engine.ts
+// engine.ts
 var body = JSON.parse(readFileSync2(0, "utf8"));
 var home = body.home;
 if (typeof home !== "string" || !isAbsolute3(home)) throw Error("office_path_invalid");
@@ -3984,17 +3984,24 @@ try {
 } catch {
   settings = { paused: false, maxIterations: 8, events: [], goals: {} };
 }
-var save = () => writeFileSync2(settingsPath, JSON.stringify(settings), { mode: 384 });
+var save = () => hive.atomicWriteJson(settingsPath, settings);
+settings.runtimeBindings ||= {};
 var roster = () => Object.values(hive.registry().agents).filter((a) => !a.archived);
 var agent = (id) => {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || !hive.registry().agents[id] || hive.registry().agents[id].archived) throw Error("office_agent_not_found");
   return hive.registry().agents[id];
 };
 function inboxContext(id) {
-  const pending=hive.inbox(id).sort((a,b)=>(b.priority||0)-(a.priority||0)||String(a.created_at).localeCompare(String(b.created_at)));
-  const selected=[];let text='';
-  for(const m of pending.slice(0,8)) {const next=(text?'\n':'')+m.body;if(text.length+next.length>4000)break;text+=next;selected.push(m.id);}
-  return {messages:text,mailboxIds:selected};
+  const pending = hive.inbox(id).sort((a, b) => (b.priority || 0) - (a.priority || 0) || String(a.created_at).localeCompare(String(b.created_at)));
+  const selected = [];
+  let text = "";
+  for (const m of pending.slice(0, 8)) {
+    const next = (text ? "\n" : "") + m.body;
+    if (text.length + next.length > 4e3) break;
+    text += next;
+    selected.push(m.id);
+  }
+  return { messages: text, mailboxIds: selected };
 }
 var log = (event) => hive.appendLog({ ...event, ts: (/* @__PURE__ */ new Date()).toISOString() });
 async function hire(name, role, goal, god = false) {
@@ -4007,9 +4014,72 @@ async function hire(name, role, goal, god = false) {
   return id;
 }
 if (!hive.registry().godId) await hire("Director", "Orchestrator", "Delegate, coordinate dependencies and deliver the owner\u2019s mission.", true);
+function completeHandoff() {
+  if (!settings.handoff) return;
+  const { previous, next } = settings.handoff;
+  const reg = hive.registry();
+  if (!reg.agents[next] || reg.agents[next].archived) throw Error("office_agent_not_found");
+  for (const task of hive.tasks().tasks) {
+    if (task.assignee === previous && task.status !== "done") hive.patchTask(task.id, { assignee: next });
+  }
+  for (const message of hive.inbox(previous)) {
+    const source = join3(hive.agentDir(previous), "inbox", message.id + ".json");
+    const destination = join3(hive.agentDir(next), "inbox", message.id + ".json");
+    hive.atomicWriteJson(source, { ...message, to: next });
+    renameSync2(source, destination);
+  }
+  for (const entry of Object.values(reg.agents)) entry.isGod = entry.id === next;
+  reg.godId = next;
+  hive.atomicWriteJson(join3(hive.root(), "registry.json"), reg);
+  log({ kind: "orchestrator.changed", from: previous, to: next });
+  delete settings.handoff;
+  save();
+}
+completeHandoff();
 var args = body.args || {};
 var result = {};
 switch (body.operation) {
+  case "runtime.sync": {
+    for (const [id, runtime] of Object.entries(args.bindings || {})) {
+      if (!settings.runtimeBindings[id] && hive.registry().agents[id] && args.agents.some((a) => a.runtime_id === runtime)) {
+        settings.runtimeBindings[id] = runtime;
+        const row = args.agents.find((a) => a.runtime_id === runtime), reg = hive.registry();
+        reg.agents[id].role = row.role || row.name;
+        reg.agents[id].name = row.name;
+        hive.atomicWriteJson(join3(hive.root(), "registry.json"), reg);
+      }
+    }
+    for (const row of args.agents) {
+      let id = Object.keys(settings.runtimeBindings).find((id2) => settings.runtimeBindings[id2] === row.runtime_id);
+      if (!id) {
+        id = "runtime-" + row.runtime_id;
+        if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) throw Error("invalid_runtime_id");
+        await hive.ensureAgent({ id, name: row.name, role: row.role || row.name, provider: "mesh", cwd: home, isGod: false }, { semanticMemory: false, knowledgeGraph: false, mcpDefaults: {} });
+        settings.runtimeBindings[id] = row.runtime_id;
+        settings.goals[id] = row.role || row.name;
+      }
+    }
+    save();
+    break;
+  }
+  case "orchestrator.set": {
+    const next = agent(args.id), reg = hive.registry(), previous = reg.godId;
+    if (previous === next.id) {
+      result = { id: next.id, previous };
+      break;
+    }
+    settings.handoff = { previous, next: next.id };
+    save();
+    completeHandoff();
+    result = { id: next.id, previous };
+    break;
+  }
+  case "restore": {
+    const entry = hive.registry().agents[args.id];
+    if (!entry) throw Error("office_agent_not_found");
+    hive.setArchived(args.id, false);
+    break;
+  }
   case "snapshot":
     break;
   case "hire": {
@@ -4034,7 +4104,7 @@ switch (body.operation) {
       id,
       title: args.title,
       description: args.description,
-      assignee: args.assignee || "orchestrator",
+      assignee: args.assignee || hive.registry().godId,
       status: args.needsApproval ? "blocked" : "todo",
       dependsOn: args.dependsOn,
       priority: 1,
@@ -4046,11 +4116,12 @@ switch (body.operation) {
     break;
   }
   case "task.priority": {
-    const task=hive.tasks().tasks.find(t=>t.id===args.id);
-    if(!task || task.status!=="todo")throw Error("task_not_ready");
-    hive.patchTask(args.id,{priority:args.priority});
-    log({kind:"task.priority",taskId:args.id,priority:args.priority});
-    result={saved:true};break;
+    const task = hive.tasks().tasks.find((t) => t.id === args.id);
+    if (!task || task.status !== "todo") throw Error("task_not_ready");
+    hive.patchTask(args.id, { priority: args.priority });
+    log({ kind: "task.priority", taskId: args.id, priority: args.priority });
+    result = { saved: true };
+    break;
   }
   case "task.approve": {
     const task = hive.tasks().tasks.find((t) => t.id === args.id);
@@ -4061,20 +4132,24 @@ switch (body.operation) {
   }
   case "mailbox.list": {
     agent(args.agent);
-    result = {pending: hive.inbox(args.agent).sort((a,b)=>(b.priority||0)-(a.priority||0)||String(a.created_at).localeCompare(String(b.created_at))).map(m=>({...m,subject:redactSecrets(m.subject),body:redactSecrets(m.body)})), history:hive.voiceMessages({agentId:args.agent,limit:20}).filter(m=>m.archived)};
+    result = { pending: hive.inbox(args.agent).sort((a, b) => (b.priority || 0) - (a.priority || 0) || String(a.created_at).localeCompare(String(b.created_at))).map((m) => ({ ...m, subject: redactSecrets(m.subject), body: redactSecrets(m.body) })), history: hive.voiceMessages({ agentId: args.agent, limit: 20 }).filter((m) => m.archived) };
     break;
   }
   case "mailbox.edit":
   case "mailbox.remove":
   case "mailbox.priority": {
     agent(args.agent);
-    const m=hive.inbox(args.agent).find(m=>m.id===args.id);
-    if(!m || !/^[A-Za-z0-9_-]{1,160}$/.test(m.id))throw Error('mailbox_item_not_pending');
-    const file=join3(hive.agentDir(args.agent),'inbox',m.id+'.json');
-    if(body.operation==='mailbox.remove')unlinkSync(file);
-    else {if(body.operation==='mailbox.edit')m.body=args.text;else m.priority=args.priority;hive.atomicWriteJson(file,m);}
-    log({kind:body.operation,agentId:args.agent,id:m.id});
-    result={saved:true};
+    const m = hive.inbox(args.agent).find((m2) => m2.id === args.id);
+    if (!m || !/^[A-Za-z0-9_-]{1,160}$/.test(m.id)) throw Error("mailbox_item_not_pending");
+    const file = join3(hive.agentDir(args.agent), "inbox", m.id + ".json");
+    if (body.operation === "mailbox.remove") unlinkSync2(file);
+    else {
+      if (body.operation === "mailbox.edit") m.body = args.text;
+      else m.priority = args.priority;
+      hive.atomicWriteJson(file, m);
+    }
+    log({ kind: body.operation, agentId: args.agent, id: m.id });
+    result = { saved: true };
     break;
   }
   case "message": {
@@ -4113,14 +4188,16 @@ switch (body.operation) {
       name: a.name,
       role: a.role,
       goal: settings.goals[a.id],
+      isDirector: hive.isGod(a.id),
+      runtime_id: settings.runtimeBindings[a.id] || null,
       memory: hive.memory(a.id).slice(-4e3),
       ...inboxContext(a.id)
     })), maxIterations: settings.maxIterations };
-    // Claim the pending context atomically with begin; delivered items stay reviewable.
-    for(const a of result.agents) {
-      const inbox=join3(hive.agentDir(a.id),'inbox'),done=join3(inbox,'.done');mkdirSync(done,{recursive:true,mode:448});
-      for(const m of hive.inbox(a.id).filter(m=>a.mailboxIds.includes(m.id))) {
-        if(/^[A-Za-z0-9_-]{1,160}$/.test(m.id))renameSync(join3(inbox,m.id+'.json'),join3(done,m.id+'.json'));
+    for (const a of result.agents) {
+      const inbox = join3(hive.agentDir(a.id), "inbox"), done = join3(inbox, ".done");
+      mkdirSync2(done, { recursive: true, mode: 448 });
+      for (const m of hive.inbox(a.id).filter((m2) => a.mailboxIds.includes(m2.id))) {
+        if (/^[A-Za-z0-9_-]{1,160}$/.test(m.id)) renameSync2(join3(inbox, m.id + ".json"), join3(done, m.id + ".json"));
       }
       delete a.mailboxIds;
     }
@@ -4128,7 +4205,7 @@ switch (body.operation) {
   }
   case "event": {
     if (args.agentId) agent(args.agentId);
-    log({ kind: args.kind, agentId: args.agentId, taskId: args.taskId, summary: args.summary?.slice(0, 1e3) });
+    log({ kind: args.kind, agentId: args.agentId, to: args.to, taskId: args.taskId, summary: args.summary?.slice(0, 1e3) });
     if (args.to && args.agentId) {
       agent(args.to);
       hive.send({ to: args.to, subject: "Delegation", body: args.summary || "Task delegated", act: "request" }, args.agentId);
@@ -4166,11 +4243,14 @@ var snapshot = {
     name: a.name,
     role: a.role,
     goal: settings.goals[a.id],
-    isDirector: a.isGod,
+    isDirector: hive.isGod(a.id),
+    runtime_id: settings.runtimeBindings[a.id] || null,
     state: settings.paused ? "paused" : events.slice().reverse().find((e) => e.agentId === a.id && ["agent.start", "agent.complete", "agent.error"].includes(e.kind))?.kind === "agent.start" ? "working" : "idle",
     pendingMessages: hive.inboxBacklog(a.id),
     breaker: breaker.levelFor(a.id)
   })),
+  orchestratorId: hive.registry().godId,
+  archivedAgents: Object.values(hive.registry().agents).filter((a) => a.archived).map((a) => ({ id: a.id, name: a.name, runtime_id: settings.runtimeBindings[a.id] || null })),
   tasks: hive.tasks().tasks,
   messages: hive.voiceMessages({ limit: 30 }),
   events,

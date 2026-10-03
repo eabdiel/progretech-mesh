@@ -17,6 +17,7 @@ def kickoff(body, llm):
     roster = office['agents']
     if len(roster) < 2:
         raise ValueError('Hire at least one worker before starting a mission.')
+    director = next((a['id'] for a in roster if a.get('isDirector')), 'orchestrator')
     by_role = {a['role']: a['id'] for a in roster}
     by_id = {a['id']: a for a in roster}
 
@@ -36,8 +37,8 @@ def kickoff(body, llm):
             def started(source, event):
                 record('agent.start', event)
                 aid = by_role.get(getattr(getattr(event, 'agent', None), 'role', ''))
-                if aid and aid != 'orchestrator':
-                    engine(home, role, 'event', {'kind': 'delegation', 'agentId': 'orchestrator', 'to': aid, 'taskId': mission['id'], 'summary': mission['title']})
+                if aid and aid != director:
+                    engine(home, role, 'event', {'kind': 'delegation', 'agentId': director, 'to': aid, 'taskId': mission['id'], 'summary': mission['title']})
             @bus.on(AgentExecutionCompletedEvent)
             def completed(source, event): record('agent.complete', event)
             @bus.on(AgentExecutionErrorEvent)
@@ -80,14 +81,14 @@ def kickoff(body, llm):
             backstory=f"You are {item['name']}, office agent {item['id']}. Other workers: " +
                 ', '.join(f"{a['role']} ({a['id']})" for a in roster if a['id'] != item['id']) +
                 '\nUse only approved tools. Escalate spend, destructive operations and changes of scope to the owner.\nReviewed memory and inbox context:\n' + context,
-            llm=llm, allow_delegation=True, max_iter=office['maxIterations'], tools=[] if item['id'] == 'orchestrator' else [mail_tool(item['id']), *runtime_tool(item['id'])],
+            llm=llm, allow_delegation=True, max_iter=office['maxIterations'], tools=[] if item['id'] == director else [mail_tool(item['id']), *runtime_tool(item['id'])],
             step_callback=step, verbose=False)
-        if item['id'] == 'orchestrator': manager = agent
+        if item['id'] == director: manager = agent
         else: agents.append(agent)
     ensure_running()
     task = Task(description=mission.get('description') or mission['title'],
         expected_output='An evidence-based result addressing the mission and its acceptance criteria; clearly state incomplete work.',
-        **({'agent': next(a for a in agents if a.role == by_id[mission['assignee']]['role'])} if mission.get('assignee') != 'orchestrator' else {}))
+        **({'agent': next(a for a in agents if a.role == by_id[mission['assignee']]['role'])} if mission.get('assignee') != director else {}))
     crew = Crew(agents=agents, tasks=[task], manager_agent=manager, process=Process.hierarchical,
         verbose=False, max_rpm=20, memory=False, tracing=False)
     # Keep the event listener live through kickoff; no mocked idle animations.

@@ -11,6 +11,12 @@ def main():
     host = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(host)
     install(host)
+    @host.app.get('/api/factory/workday')
+    def workday():
+        import json
+        try:data=json.loads((Path.home()/'.local/state/progretech-workday/activity.json').read_text())
+        except (OSError,ValueError):data={'agents':{},'tasks':[]}
+        return host.jsonify(ok=True,result=data)
     host.app.run(host='127.0.0.1', port=8787, threaded=True)
 
 

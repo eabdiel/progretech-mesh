@@ -50,3 +50,9 @@ class RelationshipLifecycleTests(unittest.TestCase):
         links=self.links(conversations=[chat]);self.assertEqual(len(links),3)
         self.assertEqual({p for l in links for p in [l['from'],l['to']]},{'factory-architect','factory-designer','factory-reviewer'})
         chat['state']='complete';self.assertEqual(self.links(conversations=[chat]),[])
+
+    def test_completed_mission_does_not_keep_mailbox_line(self):
+        snap={'messages':[{'id':'old','from':'orchestrator','to':'worker','subject':'Delegation'}], 'tasks':[{'id':'job','status':'done'}], 'events':[{'kind':'delegation','agentId':'orchestrator','to':'worker','taskId':'job'}]}
+        self.assertEqual(interactions(snap,self.home),[])
+        snap['tasks'][0]['status']='doing'
+        self.assertEqual(len(interactions(snap,self.home)),1)

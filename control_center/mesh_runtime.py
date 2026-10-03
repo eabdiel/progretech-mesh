@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 
 _CONTROL_CACHE = {}
 _CONTROL_LOCK = threading.Lock()
-ROLE_NAMES = {'main':'rend','researcher':'lyra','coder':'mak','architect':'architect','reviewer':'reviewer','fast':'fast','progre':'progre','designer':'designer','imagen':'imagen'}
+ROLE_NAMES = {'main':'rend','researcher':'lyra','coder':'mak','architect':'architect','reviewer':'reviewer','fast':'fast','progre':'progre','designer':'designer','imagen':'imagen','codex':'codex'}
 
 
 def role_controls(home, refresh=False):
