@@ -205,7 +205,7 @@ def install(host, home=None):
             activity=json.loads(activity_path.read_text()) if time.time()-activity_path.stat().st_mtime < 90 else {}
         except (OSError,ValueError):activity={}
         for item in agents:
-            item['mesh_runtime']=mesh.status(item['id'])
+            item['mesh_runtime']=mesh.status(gateway_id if item['runtime_id']==provider.bindings[gateway_id] else item['id'])
             observed=activity.get('agents',{}).get(ROLE_NAMES.get(item['runtime_id'],item['runtime_id']),{})
             item['activity']={k:observed[k] for k in ('state','observed_at','source','task_id') if k in observed}
             item['state']=observed.get('state','unknown')
