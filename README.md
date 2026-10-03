@@ -1,5 +1,12 @@
 # ProgreTech Mesh
-<img width="1761" height="900" alt="firefox_ybIdXT0Xw0" src="https://github.com/user-attachments/assets/de674b43-4bbb-487e-85bb-ea7617f955c1" />
+
+AI agent monitoring and control dashboard: connect to independently running agents while keeping runtime and data on their host.
+
+A project of **[ProgreTech LLC](https://progretech.com)**, owned and maintained by **Ed Rodriguez**. Third-party components and contributions retain their respective ownership and notices.
+
+[Project website](https://mesh.progretech.com) · [Report an issue](https://github.com/eabdiel/progretech-mesh/issues) · [Contribute](CONTRIBUTING.md)
+
+<img width="1761" height="900" alt="ProgreTech Mesh agent monitoring dashboard" src="https://github.com/user-attachments/assets/de674b43-4bbb-487e-85bb-ea7617f955c1" />
 
 
 > A direct-first, local-owned monitoring and interaction console for independently running AI agents.
@@ -576,3 +583,19 @@ The project is under active development.
 ---
 
 *Built around a simple idea: the agent can remain autonomous without becoming invisible.*
+
+## Collaboration
+
+Adapter documentation, accessibility, connection diagnostics, and reproducible enrollment failures are useful ways to help. Read [CONTRIBUTING.md](CONTRIBUTING.md) for issue reports, proposed changes, and attribution requirements.
+
+## License and reuse
+
+This repository uses custom ProgreTech source-available terms; see [LICENSE.md](LICENSE.md). Read the permitted uses, attribution, and contribution terms before reusing or submitting code. Public visibility is not an OSI-approved open-source license.
+
+Preserve [third-party notices](packaging/THIRD_PARTY_NOTICES.md), including the separate licenses for bundled runtimes, libraries, model weights, and Munder Difflin. The project license does not replace upstream terms.
+
+## More from ProgreTech
+
+[Open Mesh](https://mesh.progretech.com) (sign-in required). Explore [CodeSeal](https://codeseal.progretech.com) for signed software provenance and [Atlas](https://atlas.progretech.com) for opportunity and evidence research.
+
+Discover the wider portfolio at [progretech.com](https://progretech.com). These links identify related products; they do not imply a bundled integration or shared license.
