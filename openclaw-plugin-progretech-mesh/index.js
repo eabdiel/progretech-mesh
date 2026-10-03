@@ -4,7 +4,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { createReleaseWatch } from "./release-watch.js";
+import { createReleaseWatch, closeForRelease } from "./release-watch.js";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
 import { forwardControlCenter, discoverControlAgents } from "./control-center.js";
 
@@ -1050,7 +1050,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
   let activeMeshRequests=0;
   const releaseWatch=createReleaseWatch({mesh:record.mesh,
     idle:()=>meshSocket===socket && socket.readyState===WebSocket.OPEN && activeMeshRequests===0,
-    reconnect:()=>{try{socket.close(1012,'mesh_release_changed');}catch{}}});
+    reconnect:()=>closeForRelease(socket)});
   socket.addEventListener("open", () => {
     releaseWatch.start();
     opened = true;

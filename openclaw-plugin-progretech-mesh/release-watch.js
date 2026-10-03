@@ -16,11 +16,13 @@ export function createReleaseWatch({mesh, idle, reconnect, fetchImpl=fetch, inte
       if(data.build===build){candidate=null;confirmations=0;return;}
       confirmations=candidate===data.build?confirmations+1:1;candidate=data.build;
       if(confirmations>=2 && idle()){
-        stopped=true;if(timer)clearInterval(timer);
         reconnect({from:build,to:candidate});
+        stopped=true;if(timer)clearInterval(timer);
       }
     }catch{/* An unavailable HTTP health endpoint is not proof the socket is stale. */}
     finally{polling=false;}
   }
   return {paired,poll,start(){void poll();timer=setInterval(()=>void poll(),intervalMs);timer.unref?.();},stop(){stopped=true;if(timer)clearInterval(timer);}};
 }
+
+export function closeForRelease(socket){socket.close(4001,"mesh_release_changed");}
