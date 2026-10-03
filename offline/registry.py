@@ -138,7 +138,7 @@ class Registry:
                 'ws://127.0.0.1:' + str(port), '--json'], capture_output=True, text=True,
                 encoding='utf-8', errors='replace', timeout=15, check=False,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
-            if response.returncode or len(response.stdout) > 262144: raise ValueError()
+            if response.returncode or len(response.stdout.encode("utf-8")) > 4 * 1024 * 1024: raise ValueError()
             payload = json.loads(response.stdout)
             agents = payload.get('agents')
             if not isinstance(agents, list) or len(agents) > 256: raise ValueError()

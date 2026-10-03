@@ -79,6 +79,19 @@ class LocalGatewayTests(unittest.TestCase):
         with patch('offline.registry.shutil.which',return_value=str(self.exe)):
             self.assertEqual(self.registry.discover_gateway(self.home,run)['candidates'],[])
 
+    def test_inline_avatars_fit_bounded_inventory_but_are_not_returned(self):
+        public={'id':'codex','name':'Odexi','workspace':str(self.home),
+                'identity':{'avatar':'data:image/jpeg;base64,'+'A'*300000}}
+        def run(args,**kwargs):return subprocess.CompletedProcess(args,0,json.dumps({'agents':[public]}),'')
+        with patch('offline.registry.shutil.which',return_value=str(self.exe)):
+            result=self.registry.discover_gateway(self.home,run)
+        self.assertTrue(result['available'])
+        self.assertEqual(result['candidates'][0]['name'],'Odexi')
+        self.assertNotIn('avatar',json.dumps(result))
+        public['identity']['avatar']='A'*(4*1024*1024)
+        with patch('offline.registry.shutil.which',return_value=str(self.exe)):
+            self.assertFalse(self.registry.discover_gateway(self.home,run)['available'])
+
     def test_gateway_failure_is_explicit_and_never_uses_config_as_live_result(self):
         def run(args,**kwargs):return subprocess.CompletedProcess(args,1,'','diagnostic with private details')
         with patch('offline.registry.shutil.which',return_value=str(self.exe)):

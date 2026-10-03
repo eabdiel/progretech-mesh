@@ -462,7 +462,40 @@ def update_from_gateway(agent_id: str, message: dict[str, Any]) -> None:
         control_relay.resolve(agent_id, message)
         return
     if msg_type == "control_center_roster":
-        register_gateway_agents(agent_id, message.get("payload"), DEV_AGENT_REGISTRY)
+        payload = message.get("payload")
+        if not register_gateway_agents(agent_id, payload, DEV_AGENT_REGISTRY):
+            return
+        record['gateway_enrollment_restore_version'] = 1 if payload.get('enrollment_restore_version') == 1 else 0
+        receipts = payload.get('enrollment_receipts', [])
+        if isinstance(receipts, list) and len(receipts) <= 256:
+            from mesh_gateway_receipts import restore_receipt
+            from mesh_gateway_agents import public_bytes
+            candidates = {item['id'] for item in record.get('identified_agents', [])}
+            restored_count = rejected_count = 0
+            for receipt in receipts:
+                try:
+                    restored = restore_receipt(receipt, agent_id, record, device_credential_secret(),
+                                               candidates, verify_runtime_agent_identity, DEV_AGENT_REGISTRY)
+                    with LIVE_LOCK:
+                        if (DEV_AGENT_REGISTRY.get(agent_id) is not record or record.get('owner_id') != restored['owner_id']
+                                or not any(item['id'] == restored['id'] for item in record.get('identified_agents', []))):
+                            continue
+                        if restored['id'] in DEV_AGENT_REGISTRY:
+                            continue
+                        key = public_bytes(restored['public_key'])
+                        if any(other.get('public_key') and public_bytes(other['public_key']) == key
+                               for other in DEV_AGENT_REGISTRY.values()):
+                            continue
+                        DEV_AGENT_REGISTRY[restored['id']] = restored
+                        restored_count += 1
+                except ValueError as exc:
+                    if str(exc) != 'gateway_enrollment_already_present':
+                        rejected_count += 1
+                    continue
+            record['enrollment_recovery'] = {'cached': len(receipts), 'restored': restored_count, 'rejected': rejected_count}
+            if restored_count or rejected_count:
+                app.logger.warning('Gateway enrollment recovery: restored=%s rejected=%s cached=%s', restored_count, rejected_count, len(receipts))
+            register_gateway_agents(agent_id, payload, DEV_AGENT_REGISTRY)
         return
     now = utcnow()
 
@@ -788,6 +821,9 @@ def public_agent(record: dict[str, Any]) -> dict[str, Any]:
         linked = record["control_center_gateway"] in GATEWAY_SOCKETS and host.get("trust_state") == "verified"
         if record.get("gateway_enrollment"):
             linked = linked and any(item['id'] == record['id'] for item in host.get('identified_agents', []))
+            public["task"] = "Gateway live" if linked else "Gateway offline"
+            activity = {"working": "Working", "idle": "Idle", "paused": "Paused", "blocked": "Needs attention"}.get(record.get("state"), "Activity unknown")
+            public["phase"] = f"Connected through {host.get('name') or record['control_center_gateway']} · {activity}" if linked else "Waiting for the host gateway to reconnect"
         public["transport"] = "connected" if linked else "not-connected"
         public["control_center_available"] = public["control_center_available"] and host.get("trust_state") == "verified"
         if record.get("gateway_enrollment"):
@@ -2680,6 +2716,9 @@ def create_app() -> Flask:
         if binding:
             from mesh_agent_management import same_origin
             if not same_origin(): return jsonify(ok=False, error="same_origin_required"), 403
+            if (os.environ.get('APP_ENV') == 'production'
+                    and DEV_AGENT_REGISTRY[binding['control_center_gateway']].get('gateway_enrollment_restore_version') != 1):
+                return jsonify(ok=False, error='gateway_enrollment_adapter_update_required'), 409
         verification = verify_runtime_agent_identity(payload, name, public_key, codeseal_key)
         if binding and (verification.get("provider") != "codeseal" or verification.get("valid") is not True):
             return jsonify(ok=False, error="independent_codeseal_identity_required"), 400
@@ -2720,6 +2759,16 @@ def create_app() -> Flask:
             elif agent_id in DEV_AGENT_REGISTRY:
                 return jsonify(ok=False, error="agent_id_unavailable"), 409
             DEV_AGENT_REGISTRY[agent_id] = record
+        if binding and DEV_AGENT_REGISTRY[binding['control_center_gateway']].get('gateway_enrollment_restore_version') == 1:
+            from mesh_gateway_receipts import issue_receipt
+            gid = binding['control_center_gateway']
+            receipt = issue_receipt(record, DEV_AGENT_REGISTRY[gid], device_credential_secret())
+            saved, status = control_relay.dispatch(agent_id, 'identity.enrollment.save', {'receipt': receipt}, send_gateway_message, gid)
+            if saved.get('ok') is not True or saved.get('result', {}).get('stored') is not True:
+                with LIVE_LOCK:
+                    if DEV_AGENT_REGISTRY.get(agent_id) is record:
+                        DEV_AGENT_REGISTRY.pop(agent_id)
+                return jsonify(ok=False, error='gateway_enrollment_persistence_failed'), 502
         return jsonify(ok=True, agent=public_agent(record)), 201
 
     @app.post("/api/agents/<agent_id>/pair-token")
