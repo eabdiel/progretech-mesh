@@ -238,7 +238,7 @@
   }
   async function refresh() {
     if(pending)return;pending=true;const epoch=hostEpoch;
-    try{const [result,status]=await Promise.all([api('snapshot'),fetch('/api/status').then(async r=>{if(!r.ok)throw Error('Fleet status unavailable');return r.json();})]);if(epoch!==hostEpoch)return;fleet=status.agents || [];snapshot=result.snapshot;snapshot.factoryAgents=(snapshot.factoryAgents || []).map(row=>({...row,...MeshRuntime.factoryAgent(row,fleet,host()),id:row.id}));online=true;render();if(selected && !selected.startsWith('factory-'))loadMailbox();say(snapshot.paused?'Office paused · coordination remains available':'Office connected · live state from your host');}
+    try{const [result,status]=await Promise.all([api('snapshot'),fetch('/api/status').then(async r=>{if(!r.ok)throw Error('Fleet status unavailable');return r.json();})]);if(epoch!==hostEpoch)return;fleet=status.agents || [];snapshot=result.snapshot;snapshot.factoryAgents=MeshRuntime.factoryRoster(snapshot.factoryAgents || [],fleet,host());online=true;render();if(selected && !selected.startsWith('factory-'))loadMailbox();say(snapshot.paused?'Office paused · coordination remains available':'Office connected · live state from your host');}
     catch(e){if(epoch!==hostEpoch)return;online=false;$('officeSignal').classList.remove('online');say(e.message);for(const id of ['openHire','openMission','officePause','saveOfficeSettings'])$(id).disabled=true;if(snapshot){snapshot.agents.forEach(a=>a.state='offline');render();}}
     finally{pending=false;}
   }

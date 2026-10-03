@@ -51,6 +51,13 @@
     // Both views use the same authenticated fleet observation; unknown stays unknown.
     return match ? {...row,...match,mesh_runtime:match.mesh_runtime || row} : {...row,state:'unknown',transport:'not-connected'};
   }
+  function factoryRoster(rows,fleet,host) {
+    const all=[...rows];
+    for(const agent of fleet.filter(a=>a.control_center_gateway===host && a.runtime_id)){
+      if(!all.some(row=>row.runtime_id===agent.runtime_id))all.push({id:agent.runtime_id,runtime_id:agent.runtime_id,state:'unknown'});
+    }
+    return all.map(row=>({...row,...factoryAgent(row,fleet,host),id:row.id}));
+  }
   function indicator(agent, {monitoring=false}={}) {
     const runtime=agent.mesh_runtime || agent;
     const result=runtime.last_result || {};
@@ -84,5 +91,5 @@
     const result=await run(agent,'runtime.recover',{},progress);
     return (result.steps || []).map(s=>s.name+' · '+s.state+': '+s.detail).join('\n')+'\n'+result.note;
   }
-  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent};
+  window.MeshRuntime={request,run,errors,indicator,memoryLabel,recover,terminalDirection,factoryAgent,factoryRoster};
 })();
