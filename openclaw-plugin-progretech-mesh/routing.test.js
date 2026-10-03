@@ -46,9 +46,9 @@ test('both transport handlers use the tested normalization path', () => {
 });
 
 test('consolidated aliases preserve IDs and retired roles fail closed', () => {
-  const cfg={agents:{entries:{architect:{},reviewer:{},imagen:{},codex:{}}}};
-  for (const [name,id] of [['tec','architect'],['revie','reviewer'],['imagen','imagen'],['odexi','codex']]) {
+  const cfg={agents:{entries:{coder:{},researcher:{},imagen:{},codex:{}}}};
+  for (const [name,id] of [['mak','coder'],['lyra','researcher'],['imagen','imagen'],['odexi','codex']]) {
     assert.equal(resolveMeshTarget({target_agent:name,text:'check'},cfg).agentId,id);
   }
-  for (const name of ['designer','fast']) assert.throws(()=>resolveMeshTarget({target_agent:name,text:'check'},cfg),/unknown_agent/);
+  for (const name of ['designer','fast','tec','architect','revie','reviewer']) assert.throws(()=>resolveMeshTarget({target_agent:name,text:'check'},cfg),/unknown_agent/);
 });

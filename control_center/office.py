@@ -38,7 +38,7 @@ def validate_office(args):
             raise ValueError('invalid_office_args')
     if len(json.dumps(args)) > 16384: raise ValueError('invalid_office_args')
     if op == 'workday.control':
-        if body['action'] not in {'stop','pause','resume','sleep'} or body['role'] not in {'all','rend','lyra','mak','reviewer','architect','imagen','progre'}:
+        if body['action'] not in {'stop','pause','resume','sleep'} or body['role'] not in {'all','rend','lyra','mak','imagen','progre'}:
             raise ValueError('invalid_workday_control')
         if not re.fullmatch(r'\d+(s|m|h|d)',body['duration']): raise ValueError('invalid_workday_duration')
 

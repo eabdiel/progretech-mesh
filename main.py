@@ -1118,10 +1118,8 @@ def ide_models(agent_id: str) -> list[str]:
     models = [agent_id, f"{agent_id}-code"]
     if agent_id == "rend":
         models.extend([
-            "rend-llama-review",
-            "rend-architect",
             "rend-research",
-            "lyra", "mak", "progre", "imagen", "tec", "revie", "architect", "reviewer", "codex", "odexi",
+            "lyra", "mak", "progre", "imagen", "codex", "odexi",
         ])
     return models
 

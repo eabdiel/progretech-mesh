@@ -1,4 +1,4 @@
-const CACHE_NAME = "progretech-mesh-shell-v11-role-consolidation";
+const CACHE_NAME = "progretech-mesh-shell-v12-six-roles";
 const SHELL_ASSETS = [
   "/",
   "/how-it-works",
