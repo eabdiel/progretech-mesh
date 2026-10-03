@@ -44,5 +44,5 @@ class ArtifactsTests(unittest.TestCase):
         self.assertTrue(self.call('main','files.cancel',upload_id=r['upload_id'])['cancelled'])
         with self.assertRaises(ValueError):self.call('main','files.read',id='0'*32,offset=-1)
     def test_symlinked_attachment_directory_is_rejected(self):
-        outside=self.home/'outside';outside.mkdir();root=self.home/'.progretech-mesh/prompt-attachments';root.mkdir(parents=True);(root/'designer').symlink_to(outside,target_is_directory=True)
+        outside=self.home/'outside';outside.mkdir();root=artifacts.storage(self.home)/'job-artifacts';root.mkdir(parents=True);(root/'mesh-attachments-designer').symlink_to(outside,target_is_directory=True)
         with self.assertRaisesRegex(ValueError,'path_unavailable'):self.call('designer','files.begin',name='brief.txt',size=1)
