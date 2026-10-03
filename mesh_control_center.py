@@ -129,6 +129,7 @@ def register_gateway_agents(gateway_id, payload, registry):
                            'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         record['transport'] = 'connected'
+        record['runtime_id'] = aid[len(gateway_id)+2:]
         record['mesh_runtime'] = public_runtime_status(item.get('mesh_runtime') or {})
         record['mesh_runtime'].update(availability_status(item))
         if record['mesh_runtime'].get('model'): record['model'] = record['mesh_runtime']['model']
