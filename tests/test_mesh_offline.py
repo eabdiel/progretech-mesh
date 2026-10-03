@@ -79,7 +79,7 @@ class OfflineTests(unittest.TestCase):
         config = self.home / '.openclaw'; config.mkdir()
         (config/'openclaw.json').write_text(json.dumps({'gateway':{'token':'never-import-me'}, 'agents':{'list':[
             {'id':'test','name':'Test','workspace':str(self.home),'private':'never-import-me'}]}}))
-        with patch('shutil.which', side_effect=lambda name: sys.executable if name=='openclaw' else None):
+        with patch('shutil.which', side_effect=lambda name, **kwargs: sys.executable if name=='openclaw' else None):
             candidates = Registry(self.home).discover(self.home)
         self.assertEqual(candidates[0]['runtime_id'], 'test')
         self.assertNotIn('never-import-me', json.dumps(candidates))

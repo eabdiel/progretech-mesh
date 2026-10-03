@@ -15,8 +15,9 @@ ACTIONS = {'profile.get', 'profile.save', 'voice.preview', 'host.system', 'model
 
 
 class ControlRelay:
-    def __init__(self, timeout=45):
+    def __init__(self, timeout=45, chat_timeout=320):
         self.timeout = timeout
+        self.chat_timeout = chat_timeout
         self.pending = {}
         self.lock = threading.Lock()
 
@@ -48,7 +49,7 @@ class ControlRelay:
                                       'payload': {'action': action, 'args': args, 'agent_id': agent_id}})
             if not ok:
                 return {'ok': False, 'error': error or 'gateway_unavailable'}, 503
-            if not entry['event'].wait(self.timeout):
+            if not entry['event'].wait(self.chat_timeout if action == 'communication.chat' else self.timeout):
                 return {'ok': False, 'error': 'control_center_timeout',
                         'detail': 'The action may still finish. Check status before trying again.'}, 504
             return entry['payload'], 200 if entry['payload']['ok'] else 502
@@ -58,6 +59,24 @@ class ControlRelay:
 
 
 control_relay = ControlRelay()
+
+
+def public_runtime_status(status):
+    """Relay receipt metadata without exposing memory bodies or audit payloads."""
+    result = {k: status[k] for k in ('specklet_enabled', 'specklet_error', 'scope', 'sleeping', 'model', 'resident',
+        'preload_available', 'controls_available', 'last_result') if k in status}
+    memory = status.get('memory')
+    if isinstance(memory, dict):
+        result['memory'] = {k: memory[k] for k in ('latest_status', 'at',
+            'activity_kind', 'project', 'memory_id', 'recall_verified')
+            if k in memory and isinstance(memory[k], (str, bool, type(None)))}
+        verified = memory.get('last_verified')
+        if isinstance(verified, dict):
+            result['memory']['last_verified'] = {k: verified[k] for k in
+                ('status', 'at', 'project', 'activity_memory_id',
+                 'activity_recall_verified', 'activity_kind')
+                if k in verified and isinstance(verified[k], (str, bool, type(None)))}
+    return result
 
 
 def register_gateway_agents(gateway_id, payload, registry):
@@ -110,7 +129,8 @@ def register_gateway_agents(gateway_id, payload, registry):
                            'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         record['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
         record['transport'] = 'connected'
-        record['mesh_runtime'] = availability_status(item)
+        record['mesh_runtime'] = public_runtime_status(item.get('mesh_runtime') or {})
+        record['mesh_runtime'].update(availability_status(item))
         if record['mesh_runtime'].get('model'): record['model'] = record['mesh_runtime']['model']
     if host_activity is not None:
         host['mesh_runtime'] = availability_status(host_activity)
@@ -120,6 +140,8 @@ def register_gateway_agents(gateway_id, payload, registry):
         host['state'] = {'active':'working','idle':'idle','paused':'paused','stopped':'paused',
                          'sleeping':'paused','blocked':'blocked','unknown':'unknown'}.get(observed,'unknown')
         host['activity'] = {k:activity[k] for k in ('state','observed_at','source','task_id','session') if k in activity and isinstance(activity[k],(str,type(None)))}
+        status=host_activity.get('mesh_runtime')
+        if isinstance(status,dict):host['mesh_runtime']={**public_runtime_status(status),**availability_status(host_activity)}
 
     return True
 

@@ -81,8 +81,8 @@ ARGS=(
   --memory 512Mi
   --startup-probe "httpGet.path=/startupz,httpGet.port=8080,initialDelaySeconds=0,failureThreshold=12,timeoutSeconds=2,periodSeconds=5"
   --liveness-probe "httpGet.path=/healthz,httpGet.port=8080,initialDelaySeconds=10,failureThreshold=3,timeoutSeconds=2,periodSeconds=30"
-  --set-env-vars "${ENV_VARS}"
-  --set-secrets "SECRET_KEY=${SESSION_SECRET_NAME}:${SECRET_VERSION},MESH_ACTIVATION_SECRET=${ACTIVATION_SECRET_NAME}:${SECRET_VERSION},MESH_DEVICE_CREDENTIAL_SECRET=${DEVICE_SECRET_NAME}:${SECRET_VERSION}"
+  --update-env-vars "${ENV_VARS}"
+  --update-secrets "SECRET_KEY=${SESSION_SECRET_NAME}:${SECRET_VERSION},MESH_ACTIVATION_SECRET=${ACTIVATION_SECRET_NAME}:${SECRET_VERSION},MESH_DEVICE_CREDENTIAL_SECRET=${DEVICE_SECRET_NAME}:${SECRET_VERSION}"
 )
 
 if [[ -n "${SERVICE_ACCOUNT}" ]]; then

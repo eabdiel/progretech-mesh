@@ -35,7 +35,7 @@ def install(host, home=None):
                       for provider, data in cfg.get('models', {}).get('providers', {}).items()
                       for entry in data.get('models', [])
                       if isinstance(entry, dict) and isinstance(entry.get('id'), str)]
-        communication_models = list(dict.fromkeys([*models, *(allowlist.keys() if isinstance(allowlist, dict) and allowlist else configured)]))
+        communication_models = list(dict.fromkeys([*models, *(allowlist.keys() if isinstance(allowlist, dict) else []), *[m for m in configured if 'embed' not in m.lower()]]))
         return {'runtime_id': runtime_id, 'name': agent.get('name', runtime_id),
                 'role': agent.get('identity', {}).get('theme', ''), 'models': models,
                 'communication_roles': [runtime_id], 'communication_models': communication_models,
@@ -50,9 +50,41 @@ def install(host, home=None):
     def execute(runtime_id, action, args, profile):
         # Verify the binding still refers to a real runtime before any host action.
         discover(runtime_id)
+        agent=profile.get('agent_id')
+        if action.startswith('specklet.'):
+            from control_center.specklet import dispatch
+            return dispatch(provider,agent,action,args)
+        if action.startswith('memory.'):
+            from control_center.memory_search import dispatch
+            return dispatch(provider,home,agent,action,args)
+        if action.startswith('handoff.') or action in {'chatter.configure','chatter.history','chatter.pair','chatter.group','chatter.topic'}:
+            result=provider.handoffs.dispatch(agent,action,args)
+            if action=='handoff.create' or (action=='chatter.configure' and args['enabled']):provider.handoffs.start()
+            return result
+        if action.startswith('files.'):
+            from control_center.artifacts import dispatch
+            result=dispatch(home,runtime_id,action,args)
+            if action=='files.list':provider.handoffs.start()
+            return result
+        if action=='communication.start':return mesh.chat(agent,args['text'])
+        if action=='communication.new':return mesh.new_conversation(agent)
+        if action=='communication.job':return mesh.get(agent,args['job_id'])
+        if action=='runtime.status':return mesh.status(agent)
+        if action in {'runtime.wake','runtime.sleep'}:return mesh.power(agent,action=='runtime.wake')
+        if action=='runtime.recover':return mesh.recover(agent)
+        if action=='runtime.context':return mesh.context(agent,args['text'])
+        if action=='runtime.snapshot':return mesh.snapshot(agent,args['kind'])
         if action.startswith('factory.'):
             from control_center.factory_jobs import dispatch_factory
-            return dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
+            result=dispatch_factory(home, runtime_id, action, args, office_id=profile.get("agent_id"))
+            if action=='factory.office':
+                from control_center.mesh_runtime import ROLE_NAMES
+                for row in result.get('snapshot',{}).get('factoryAgents',[]):
+                    if row.get('last_result',{}).get('severity')!='error':continue
+                    runtime=row.get('runtime_id') or next((r for r,name in ROLE_NAMES.items() if name==row['id']),None)
+                    binding=next((a for a,r in provider.bindings.items() if r==runtime and a.startswith(agent.split('--')[0]+'--')),None)
+                    if binding:row['health']=mesh.health(binding)
+            return result
         if action == 'communication.chat':
             from control_center.management import preferences
             cfg = json.loads((home / '.openclaw/openclaw.json').read_text())
@@ -80,9 +112,20 @@ def install(host, home=None):
             if model != 'default':
                 headers['x-openclaw-model'] = model
             req = Request(f'http://127.0.0.1:{port}/v1/chat/completions', data=json.dumps(request_body).encode(), headers=headers)
-            with urlopen(req, timeout=35) as response:
-                completion = json.loads(response.read(1048576))
-            return {'reply': completion['choices'][0]['message']['content'], 'role': role, 'model': model}
+            nonce=preferences(provider,profile['agent_id']).get('conversation_nonce')
+            if nonce:req.add_header('x-openclaw-session-key',headers['x-openclaw-session-key']+':'+nonce)
+            try:
+                with urlopen(req, timeout=300) as response:
+                    completion = json.loads(response.read(1048576))
+            except Exception as exc:
+                from control_center.mesh_runtime import provider_error
+                code=provider_error(exc);mesh.signal(agent,'error',code)
+                raise ValueError(code) from exc
+            reply=completion['choices'][0]['message']['content']
+            if reply.lstrip().startswith(('⚠️ LLM request failed','LLM request failed:')):
+                mesh.signal(agent,'error','mesh_provider_rejected');raise ValueError('mesh_provider_rejected')
+            mesh.signal(agent,'success','reply_received')
+            return {'reply': reply, 'role': role, 'model': model}
         mutation = action in {'voice.preview', 'audio.set', 'voice.start', 'voice.stop', 'vision.analyze', 'chatter.settings', 'chatter.test'}
         if mutation and not host.MUTATION_LOCK.acquire(blocking=False):
             raise ValueError('shared_workstation_busy')
@@ -102,6 +145,16 @@ def install(host, home=None):
                 host.MUTATION_LOCK.release()
 
     provider = AgentControlProvider(state / 'agent-profiles', bindings, discover, execute, capabilities)
+    from control_center.mesh_runtime import MeshRuntime
+    mesh=MeshRuntime(provider,home)
+    provider.mesh_runtime=mesh
+    from control_center.handoffs import Handoffs
+    provider.handoffs=Handoffs(provider,home,mesh)
+    if provider.handoffs.data['rules'] or provider.handoffs.data['chatter']['enabled'] or provider.handoffs.data.get('initialized'):provider.handoffs.start()
+    from control_center.specklet import start_observer
+    start_observer(provider,home)
+    import control_center.office as office_module
+    office_module.SPECKLET_OBSERVER=lambda role,snapshot: __import__('control_center.specklet',fromlist=['observe_office']).observe_office(provider,home,role,snapshot)
     trusted_gateways = dict(bindings)
 
     def roster(gateway_id):
@@ -136,6 +189,8 @@ def install(host, home=None):
             provider.bindings.update(additions)
             from control_center.management import preferences
             agents = [item for item in agents if preferences(provider, item['id'])['enabled']]
+        for item in agents:item['mesh_runtime']=mesh.status(item['id'])
+        agents.append({'id':gateway_id,'name':gateway_id,'role':'','mesh_runtime':mesh.status(gateway_id)})
         return agents
 
     register_provider_routes(host.app, provider, host.token, roster=roster)

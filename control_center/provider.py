@@ -148,6 +148,31 @@ class AgentControlProvider:
 
 
 def register_provider_routes(app, provider, token, roster=None):
+    @app.post('/api/mesh/specklet')
+    def native_specklet():
+        expected=token(); actual=request.headers.get('X-ProgreTech-Mesh-Local-Token','')
+        if not expected or not secrets.compare_digest(expected,actual):return jsonify(ok=False,error='unauthorized'),401
+        if request.content_length and request.content_length>16384:return jsonify(ok=False,error='payload_too_large'),413
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={'runtime','action','args','boardId'}:return jsonify(ok=False,error='invalid_request'),400
+        from control_center.specklet import Board
+        from control_center.management import preferences
+        try:
+            with provider.lock:
+                ids=[a for a,r in provider.bindings.items() if r==body['runtime'] and preferences(provider,a)['enabled']]
+            if body['action']=='get':
+                rows=[]
+                for a in ids:
+                    b=Board(provider,a)
+                    with b.guarded():
+                        d=b.read()
+                        if d['enabled']:rows.append(dict(b.response(d),boardId=a))
+                return jsonify(ok=True,result={'boards':rows})
+            if body['action']!='task' or body['boardId'] not in ids:raise ValueError('agent_binding_required')
+            result=Board(provider,body['boardId']).dispatch('specklet.task',body['args'],agent_write=True)
+            return jsonify(ok=True,result=result)
+        except (ValueError,TypeError) as exc:return jsonify(ok=False,error=str(exc)),400
+
     @app.get('/api/mesh/control-center/agents')
     def mesh_control_agents():
         expected = token()
@@ -174,7 +199,7 @@ def register_provider_routes(app, provider, token, roster=None):
         actual = request.headers.get('X-ProgreTech-Mesh-Local-Token', '')
         if not expected or not secrets.compare_digest(expected, actual):
             return jsonify(ok=False, error='unauthorized'), 401
-        if request.content_length and request.content_length > 16384:
+        if request.content_length and request.content_length > 550000:
             return jsonify(ok=False, error='payload_too_large'), 413
         body = request.get_json(silent=True)
         if not isinstance(body, dict) or set(body) != {'agent_id', 'action', 'args'}:
