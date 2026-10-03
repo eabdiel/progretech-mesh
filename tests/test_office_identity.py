@@ -48,3 +48,30 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual([(a['name'],a['runtime_id']) for a in snap['agents'] if a['isDirector']],[('Rend','main')])
         again=synchronize(self.home,'main','new-host',rows)
         self.assertEqual([a['id'] for a in snap['agents']],[a['id'] for a in again['agents']])
+
+    def test_bound_role_refresh_preserves_identity_tasks_and_custom_goal(self):
+        first = {'runtime_id':'codex','name':'Odexi','role':'Old role'}
+        self.call('runtime.sync',{'agents':[first], 'bindings':{'orchestrator':'codex'}})
+        task = self.call('task.create',{'title':'Ongoing work','description':'Keep assignment',
+                         'assignee':'orchestrator','dependsOn':[],'needsApproval':False})['result']['id']
+        before = self.call('snapshot')['snapshot']
+        updated = dict(first, role='Project manager, teacher and second-in-command')
+        after = self.call('runtime.sync',{'agents':[updated]})['snapshot']
+        self.assertEqual(after['orchestratorId'], before['orchestratorId'])
+        self.assertEqual(after['tasks'], before['tasks'])
+        self.assertEqual(after['agents'][0]['id'], before['agents'][0]['id'])
+        self.assertEqual(after['agents'][0]['role'], updated['role'])
+        identity = Path(self.home)/'.progretech-mesh/factory-offices/scope/hive/agents/orchestrator/identity.md'
+        self.assertIn(updated['role'], identity.read_text())
+        self.assertEqual(self.call('snapshot')['snapshot']['agents'][0]['role'], updated['role'])
+        self.assertTrue(any(t['id']==task for t in after['tasks']))
+
+    def test_archived_runtime_role_refresh_does_not_restore_it(self):
+        row = {'runtime_id':'imagen','name':'Imagen','role':'Graphic designer'}
+        first=self.call('runtime.sync',{'agents':[row]})['snapshot']
+        worker=next(a['id'] for a in first['agents'] if a.get('runtime_id')=='imagen')
+        self.call('archive',{'id':worker})
+        self.call('runtime.sync',{'agents':[dict(row,role='Graphic designer and media generation expert')]})
+        result=self.call('snapshot')['snapshot']
+        self.assertNotIn(worker,[a['id'] for a in result['agents']])
+        self.assertIn(worker,[a['id'] for a in result['archivedAgents']])
