@@ -13,3 +13,10 @@ test('transient mixed rollout and stopped watcher do not reconnect',async()=>{co
   socket.addEventListener('error',()=>{});
   assert.doesNotThrow(()=>closeForRelease(socket));
  });
+
+test('release reconnect is retryable while authentication rejection remains terminal', async()=>{
+ const {closeForRelease,isAuthenticationClose}=await import('./release-watch.js');
+ let code;closeForRelease({close:value=>{code=value;}});
+ assert.equal(code,1000);assert.equal(isAuthenticationClose(code),false);
+ for(const rejected of [4001,4003,4401,4403])assert.equal(isAuthenticationClose(rejected),true);
+});

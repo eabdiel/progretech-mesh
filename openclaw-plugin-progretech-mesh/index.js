@@ -6,7 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { createReleaseWatch, closeForRelease } from "./release-watch.js";
+import { createReleaseWatch, closeForRelease, isAuthenticationClose } from "./release-watch.js";
 import { saveEnrollment, forgetEnrollment, enrollmentReceipts } from "./gateway-enrollments.js";
 import { forwardControlCenter, discoverControlAgents } from "./control-center.js?adapter=0.9.8-chatter-groups.1";
 
@@ -1167,7 +1167,7 @@ async function ensureMeshConnection(api, preferInitialPairing = true) {
     clearMeshConnectWatchdog();
     if (meshSocket === socket) meshSocket = null;
 
-    if ([4001, 4003, 4401, 4403].includes(Number(event?.code))) {
+    if (isAuthenticationClose(event?.code)) {
       markRevoked(`gateway_auth_${event.code}`, record);
       writeConnectionStatus("revoked", "Mesh authentication rejected; re-enrollment required", {
         agent_id: record.agent_id,
